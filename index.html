@@ -468,32 +468,52 @@
 
         /* 手機版面 */
         @media (max-width: 768px) {
-            body { padding: 10px; }
+            body { padding: 8px; }
             
             .readonly-banner { display: block; }
             .mobile-week-nav { display: flex; }
             
             /* 隱藏其他週，只顯示當前週 */
-            .week-container { display: none; }
+            .week-container { display: none; padding: 8px; }
             .week-container.mobile-active { display: block; }
             
             /* 表格填滿螢幕 */
             .schedule-grid {
-                grid-template-columns: 30px repeat(5, 1fr) 40px;
+                grid-template-columns: 25px repeat(5, 1fr) 35px;
+                gap: 1px;
             }
             
-            /* 放大格子內容 */
-            .cell { min-height: 50px; padding: 3px; }
-            .case-tag { font-size: 0.7rem; padding: 4px 5px; }
-            .case-detail { font-size: 0.65rem; }
-            .grid-header { font-size: 0.7rem; padding: 5px 2px; }
-            .grid-header .day-name { font-size: 0.6rem; }
-            .grid-header .day-date { font-size: 0.75rem; }
-            .row-label { font-size: 0.65rem; }
+            /* 縮小格子 */
+            .cell { min-height: 45px; padding: 2px; }
+            
+            /* 縮小字體，允許多行 */
+            .case-tag { 
+                font-size: 0.55rem; 
+                padding: 2px 3px; 
+                max-width: 100%;
+            }
+            .case-tag .case-info { flex-wrap: wrap; }
+            .case-tag .case-detail { 
+                font-size: 0.5rem; 
+                white-space: normal;
+                word-break: break-all;
+                line-height: 1.2;
+            }
+            
+            /* 縮小標題 */
+            .grid-header { font-size: 0.6rem; padding: 4px 1px; }
+            .grid-header .day-name { font-size: 0.5rem; }
+            .grid-header .day-date { font-size: 0.65rem; }
+            .row-label { font-size: 0.55rem; }
             
             /* 週六欄 */
-            .saturday-cell { min-height: 50px; }
-            .saturday-slot, .saturday-mri { font-size: 0.6rem !important; }
+            .saturday-cell { min-height: 45px; }
+            .saturday-slot, .saturday-mri { font-size: 0.5rem !important; }
+            
+            /* 週標題 */
+            .week-header { margin-bottom: 6px; padding-bottom: 4px; }
+            .week-title { font-size: 0.8rem; }
+            .week-dates { font-size: 0.7rem; }
             
             /* 手機唯讀：隱藏新增和編輯功能 */
             body.readonly .case-tag.slot { display: none; }
