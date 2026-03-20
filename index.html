@@ -415,6 +415,85 @@
         .status-btn:hover:not(.active) { border-color: var(--text-muted); }
 
         footer { margin-top: 20px; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
+
+        /* 手機唯讀模式提示 */
+        .readonly-banner {
+            display: none;
+            background: var(--color-stame);
+            color: white;
+            text-align: center;
+            padding: 8px;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            border-radius: 6px;
+        }
+
+        /* 手機週切換器 */
+        .mobile-week-nav {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-secondary);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .mobile-week-nav button {
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-primary);
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .mobile-week-nav button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .mobile-week-nav .week-indicator {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* 手機版面 */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            
+            .readonly-banner { display: block; }
+            .mobile-week-nav { display: flex; }
+            
+            /* 隱藏其他週，只顯示當前週 */
+            .week-container { display: none; }
+            .week-container.mobile-active { display: block; }
+            
+            /* 表格填滿螢幕 */
+            .schedule-grid {
+                grid-template-columns: 30px repeat(5, 1fr) 40px;
+            }
+            
+            /* 放大格子內容 */
+            .cell { min-height: 50px; padding: 3px; }
+            .case-tag { font-size: 0.7rem; padding: 4px 5px; }
+            .case-detail { font-size: 0.65rem; }
+            .grid-header { font-size: 0.7rem; padding: 5px 2px; }
+            .grid-header .day-name { font-size: 0.6rem; }
+            .grid-header .day-date { font-size: 0.75rem; }
+            .row-label { font-size: 0.65rem; }
+            
+            /* 週六欄 */
+            .saturday-cell { min-height: 50px; }
+            .saturday-slot, .saturday-mri { font-size: 0.6rem !important; }
+            
+            /* 手機唯讀：隱藏新增和編輯功能 */
+            body.readonly .case-tag.slot { display: none; }
+            body.readonly .case-actions { display: none !important; }
+            body.readonly .add-tab { display: none; }
+            body.readonly .tab .close-tab { display: none; }
+            body.readonly .tab-header { display: none; }
+            body.readonly #sync-btn { display: none; }
+            body.readonly .type-popup { display: none !important; }
+        }
     </style>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -434,6 +513,7 @@
 
     <!-- 主畫面（預設隱藏） -->
     <div class="container" id="main-app" style="display: none;">
+        <div class="readonly-banner">📱 唯讀模式（電腦上可編輯）</div>
         <header>
             <h1>📋 案例排程表</h1>
             <div style="display: flex; align-items: center; gap: 12px;">
@@ -448,6 +528,13 @@
         <div class="tabs-container" id="tabs-container">
             <!-- Tabs will be rendered here -->
             <button class="add-tab" id="add-tab-btn">＋ 新增</button>
+        </div>
+
+        <!-- 手機週切換器 -->
+        <div class="mobile-week-nav" id="mobile-week-nav">
+            <button id="prev-week-btn">◀ 上週</button>
+            <span class="week-indicator" id="week-indicator">第 1 週</span>
+            <button id="next-week-btn">下週 ▶</button>
         </div>
 
         <div id="tab-content"></div>
@@ -579,6 +666,12 @@
 
         // 頁面載入時檢查
         document.addEventListener('DOMContentLoaded', () => {
+            // 偵測手機，加入唯讀模式
+            const isMobile = window.innerWidth <= 768;
+            if (isMobile) {
+                document.body.classList.add('readonly');
+            }
+            
             // 如果這個 session 已經驗證過，直接進入
             if (sessionStorage.getItem('authenticated') === 'true') {
                 document.getElementById('login-screen').style.display = 'none';
@@ -607,7 +700,8 @@
             activeTabId: null,
             selectedCell: null,
             selectedSlotIndex: null,
-            cellData: {}
+            cellData: {},
+            mobileWeekIndex: 0  // 手機版目前顯示的週數
         };
 
         const dayNames = ['一', '二', '三', '四', '五'];
@@ -853,6 +947,40 @@
             }
 
             container.innerHTML = html;
+            
+            // 手機版：設定週切換
+            updateMobileWeekView(numWeeks);
+        }
+        
+        // 手機版週切換
+        function updateMobileWeekView(totalWeeks) {
+            const isMobile = window.innerWidth <= 768;
+            if (!isMobile) return;
+            
+            const weekContainers = document.querySelectorAll('.week-container');
+            const indicator = document.getElementById('week-indicator');
+            const prevBtn = document.getElementById('prev-week-btn');
+            const nextBtn = document.getElementById('next-week-btn');
+            
+            if (!weekContainers.length) return;
+            
+            // 確保 index 在範圍內
+            if (state.mobileWeekIndex >= totalWeeks) state.mobileWeekIndex = 0;
+            if (state.mobileWeekIndex < 0) state.mobileWeekIndex = totalWeeks - 1;
+            
+            // 顯示當前週
+            weekContainers.forEach((el, i) => {
+                el.classList.toggle('mobile-active', i === state.mobileWeekIndex);
+            });
+            
+            // 更新指示器
+            if (indicator) {
+                indicator.textContent = `第 ${state.mobileWeekIndex + 1} / ${totalWeeks} 週`;
+            }
+            
+            // 更新按鈕狀態
+            if (prevBtn) prevBtn.disabled = state.mobileWeekIndex === 0;
+            if (nextBtn) nextBtn.disabled = state.mobileWeekIndex === totalWeeks - 1;
         }
 
         function createWeekHTML(startDate, weekIndex, tab) {
@@ -1038,6 +1166,16 @@
 
         // Event Listeners
         function setupEventListeners() {
+            // 手機週切換按鈕
+            document.getElementById('prev-week-btn')?.addEventListener('click', () => {
+                state.mobileWeekIndex--;
+                renderTabContent();
+            });
+            document.getElementById('next-week-btn')?.addEventListener('click', () => {
+                state.mobileWeekIndex++;
+                renderTabContent();
+            });
+            
             // 同步按鈕（手動重新載入）
             document.getElementById('sync-btn').addEventListener('click', async () => {
                 if (firebaseReady && db) {
