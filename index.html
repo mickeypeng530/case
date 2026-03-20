@@ -793,7 +793,9 @@
                         ${[0,1,2,3,4].map(d => {
                             const date = new Date(weekStart);
                             date.setDate(date.getDate() + d);
-                            return `<div class="grid-header day-header"><span class="day-name">週${dayNames[d]}</span><span class="day-date">${formatDate(date)}</span></div>`;
+                            const dayOfWeek = date.getDay(); // 0=日, 1=一, 2=二...
+                            const dayNameMap = ['日', '一', '二', '三', '四', '五', '六'];
+                            return `<div class="grid-header day-header"><span class="day-name">週${dayNameMap[dayOfWeek]}</span><span class="day-date">${formatDate(date)}</span></div>`;
                         }).join('')}
                         <div class="row-label am">AM</div>
                         ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'AM', tab)).join('')}
