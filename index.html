@@ -897,9 +897,12 @@
             date.setDate(date.getDate() + dayOffset);
             const cellKey = `${formatDateForInput(date)}-${period}`;
             const cellData = state.cellData[cellKey] || { blocked: false, blockedReason: '', cases: [] };
+            
+            // 確保 cases 是陣列（Firebase 可能存成物件）
+            const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
 
-            const realCases = cellData.cases.filter(c => c.type !== 'slot' && !c.isEmpty);
-            const displayCases = [...cellData.cases];
+            const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            const displayCases = [...cases];
             const minSlots = Math.max(DEFAULT_SLOTS_PER_CELL, realCases.length + 1);
             while (displayCases.length < minSlots) {
                 displayCases.push({ type: 'slot', time: '', chartNo: '', status: 'tentative', isEmpty: true });
@@ -923,9 +926,12 @@
             date.setDate(date.getDate() + 5); // 週六
             const cellKey = `${formatDateForInput(date)}-${period}`;
             const cellData = state.cellData[cellKey] || { blocked: false, blockedReason: '', cases: [] };
+            
+            // 確保 cases 是陣列
+            const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
 
             // 週六只顯示 MRI 類型的案例
-            const mriCases = cellData.cases.filter(c => c.type === 'mri');
+            const mriCases = cases.filter(c => c && c.type === 'mri');
             
             // 只顯示一個空位
             const displayCases = [...mriCases];
