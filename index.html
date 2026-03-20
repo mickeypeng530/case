@@ -1346,7 +1346,12 @@
                 state.cellData[state.selectedCell] = { blocked: false, blockedReason: '', cases: [] };
             }
 
-            const cellCases = state.cellData[state.selectedCell].cases;
+            // 確保 cases 是陣列
+            let cellCases = state.cellData[state.selectedCell].cases;
+            if (!Array.isArray(cellCases)) {
+                cellCases = Object.values(cellCases || {});
+                state.cellData[state.selectedCell].cases = cellCases;
+            }
 
             if (editingCase !== null) {
                 cellCases[editingCase.index] = caseData;
@@ -1386,17 +1391,37 @@
         }
 
         function deleteCase(cellKey, index) {
-            if (state.cellData[cellKey]?.cases && index < state.cellData[cellKey].cases.length) {
-                state.cellData[cellKey].cases.splice(index, 1);
+            const cellData = state.cellData[cellKey];
+            if (!cellData) return;
+            
+            // 確保 cases 是陣列
+            let cases = cellData.cases;
+            if (!Array.isArray(cases)) {
+                cases = Object.values(cases || {});
+            }
+            
+            if (index < cases.length) {
+                cases.splice(index, 1);
+                state.cellData[cellKey].cases = cases;
                 saveToStorage();
                 renderTabContent();
             }
         }
 
         function editCase(cellKey, index) {
-            const caseData = state.cellData[cellKey]?.cases[index];
+            const cellData = state.cellData[cellKey];
+            if (!cellData) return;
+            
+            // 確保 cases 是陣列
+            let cases = cellData.cases;
+            if (!Array.isArray(cases)) {
+                cases = Object.values(cases || {});
+            }
+            
+            const caseData = cases[index];
             if (caseData && caseData.type !== 'slot') {
                 state.selectedCell = cellKey;
+                state.cellData[cellKey].cases = cases; // 更新為陣列格式
                 editingCase = { index };
                 showCaseModal(caseData.type, caseData);
             }
