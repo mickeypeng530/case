@@ -163,7 +163,7 @@
 
         .schedule-grid {
             display: grid;
-            grid-template-columns: 40px repeat(5, minmax(0, 1fr));
+            grid-template-columns: 40px repeat(5, minmax(0, 1fr)) 50px;
             gap: 2px;
         }
 
@@ -179,6 +179,9 @@
         .grid-header.day-header { display: flex; flex-direction: column; gap: 1px; }
         .grid-header .day-name { font-size: 0.7rem; color: var(--text-secondary); }
         .grid-header .day-date { font-size: 0.85rem; }
+        
+        .grid-header.saturday { background: var(--color-mri); color: #1a1a2e; }
+        .grid-header.saturday .day-name { color: #1a1a2e; opacity: 0.7; }
 
         .row-label {
             background: var(--bg-tertiary);
@@ -210,6 +213,24 @@
 
         .cell:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
         .cell.selected { border-color: var(--color-ct-nb); background: rgba(251,191,36,0.1); }
+
+        .cell.saturday-cell { 
+            background: rgba(196, 181, 253, 0.1); 
+            min-height: 55px;
+        }
+        .cell.saturday-cell:hover { background: rgba(196, 181, 253, 0.2); }
+        
+        .saturday-slot { 
+            font-size: 0.6rem !important; 
+            padding: 2px 4px !important; 
+            width: 100%;
+            justify-content: center;
+        }
+        .saturday-mri {
+            font-size: 0.55rem !important;
+            padding: 2px 3px !important;
+            width: 100%;
+        }
 
         .cell.blocked { background: rgba(239,68,68,0.3); }
         .cell.blocked::before {
@@ -467,13 +488,13 @@
             <div class="modal-field" id="status-field">
                 <label>狀態</label>
                 <div class="status-toggle">
-                    <button class="status-btn active" data-status="tentative">暫定</button>
-                    <button class="status-btn" data-status="confirmed">確定</button>
+                    <button type="button" class="status-btn" data-status="tentative">暫定</button>
+                    <button type="button" class="status-btn active" data-status="confirmed">確定</button>
                 </div>
             </div>
             <div class="modal-buttons">
-                <button class="modal-btn cancel" id="modal-cancel">取消</button>
-                <button class="modal-btn confirm" id="modal-confirm">確定</button>
+                <button type="button" class="modal-btn cancel" id="modal-cancel">取消</button>
+                <button type="button" class="modal-btn confirm" id="modal-confirm">確定</button>
             </div>
         </div>
     </div>
@@ -741,7 +762,7 @@
         // Tab Management
         function createNewTab(startDate = null, endDate = null) {
             const start = startDate ? getMonday(startDate) : getDefaultStartDate();
-            const end = endDate ? getFriday(endDate) : new Date(new Date(start).setDate(start.getDate() + 25)); // 到第4週週五
+            const end = endDate ? getFriday(endDate) : new Date(new Date(start).setDate(start.getDate() + 25));
             
             const newTab = {
                 id: generateId(),
@@ -751,7 +772,12 @@
             
             state.tabs.push(newTab);
             state.activeTabId = newTab.id;
+            
+            // 先渲染，再同步
+            renderTabs();
+            renderTabContent();
             saveToStorage();
+            
             return newTab;
         }
 
@@ -846,14 +872,21 @@
                         ${[0,1,2,3,4].map(d => {
                             const date = new Date(weekStart);
                             date.setDate(date.getDate() + d);
-                            const dayOfWeek = date.getDay(); // 0=日, 1=一, 2=二...
+                            const dayOfWeek = date.getDay();
                             const dayNameMap = ['日', '一', '二', '三', '四', '五', '六'];
                             return `<div class="grid-header day-header"><span class="day-name">週${dayNameMap[dayOfWeek]}</span><span class="day-date">${formatDate(date)}</span></div>`;
                         }).join('')}
+                        ${(() => {
+                            const satDate = new Date(weekStart);
+                            satDate.setDate(satDate.getDate() + 5);
+                            return `<div class="grid-header day-header saturday"><span class="day-name">週六</span><span class="day-date">${formatDate(satDate)}</span></div>`;
+                        })()}
                         <div class="row-label am">AM</div>
                         ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'AM', tab)).join('')}
+                        ${createSaturdayCell(weekStart, 'AM')}
                         <div class="row-label pm">PM</div>
                         ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'PM', tab)).join('')}
+                        ${createSaturdayCell(weekStart, 'PM')}
                     </div>
                 </div>
             `;
@@ -884,19 +917,63 @@
             `;
         }
 
+        // 週六專用格子（只顯示 MRI）
+        function createSaturdayCell(weekStart, period) {
+            const date = new Date(weekStart);
+            date.setDate(date.getDate() + 5); // 週六
+            const cellKey = `${formatDateForInput(date)}-${period}`;
+            const cellData = state.cellData[cellKey] || { blocked: false, blockedReason: '', cases: [] };
+
+            // 週六只顯示 MRI 類型的案例
+            const mriCases = cellData.cases.filter(c => c.type === 'mri');
+            
+            // 只顯示一個空位
+            const displayCases = [...mriCases];
+            if (displayCases.length === 0 || !displayCases.some(c => c.isEmpty)) {
+                displayCases.push({ type: 'slot', isEmpty: true });
+            }
+
+            const casesHTML = displayCases.map((c, i) => createSaturdayCaseTag(c, cellKey, i)).join('');
+
+            return `
+                <div class="cell saturday-cell" data-cell-key="${cellKey}" data-saturday="true">
+                    <div class="cases">${casesHTML}</div>
+                </div>
+            `;
+        }
+
+        function createSaturdayCaseTag(caseData, cellKey, index) {
+            const isEmpty = caseData.isEmpty || caseData.type === 'slot';
+            
+            if (isEmpty) {
+                return `<div class="case-tag slot saturday-slot" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="true" data-saturday="true">＋</div>`;
+            }
+            
+            const time = caseData.time || '';
+            return `
+                <div class="case-tag mri saturday-mri" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false">
+                    <span style="font-size: 0.55rem;">${time}</span>
+                    <div class="case-actions">
+                        <button class="case-action-btn delete-btn" title="刪除" style="width:14px;height:14px;font-size:0.55rem;">✕</button>
+                    </div>
+                </div>
+            `;
+        }
+
         function createCaseTagHTML(caseData, cellKey, index) {
             const isEmpty = caseData.isEmpty || caseData.type === 'slot';
-            const label = isEmpty ? '＋' : (caseTypeLabels[caseData.type] || caseData.type);
+            const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
             const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
             const typeClass = isEmpty ? 'slot' : caseData.type;
 
-            let detailHTML = '';
+            let displayText = '';
             if (!isEmpty) {
                 if (caseData.type === 'note') {
-                    detailHTML = `<span class="case-detail">${caseData.note || ''}</span>`;
+                    displayText = caseData.note || '';
                 } else {
-                    const parts = [caseData.time, caseData.chartNo].filter(Boolean);
-                    if (parts.length) detailHTML = `<span class="case-detail">${parts.join(' ')}</span>`;
+                    // 格式：時間 類型 病歷號（例如：13:00 Sono 1067606）
+                    const parts = [caseData.time, typeLabel, caseData.chartNo].filter(Boolean);
+                    displayText = parts.join(' ');
                 }
             }
 
@@ -914,8 +991,7 @@
                      data-index="${index}"
                      data-is-empty="${isEmpty}">
                     <div class="case-info">
-                        <span class="case-type">${label}</span>
-                        ${detailHTML}
+                        <span class="case-detail">${isEmpty ? '＋' : displayText}</span>
                     </div>
                     ${actionsHTML}
                 </div>
@@ -928,6 +1004,30 @@
             if (type === 'stame' || type === 'ctame') return '08:00';
             if (type === 'arthro') return '08:30';
             return '';
+        }
+
+        // 時間輸入自動補冒號：1300 → 13:00, 900 → 09:00
+        function formatTimeInput(input) {
+            if (!input) return '';
+            
+            // 如果已經有冒號，直接返回
+            if (input.includes(':')) return input;
+            
+            // 移除非數字
+            const digits = input.replace(/\D/g, '');
+            
+            if (digits.length === 0) return '';
+            
+            if (digits.length <= 2) {
+                // 9 → 09:00, 13 → 13:00
+                return digits.padStart(2, '0') + ':00';
+            } else if (digits.length === 3) {
+                // 900 → 09:00, 130 → 01:30
+                return '0' + digits[0] + ':' + digits.slice(1);
+            } else {
+                // 1300 → 13:00, 0900 → 09:00
+                return digits.slice(0, 2) + ':' + digits.slice(2, 4);
+            }
         }
 
         // Event Listeners
@@ -986,8 +1086,6 @@
                 const end = document.getElementById('new-tab-end').value;
                 if (start && end) {
                     createNewTab(new Date(start), new Date(end));
-                    renderTabs();
-                    renderTabContent();
                 }
                 document.getElementById('new-tab-modal').classList.remove('show');
             });
@@ -1044,10 +1142,18 @@
 
                 if (caseTag) {
                     const isEmpty = caseTag.dataset.isEmpty === 'true';
+                    const isSaturday = caseTag.dataset.saturday === 'true';
+                    
                     if (isEmpty) {
                         state.selectedCell = caseTag.dataset.cellKey;
                         state.selectedSlotIndex = parseInt(caseTag.dataset.index);
-                        showTypePopup(caseTag);
+                        
+                        if (isSaturday) {
+                            // 週六直接開 MRI modal
+                            showCaseModal('mri');
+                        } else {
+                            showTypePopup(caseTag);
+                        }
                     }
                 } else if (cell && !e.target.closest('.case-actions')) {
                     state.selectedCell = cell.dataset.cellKey;
@@ -1142,7 +1248,7 @@
             noteInput.value = existingData?.note || '';
 
             document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.status === (existingData?.status || 'tentative'));
+                btn.classList.toggle('active', btn.dataset.status === (existingData?.status || 'confirmed'));
             });
 
             if (type === 'note') {
@@ -1188,7 +1294,9 @@
             document.getElementById('modal-confirm').addEventListener('click', saveCaseFromModal);
 
             document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                 });
@@ -1218,10 +1326,13 @@
         }
 
         function saveCaseFromModal() {
-            const time = document.getElementById('case-time').value;
+            let time = document.getElementById('case-time').value.trim();
             const chartNo = document.getElementById('chart-no').value.trim();
             const note = document.getElementById('note-text').value.trim();
-            const status = document.querySelector('.status-btn.active')?.dataset.status || 'tentative';
+            const status = document.querySelector('.status-btn.active')?.dataset.status || 'confirmed';
+
+            // 自動補冒號：1300 → 13:00, 900 → 09:00
+            time = formatTimeInput(time);
 
             const caseData = { type: currentModalType, time, chartNo, note, status };
 
