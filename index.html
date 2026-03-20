@@ -294,7 +294,7 @@
 
         .case-action-btn:hover { background: rgba(0,0,0,0.4); }
 
-        /* Tooltip for case tags */
+        /* Tooltip for case tags - 簡單顯示完整資訊 */
         .case-tag[data-tooltip] {
             position: relative;
         }
@@ -302,25 +302,21 @@
             content: attr(data-tooltip);
             position: absolute;
             bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 0;
             background: #1a1a2e;
             color: #fff;
-            padding: 6px 10px;
-            border-radius: 5px;
+            padding: 4px 8px;
+            border-radius: 4px;
             font-size: 0.75rem;
             font-weight: normal;
-            white-space: pre-line;
-            text-align: left;
-            min-width: 120px;
-            max-width: 200px;
+            white-space: nowrap;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.2s, visibility 0.2s;
+            transition: opacity 0.15s;
             z-index: 100;
             pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            margin-bottom: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            margin-bottom: 3px;
         }
         .case-tag[data-tooltip]:hover::after {
             opacity: 1;
@@ -1161,15 +1157,14 @@
             if (!isEmpty) {
                 if (caseData.type === 'note') {
                     displayText = caseData.note || '';
-                    tooltipText = `備註：${caseData.note || ''}`;
+                    tooltipText = caseData.note || '';
                 } else {
                     // 格式：時間 類型 病歷號（例如：13:00 Sono 1067606）
                     const parts = [caseData.time, typeLabel, caseData.chartNo].filter(Boolean);
                     displayText = parts.join(' ');
                     
-                    // Tooltip 完整資訊
-                    const statusLabel = caseData.status === 'tentative' ? '暫定' : '確定';
-                    tooltipText = `類型：${typeLabel}\n時間：${caseData.time || '未設定'}\n病歷號：${caseData.chartNo || '未填寫'}\n狀態：${statusLabel}`;
+                    // Tooltip 就是完整的一行資訊（不截斷）
+                    tooltipText = parts.join(' ');
                 }
             }
 
@@ -1477,7 +1472,7 @@
                 title.textContent = existingData ? '編輯 MRI' : '新增 MRI 時段';
                 chartField.style.display = 'none';
                 noteField.style.display = 'none';
-                statusField.style.display = 'none';
+                statusField.style.display = 'block';  // MRI 也可選狀態
             } else {
                 title.textContent = existingData ? `編輯 ${caseTypeLabels[type]}` : `新增 ${caseTypeLabels[type]}`;
                 chartField.style.display = 'block';
