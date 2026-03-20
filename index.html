@@ -294,39 +294,6 @@
 
         .case-action-btn:hover { background: rgba(0,0,0,0.4); }
 
-        /* Tooltip for case tags - 簡單顯示完整資訊 */
-        .case-tag[data-tooltip] {
-            position: relative;
-        }
-        .case-tag[data-tooltip]::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 0;
-            background: #1a1a2e;
-            color: #fff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: normal;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.15s;
-            z-index: 100;
-            pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            margin-bottom: 3px;
-        }
-        .case-tag[data-tooltip]:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
-        /* 手機版不顯示 tooltip */
-        @media (max-width: 768px) {
-            .case-tag[data-tooltip]::after { display: none; }
-        }
-
         .blocked-note { font-size: 0.65rem; color: var(--color-blocked); padding: 2px 4px; position: relative; z-index: 1; }
 
         /* Type Popup */
@@ -1175,7 +1142,8 @@
                 </div>
             `;
             
-            const tooltipAttr = isEmpty ? '' : `data-tooltip="${tooltipText}"`;
+            // 用原生 title 屬性顯示完整資訊
+            const titleAttr = isEmpty ? '' : `title="${tooltipText}"`;
 
             return `
                 <div class="case-tag ${typeClass} ${tentativeClass}" 
@@ -1183,7 +1151,7 @@
                      data-cell-key="${cellKey}" 
                      data-index="${index}"
                      data-is-empty="${isEmpty}"
-                     ${tooltipAttr}>
+                     ${titleAttr}>
                     <div class="case-info">
                         <span class="case-detail">${isEmpty ? '＋' : displayText}</span>
                     </div>
@@ -1227,13 +1195,19 @@
         // Event Listeners
         function setupEventListeners() {
             // 手機週切換按鈕
-            document.getElementById('prev-week-btn')?.addEventListener('click', () => {
+            document.getElementById('prev-week-btn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 state.mobileWeekIndex--;
-                renderTabContent();
+                const totalWeeks = document.querySelectorAll('.week-container').length;
+                updateMobileWeekView(totalWeeks);
             });
-            document.getElementById('next-week-btn')?.addEventListener('click', () => {
+            document.getElementById('next-week-btn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 state.mobileWeekIndex++;
-                renderTabContent();
+                const totalWeeks = document.querySelectorAll('.week-container').length;
+                updateMobileWeekView(totalWeeks);
             });
             
             // 同步按鈕（手動重新載入）
