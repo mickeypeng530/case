@@ -1024,7 +1024,10 @@
         }
 
         function getTabName(tab) {
-            return `${formatDate(tab.startDate)}-${formatDate(tab.endDate)}`;
+            // 優先用統計區間，舊資料用顯示區間
+            const start = tab.statsStartDate || tab.startDate;
+            const end = tab.statsEndDate || tab.endDate;
+            return `${formatDate(start)}-${formatDate(end)}`;
         }
 
         function getActiveTab() {
@@ -1033,13 +1036,22 @@
 
         // Tab Management
         function createNewTab(startDate = null, endDate = null) {
-            const start = startDate ? getMonday(startDate) : getDefaultStartDate();
-            const end = endDate ? getFriday(endDate) : new Date(new Date(start).setDate(start.getDate() + 25));
+            // 統計區間：使用者輸入的日期
+            const statsStart = startDate ? new Date(startDate) : getDefaultStartDate();
+            const statsEnd = endDate ? new Date(endDate) : new Date(new Date(statsStart).setDate(statsStart.getDate() + 13));
+            
+            // 顯示區間：擴展到完整週
+            const displayStart = getMonday(statsStart);
+            const displayEnd = getFriday(statsEnd);
             
             const newTab = {
                 id: generateId(),
-                startDate: formatDateForInput(start),
-                endDate: formatDateForInput(end)
+                // 統計用（使用者設定的區間）
+                statsStartDate: formatDateForInput(statsStart),
+                statsEndDate: formatDateForInput(statsEnd),
+                // 顯示用（完整週）
+                startDate: formatDateForInput(displayStart),
+                endDate: formatDateForInput(displayEnd)
             };
             
             state.tabs.push(newTab);
@@ -1102,12 +1114,20 @@
                 return;
             }
 
-            // 確保起始日是週一，結束日是週五
-            const startDate = getMonday(new Date(tab.startDate));
-            const endDate = getFriday(new Date(tab.endDate));
+            // 統計區間（使用者設定）
+            const statsStart = tab.statsStartDate || tab.startDate;
+            const statsEnd = tab.statsEndDate || tab.endDate;
+            
+            // 顯示區間（擴展到完整週）
+            const displayStart = getMonday(new Date(statsStart));
+            const displayEnd = getFriday(new Date(statsEnd));
+            
+            // 更新 tab 的顯示區間
+            tab.startDate = formatDateForInput(displayStart);
+            tab.endDate = formatDateForInput(displayEnd);
             
             // 計算需要幾週
-            const daysDiff = (endDate - startDate) / (24 * 60 * 60 * 1000);
+            const daysDiff = (displayEnd - displayStart) / (24 * 60 * 60 * 1000);
             const weeksNeeded = Math.floor(daysDiff / 7) + 1;
             const numWeeks = Math.max(weeksNeeded, 1); // 至少 1 週
 
@@ -1115,16 +1135,16 @@
                 <div class="tab-header">
                     <span class="tab-name-display">${getTabName(tab)}</span>
                     <div>
-                        <label>起始：</label>
-                        <input type="date" id="tab-start-date" value="${tab.startDate}">
-                        <label style="margin-left: 10px;">結束：</label>
-                        <input type="date" id="tab-end-date" value="${tab.endDate}">
+                        <label>統計起始：</label>
+                        <input type="date" id="tab-stats-start" value="${statsStart}">
+                        <label style="margin-left: 10px;">統計結束：</label>
+                        <input type="date" id="tab-stats-end" value="${statsEnd}">
                     </div>
                 </div>
             `;
 
             for (let week = 0; week < numWeeks; week++) {
-                html += createWeekHTML(startDate, week, tab);
+                html += createWeekHTML(displayStart, week, tab);
             }
 
             container.innerHTML = html;
@@ -1143,8 +1163,9 @@
             const tab = getActiveTab();
             if (!tab) return;
             
-            const startDate = getMonday(new Date(tab.startDate));
-            const endDate = new Date(tab.endDate);
+            // 使用統計區間（不是顯示區間）
+            const statsStart = new Date(tab.statsStartDate || tab.startDate);
+            const statsEnd = new Date(tab.statsEndDate || tab.endDate);
             
             // 統計各類型數量（ct-nb+ct-nb-prf 合併，stame+ctame 合併為 tame）
             const typeCounts = {
@@ -1156,7 +1177,7 @@
             const allCases = [];
             const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
             
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
                     const cellKey = `${formatDateForInput(d)}-${period}`;
                     const cellData = state.cellData[cellKey];
@@ -1266,14 +1287,15 @@
                 return;
             }
             
-            const startDate = getMonday(new Date(tab.startDate));
-            const endDate = new Date(tab.endDate);
+            // 使用統計區間（不是顯示區間）
+            const statsStart = new Date(tab.statsStartDate || tab.startDate);
+            const statsEnd = new Date(tab.statsEndDate || tab.endDate);
             
             // 收集所有案例（排除備註和不可用）
             const allCases = [];
             const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
             
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
                     const cellKey = `${formatDateForInput(d)}-${period}`;
                     const cellData = state.cellData[cellKey];
@@ -1766,17 +1788,21 @@
                 document.getElementById('delete-tab-modal').classList.remove('show');
             });
 
-            // Tab content date changes - 用 blur 避免輸入中途觸發，自動調整到週一/週五
+            // Tab content date changes - 統計區間
             document.getElementById('tab-content').addEventListener('blur', (e) => {
-                if (e.target.id === 'tab-start-date' || e.target.id === 'tab-end-date') {
+                if (e.target.id === 'tab-stats-start' || e.target.id === 'tab-stats-end') {
                     const tab = getActiveTab();
                     if (tab && e.target.value) {
-                        if (e.target.id === 'tab-start-date') {
-                            // 起始日自動調整到週一
+                        if (e.target.id === 'tab-stats-start') {
+                            // 統計起始日（不調整，保持使用者輸入）
+                            tab.statsStartDate = e.target.value;
+                            // 顯示區間自動擴展到週一
                             tab.startDate = formatDateForInput(getMonday(new Date(e.target.value)));
                         }
-                        if (e.target.id === 'tab-end-date') {
-                            // 結束日自動調整到週五
+                        if (e.target.id === 'tab-stats-end') {
+                            // 統計結束日（不調整，保持使用者輸入）
+                            tab.statsEndDate = e.target.value;
+                            // 顯示區間自動擴展到週五
                             tab.endDate = formatDateForInput(getFriday(new Date(e.target.value)));
                         }
                         saveToStorage();
