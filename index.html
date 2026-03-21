@@ -1095,7 +1095,9 @@
             // 確保起始日是週一
             const startDate = getMonday(new Date(tab.startDate));
             const endDate = new Date(tab.endDate);
-            const weeksNeeded = Math.ceil((endDate - startDate) / (7 * 24 * 60 * 60 * 1000)) + 1;
+            // 計算需要幾週（包含起始週和結束週）
+            const daysDiff = Math.ceil((endDate - startDate) / (24 * 60 * 60 * 1000));
+            const weeksNeeded = Math.ceil((daysDiff + 1) / 7);
             const numWeeks = Math.min(Math.max(weeksNeeded, 4), 6); // 4-6 weeks
 
             let html = `
@@ -2047,9 +2049,9 @@
             // 過濾掉空位，只保留真正案例
             const realCases = cellCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
 
-            if (editingCase !== null) {
+            if (editingCase !== null && editingCase._originalIndex !== undefined) {
                 // 編輯：用原始 index 直接替換
-                cellCases[editingCase.index] = caseData;
+                cellCases[editingCase._originalIndex] = caseData;
             } else {
                 // 新增：直接加到真正案例的最後
                 // 先清空舊陣列，重建為只有真正案例 + 新案例
@@ -2128,7 +2130,8 @@
             
             if (caseData && caseData.type !== 'slot') {
                 state.selectedCell = cellKey;
-                editingCase = { index: originalIndex };  // 用原始 index
+                // 把 originalIndex 放在 caseData 上傳給 showCaseModal
+                caseData._originalIndex = originalIndex;
                 showCaseModal(caseData.type, caseData);
             }
         }
