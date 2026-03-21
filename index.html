@@ -478,14 +478,16 @@
         }
         .stats-detail-item {
             display: flex;
-            gap: 10px;
+            flex-wrap: wrap;
+            gap: 6px 10px;
             font-size: 0.75rem;
             padding: 6px 8px;
             background: var(--bg-tertiary);
             border-radius: 4px;
         }
         .stats-detail-item .date { color: var(--text-secondary); min-width: 90px; }
-        .stats-detail-item .time { color: var(--color-ct-nb); min-width: 45px; }
+        .stats-detail-item .time { color: var(--color-ct-nb); min-width: 40px; }
+        .stats-detail-item .type-label { color: var(--color-ct-nb); min-width: 60px; }
         .stats-detail-item .chart { color: var(--text-primary); }
         .stats-detail-item .status { color: var(--text-muted); font-size: 0.65rem; }
         .stats-detail-item .status.tentative { color: var(--color-ct-nb); }
@@ -608,6 +610,18 @@
             body.readonly .tab-header { display: none; }
             body.readonly #sync-btn { display: none; }
             body.readonly .type-popup { display: none !important; }
+            
+            /* 手機版統計欄展開樣式 */
+            .stats-detail-item {
+                font-size: 0.65rem;
+                gap: 4px 6px;
+                padding: 5px 6px;
+            }
+            .stats-detail-item .date { min-width: 75px; font-size: 0.6rem; }
+            .stats-detail-item .time { min-width: 35px; }
+            .stats-detail-item .type-label { min-width: 50px; font-size: 0.6rem; }
+            .stats-detail-item .chart { font-size: 0.6rem; }
+            .stats-detail-item .status { font-size: 0.55rem; }
         }
     </style>
     <!-- Firebase SDK -->
@@ -1335,6 +1349,13 @@
             
             // 建立文件
             const doc = new Document({
+                styles: {
+                    default: {
+                        document: {
+                            run: { font: "Arial", size: 20 }
+                        }
+                    }
+                },
                 sections: [{
                     properties: {
                         page: {
