@@ -494,16 +494,39 @@
 
         footer { margin-top: 15px; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
 
-        /* 手機唯讀模式提示 */
+        /* 手機版編輯模式切換 */
+        .mobile-edit-toggle {
+            display: none;
+            background: var(--bg-secondary);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-edit-toggle span {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        .mobile-edit-toggle button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .mobile-edit-toggle button.editing {
+            background: var(--color-ct-nb);
+            color: #1a1a2e;
+            border-color: var(--color-ct-nb);
+            font-weight: 600;
+        }
+
+        /* 手機唯讀模式提示 - 已棄用，改用編輯切換 */
         .readonly-banner {
             display: none;
-            background: var(--color-stame);
-            color: white;
-            text-align: center;
-            padding: 8px;
-            font-size: 0.8rem;
-            margin-bottom: 10px;
-            border-radius: 6px;
         }
 
         /* 手機週切換器 */
@@ -538,7 +561,7 @@
         @media (max-width: 768px) {
             body { padding: 8px; }
             
-            .readonly-banner { display: block; }
+            .mobile-edit-toggle { display: flex; }
             .mobile-week-nav { display: flex; }
             
             /* 隱藏其他週，只顯示當前週 */
@@ -602,14 +625,22 @@
             .week-title { font-size: 0.75rem; }
             .week-dates { font-size: 0.65rem; }
             
-            /* 手機唯讀：隱藏新增和編輯功能 */
-            body.readonly .case-tag.slot { display: none; }
-            body.readonly .case-actions { display: none !important; }
-            body.readonly .add-tab { display: none; }
-            body.readonly .tab .close-tab { display: none; }
-            body.readonly .tab-header { display: none; }
-            body.readonly #sync-btn { display: none; }
-            body.readonly .type-popup { display: none !important; }
+            /* 手機版預設隱藏編輯功能（唯讀模式） */
+            body.mobile-readonly .case-tag.slot { display: none; }
+            body.mobile-readonly .case-actions { display: none !important; }
+            body.mobile-readonly .add-tab { display: none; }
+            body.mobile-readonly .tab .close-tab { display: none; }
+            body.mobile-readonly .tab-header { display: none; }
+            body.mobile-readonly #sync-btn { display: none; }
+            body.mobile-readonly .type-popup { display: none !important; }
+            
+            /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
+            body.mobile-editing .case-tag.slot { display: flex; }
+            body.mobile-editing .type-popup { display: block !important; }
+            body.mobile-editing .case-actions { display: none !important; }
+            body.mobile-editing .add-tab { display: none; }
+            body.mobile-editing .tab .close-tab { display: none; }
+            body.mobile-editing .tab-header { display: none; }
             
             /* 手機版統計欄展開樣式 */
             .stats-detail-item {
@@ -644,7 +675,10 @@
 
     <!-- 主畫面（預設隱藏） -->
     <div class="container" id="main-app" style="display: none;">
-        <div class="readonly-banner">📱 唯讀模式（電腦上可編輯）</div>
+        <div class="mobile-edit-toggle" id="mobile-edit-toggle">
+            <span>📱 手機模式</span>
+            <button id="mobile-edit-btn">✏️ 開啟編輯</button>
+        </div>
         <header>
             <h1>📋 案例排程表</h1>
             <div style="display: flex; align-items: center; gap: 12px;">
@@ -828,10 +862,10 @@
 
         // 頁面載入時檢查
         document.addEventListener('DOMContentLoaded', () => {
-            // 偵測手機，加入唯讀模式
+            // 偵測手機，預設為唯讀模式
             const isMobile = window.innerWidth <= 768;
             if (isMobile) {
-                document.body.classList.add('readonly');
+                document.body.classList.add('mobile-readonly');
             }
             
             // 如果這個 session 已經驗證過，直接進入
@@ -849,6 +883,26 @@
             // Enter 鍵登入
             document.getElementById('password-input').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') checkPassword();
+            });
+            
+            // 手機版編輯模式切換
+            document.getElementById('mobile-edit-btn').addEventListener('click', () => {
+                const btn = document.getElementById('mobile-edit-btn');
+                const isEditing = document.body.classList.contains('mobile-editing');
+                
+                if (isEditing) {
+                    // 關閉編輯模式
+                    document.body.classList.remove('mobile-editing');
+                    document.body.classList.add('mobile-readonly');
+                    btn.textContent = '✏️ 開啟編輯';
+                    btn.classList.remove('editing');
+                } else {
+                    // 開啟編輯模式
+                    document.body.classList.remove('mobile-readonly');
+                    document.body.classList.add('mobile-editing');
+                    btn.textContent = '🔒 關閉編輯';
+                    btn.classList.add('editing');
+                }
             });
         });
         
@@ -1361,7 +1415,7 @@
                         new TableCell({
                             borders,
                             width: { size: colWidths[0], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [new TextRun({ text: c.chartNo || '', size: 20 })] })]
+                            children: [new Paragraph({ children: [new TextRun({ text: c.chartNo || '', size: 22 })] })]
                         }),
                         // 第2欄：空白（年齡/性別）
                         new TableCell({
@@ -1381,7 +1435,7 @@
                         new TableCell({
                             borders,
                             width: { size: colWidths[4], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [new TextRun({ text: col5Text, size: 20 })] })]
+                            children: [new Paragraph({ children: [new TextRun({ text: col5Text, size: 22 })] })]
                         }),
                         // 第6欄：空白（詳細筆記）
                         new TableCell({
@@ -1404,7 +1458,7 @@
                 styles: {
                     default: {
                         document: {
-                            run: { font: "Arial", size: 20 }
+                            run: { font: "Arial", size: 22 }
                         }
                     }
                 },
@@ -1818,7 +1872,8 @@
                 const popupBtn = e.target.closest('.type-popup-btn');
                 const caseTag = e.target.closest('.case-tag');
                 const cell = e.target.closest('.cell');
-                const isMobile = document.body.classList.contains('readonly');
+                // 檢查是否為手機唯讀模式（不是編輯模式）
+                const isMobileReadonly = document.body.classList.contains('mobile-readonly');
 
                 if (popupBtn) {
                     const type = popupBtn.dataset.type;
@@ -1835,7 +1890,7 @@
                     const isSaturday = caseTag.dataset.saturday === 'true';
                     
                     if (isEmpty) {
-                        if (isMobile) return; // 手機唯讀不能新增
+                        if (isMobileReadonly) return; // 手機唯讀不能新增
                         
                         state.selectedCell = caseTag.dataset.cellKey;
                         state.selectedSlotIndex = parseInt(caseTag.dataset.index);
@@ -1847,8 +1902,8 @@
                         }
                     } else {
                         // 點擊已存在的案例
-                        if (isMobile) {
-                            // 手機版：顯示詳細資訊
+                        if (isMobileReadonly) {
+                            // 手機唯讀模式：顯示詳細資訊
                             showCaseDetail(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                         }
                     }
