@@ -564,6 +564,134 @@
 
         footer { margin-top: 15px; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
 
+        /* 閱讀清單樣式 */
+        .reading-list-modal {
+            width: 90%;
+            max-width: 450px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .reading-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .reading-list-header h3 {
+            margin: 0;
+        }
+        .reading-list-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+        .reading-list-close:hover {
+            color: var(--text-primary);
+        }
+        .reading-list-input {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .reading-list-input input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .reading-list-input input::placeholder {
+            color: var(--text-muted);
+        }
+        .reading-list-input button {
+            padding: 10px 16px;
+            background: var(--color-mri);
+            border: none;
+            color: #1a1a2e;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .reading-list-input button:hover {
+            filter: brightness(1.1);
+        }
+        .reading-list-items {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 50vh;
+        }
+        .reading-list-empty {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 30px 20px;
+        }
+        .reading-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .reading-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .reading-item-title {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            word-break: break-word;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .reading-item-url {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .reading-item-time {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .reading-item-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .reading-item-btn {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .reading-item-btn.open {
+            background: var(--color-sono);
+            color: #1a1a2e;
+        }
+        .reading-item-btn.delete {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-muted);
+        }
+        .reading-item-btn:hover {
+            filter: brightness(1.1);
+        }
+
         /* 手機版編輯模式切換 */
         .mobile-edit-toggle {
             display: none;
@@ -793,6 +921,7 @@
         <header>
             <h1>📋 案例排程表</h1>
             <div style="display: flex; align-items: center; gap: 12px;">
+                <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
                 <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄 匯出</button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
                 <span class="storage-status">
@@ -923,6 +1052,27 @@
         </div>
     </div>
 
+    <!-- 閱讀清單 Modal -->
+    <div class="modal-overlay" id="reading-list-modal">
+        <div class="modal reading-list-modal">
+            <div class="reading-list-header">
+                <h3>📖 閱讀清單</h3>
+                <button type="button" class="reading-list-close" id="reading-list-close">✕</button>
+            </div>
+            <div class="reading-list-input">
+                <input type="url" id="reading-url-input" placeholder="貼上網址...">
+                <button type="button" id="reading-add-btn">加入</button>
+            </div>
+            <div class="reading-list-items" id="reading-list-items">
+                <!-- 閱讀清單項目會動態生成 -->
+            </div>
+            <div class="reading-list-empty" id="reading-list-empty">
+                <p>尚無閱讀項目</p>
+                <p style="font-size: 0.75rem; opacity: 0.7;">貼上網址開始收藏</p>
+            </div>
+        </div>
+    </div>
+
     <!-- 案例詳細資訊（手機唯讀用） -->
     <div class="modal-overlay" id="case-detail-modal">
         <div class="modal">
@@ -1033,6 +1183,9 @@
             cellData: {},
             mobileWeekIndex: 0  // 手機版目前顯示的週數
         };
+        
+        // 閱讀清單 state（獨立存儲）
+        let readingList = [];
 
         const dayNames = ['一', '二', '三', '四', '五'];
         const caseTypeLabels = {
@@ -1054,6 +1207,7 @@
             // 只綁定一次事件
             if (!eventsBound) {
                 setupEventListeners();
+                setupReadingListEvents();
                 eventsBound = true;
             }
             
@@ -1080,6 +1234,14 @@
                         renderTabContent();
                     }
                     showStatus('已同步', false);
+                });
+                
+                // 監聽閱讀清單
+                db.ref('readings').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    readingList = data ? Object.values(data) : [];
+                    readingList.sort((a, b) => b.createdAt - a.createdAt); // 最新的在前
+                    renderReadingList();
                 });
             } catch (error) {
                 console.error('Firebase 初始化失敗:', error);
@@ -2439,6 +2601,155 @@
                 caseData._originalIndex = originalIndex;
                 showCaseModal(caseData.type, caseData);
             }
+        }
+
+        // ===== 閱讀清單功能 =====
+        
+        function renderReadingList() {
+            const itemsContainer = document.getElementById('reading-list-items');
+            const emptyState = document.getElementById('reading-list-empty');
+            
+            if (readingList.length === 0) {
+                itemsContainer.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            itemsContainer.style.display = 'block';
+            emptyState.style.display = 'none';
+            
+            itemsContainer.innerHTML = readingList.map(item => `
+                <div class="reading-item" data-id="${item.id}">
+                    <div class="reading-item-content">
+                        <div class="reading-item-title">${item.title || item.url}</div>
+                        <div class="reading-item-url">${item.url}</div>
+                        <div class="reading-item-time">${formatTimeAgo(item.createdAt)}</div>
+                    </div>
+                    <div class="reading-item-actions">
+                        <button type="button" class="reading-item-btn open" data-url="${item.url}">開啟</button>
+                        <button type="button" class="reading-item-btn delete" data-id="${item.id}">刪除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function formatTimeAgo(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return '剛剛';
+            if (minutes < 60) return `${minutes} 分鐘前`;
+            if (hours < 24) return `${hours} 小時前`;
+            if (days < 7) return `${days} 天前`;
+            return new Date(timestamp).toLocaleDateString('zh-TW');
+        }
+        
+        async function addReadingItem(url) {
+            if (!url || !url.trim()) return;
+            
+            // 驗證 URL
+            try {
+                new URL(url);
+            } catch {
+                alert('請輸入有效的網址');
+                return;
+            }
+            
+            const id = 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const item = {
+                id: id,
+                url: url.trim(),
+                title: url.trim(), // 預設用 URL 當標題
+                createdAt: Date.now()
+            };
+            
+            // 嘗試抓取網頁標題
+            fetchPageTitle(url.trim()).then(title => {
+                if (title && firebaseReady) {
+                    db.ref('readings/' + id + '/title').set(title);
+                }
+            });
+            
+            // 儲存到 Firebase
+            if (firebaseReady) {
+                await db.ref('readings/' + id).set(item);
+            } else {
+                readingList.unshift(item);
+                renderReadingList();
+            }
+            
+            document.getElementById('reading-url-input').value = '';
+        }
+        
+        async function fetchPageTitle(url) {
+            try {
+                // 使用 cors-anywhere 或類似服務來抓取標題
+                // 由於 CORS 限制，這裡簡化處理，只從 URL 提取域名
+                const urlObj = new URL(url);
+                return urlObj.hostname + urlObj.pathname.substring(0, 30);
+            } catch {
+                return null;
+            }
+        }
+        
+        async function deleteReadingItem(id) {
+            if (firebaseReady) {
+                await db.ref('readings/' + id).remove();
+            } else {
+                readingList = readingList.filter(item => item.id !== id);
+                renderReadingList();
+            }
+        }
+        
+        function setupReadingListEvents() {
+            // 開啟閱讀清單
+            document.getElementById('reading-list-btn').addEventListener('click', () => {
+                document.getElementById('reading-list-modal').classList.add('show');
+                document.getElementById('reading-url-input').focus();
+            });
+            
+            // 關閉閱讀清單
+            document.getElementById('reading-list-close').addEventListener('click', () => {
+                document.getElementById('reading-list-modal').classList.remove('show');
+            });
+            
+            // 點擊背景關閉
+            document.getElementById('reading-list-modal').addEventListener('click', (e) => {
+                if (e.target.id === 'reading-list-modal') {
+                    document.getElementById('reading-list-modal').classList.remove('show');
+                }
+            });
+            
+            // 加入閱讀項目
+            document.getElementById('reading-add-btn').addEventListener('click', () => {
+                const url = document.getElementById('reading-url-input').value;
+                addReadingItem(url);
+            });
+            
+            // Enter 鍵加入
+            document.getElementById('reading-url-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const url = document.getElementById('reading-url-input').value;
+                    addReadingItem(url);
+                }
+            });
+            
+            // 閱讀清單項目點擊
+            document.getElementById('reading-list-items').addEventListener('click', (e) => {
+                const openBtn = e.target.closest('.reading-item-btn.open');
+                const deleteBtn = e.target.closest('.reading-item-btn.delete');
+                
+                if (openBtn) {
+                    window.open(openBtn.dataset.url, '_blank');
+                }
+                
+                if (deleteBtn) {
+                    deleteReadingItem(deleteBtn.dataset.id);
+                }
+            });
         }
 
         let draggedItem = null, draggedFromCell = null, draggedIndex = null;
