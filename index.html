@@ -1636,15 +1636,19 @@
                 'ct-nb': 'CT NB',
                 'tame': 'TAME',
                 'sono': 'Sono',
-                'mri': 'MRI',
                 'arthro': 'Arthro',
-                'other': 'Other'
+                'other': 'Other',
+                'mri': 'MRI'
             };
             
+            // 統計摘要排序（MRI 排最後）
+            const statsOrder = ['ct-nb', 'tame', 'sono', 'arthro', 'other', 'mri'];
+            
             // 生成統計摘要
-            const summaryHTML = Object.entries(typeCounts)
-                .filter(([type, count]) => count > 0)
-                .map(([type, count]) => {
+            const summaryHTML = statsOrder
+                .filter(type => typeCounts[type] > 0)
+                .map(type => {
+                    const count = typeCounts[type];
                     const activeClass = activeStatsType === type ? 'active' : '';
                     // tame 用 stame 的顏色（藍色）
                     const colorClass = type === 'tame' ? 'stame' : type;
