@@ -343,14 +343,15 @@
             border-radius: 4px;
             font-size: 0.7rem;
             font-weight: 600;
-            display: inline-flex;
+            display: flex;
             align-items: center;
             gap: 3px;
             cursor: grab;
             transition: all 0.1s ease;
-            max-width: 100%;
+            width: 100%;
             overflow: hidden;
             position: relative;
+            box-sizing: border-box;
         }
 
         .case-tag:active { cursor: grabbing; }
@@ -366,17 +367,18 @@
         .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: inherit; padding: inherit; }
         .case-tag.arthro { background: var(--color-arthro); color: white; }
         .case-tag.other { background: var(--color-other); color: white; }
-        .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; }
-        .case-tag.note { background: var(--color-note); color: white; }
+        .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; width: 100%; }
+        .case-tag.note { background: var(--color-note); color: white; width: auto; display: inline-flex; }
 
-        .case-info { display: flex; align-items: center; gap: 3px; overflow: hidden; }
+        .case-info { display: flex; align-items: center; gap: 3px; overflow: hidden; flex: 1; }
         .case-type { font-weight: 600; font-size: 0.65rem; white-space: nowrap; flex-shrink: 0; }
         .case-detail { font-size: 0.6rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
-        /* 滑鼠移上去時展開顯示完整內容 */
+        /* 滑鼠移上去時 z-index 提高，備註可展開 */
         .case-tag:hover { 
             z-index: 10; 
-            max-width: none !important;
+        }
+        .case-tag.note:hover {
             width: auto !important;
         }
         .case-tag:hover .case-info { overflow: visible; }
