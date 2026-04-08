@@ -2023,12 +2023,11 @@
             }
             
             const time = caseData.time || '';
+            const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
+            // 週六 MRI 點擊整個標籤來編輯，不用小按鈕
             return `
-                <div class="case-tag mri saturday-mri" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false">
+                <div class="case-tag mri saturday-mri ${tentativeClass}" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false" data-saturday="true" style="cursor: pointer;">
                     <span style="font-size: 0.55rem;">${time}</span>
-                    <div class="case-actions">
-                        <button class="case-action-btn delete-btn" title="刪除" style="width:14px;height:14px;font-size:0.55rem;">✕</button>
-                    </div>
                 </div>
             `;
         }
@@ -2372,6 +2371,9 @@
                             showCaseDetail(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                         } else if (isMobileEditing) {
                             // 手機編輯模式：直接編輯案例
+                            editCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
+                        } else if (isSaturday) {
+                            // 週六 MRI：點擊直接編輯（因為格子太窄）
                             editCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                         }
                     }
