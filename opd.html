@@ -35,7 +35,10 @@
             min-height: 100vh;
         }
 
-        .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+        .container { max-width: 1800px; margin: 0 auto; padding: 16px; }
+        @media (min-width: 1801px) {
+            .container { max-width: 96vw; }
+        }
 
         /* Header */
         header {
@@ -232,7 +235,237 @@
             color: white;
         }
 
-        /* Patient card (placeholder） */
+        /* ====== Visit table ====== */
+        .visit-table-wrapper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .visit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.86rem;
+            table-layout: fixed;
+        }
+        .visit-table thead th {
+            position: sticky;
+            top: 0;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 600;
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+            z-index: 10;
+        }
+        .visit-table tbody td {
+            padding: 10px 8px;
+            vertical-align: top;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            word-break: break-word;
+            white-space: pre-wrap;  /* 保留 plan 內換行 */
+            line-height: 1.45;
+        }
+        .visit-table tbody tr:hover td {
+            background: rgba(255,255,255,0.03);
+        }
+        .visit-table tbody tr.no-show td {
+            opacity: 0.55;
+            background: rgba(0,0,0,0.15);
+        }
+
+        /* 欄寬 */
+        .col-num    { width: 36px; text-align: center; }
+        .col-record { width: 130px; }
+        .col-age    { width: 60px; }
+        .col-egfr   { width: 70px; }
+        .col-extra  { width: 200px; font-size: 0.82rem; }
+        .col-exam   { width: 200px; font-size: 0.82rem; }
+        .col-plan   { /* 彈性 */ }
+        .col-tags   { width: 130px; }
+        .col-actions { width: 110px; }
+
+        /* DC divider row */
+        tr.dc-divider td {
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 8px;
+            letter-spacing: 4px;
+        }
+
+        /* Plan summary 與 plan body */
+        .plan-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 10px;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed rgba(255,255,255,0.1);
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+        .plan-summary .pill {
+            display: inline-flex;
+            padding: 1px 6px;
+            background: rgba(99,102,241,0.18);
+            border: 1px solid rgba(99,102,241,0.3);
+            color: #c7d2fe;
+            border-radius: 4px;
+            font-size: 0.72rem;
+        }
+        .plan-summary .pill.rtc {
+            background: rgba(34,197,94,0.18);
+            border-color: rgba(34,197,94,0.4);
+            color: #bbf7d0;
+        }
+        .plan-summary .pill.warn {
+            background: rgba(251,191,36,0.18);
+            border-color: rgba(251,191,36,0.4);
+            color: #fde68a;
+        }
+        .plan-body {
+            font-family: 'Noto Sans TC', monospace;
+            font-size: 0.82rem;
+            line-height: 1.55;
+        }
+        .plan-body .more-toggle {
+            display: inline-block;
+            margin-top: 4px;
+            color: var(--color-info);
+            font-size: 0.78rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .plan-line.done { color: #86efac; }    /* * 開頭已完成 */
+        .plan-line.plan { color: var(--text-secondary); }   /* - 開頭計畫中 */
+        .plan-line.rtc-line { color: #93c5fd; font-weight: 500; }
+
+        /* Tag chips in row */
+        .visit-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .visit-tags .tag-chip {
+            display: inline-flex;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            color: white;
+            white-space: nowrap;
+        }
+        /* 8 種主 tag 配色 */
+        .visit-tags .tag-chip[data-tag="鬆"] { background: #a855f7; }
+        .visit-tags .tag-chip[data-tag="CT NB"] { background: #f59e0b; color: #1a1a2e; }
+        .visit-tags .tag-chip[data-tag="SONO"] { background: #22c55e; }
+        .visit-tags .tag-chip[data-tag="TAME"] { background: #3b82f6; }
+        .visit-tags .tag-chip[data-tag="MRI"] { background: #c4b5fd; color: #1a1a2e; }
+        .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
+        .visit-tags .tag-chip[data-tag="follow up"] { background: #64748b; }
+        .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
+        .visit-tags .tag-chip[data-tag*=""] { /* fallback */ }
+
+        /* Status badges */
+        .status-badges {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+        .status-badge {
+            display: inline-flex;
+            padding: 2px 6px;
+            font-size: 0.7rem;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        .status-badge.draft { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+        .status-badge.confirmed { background: rgba(34,197,94,0.2); color: #86efac; }
+        .status-badge.first-visit { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .status-badge.self-rtc { background: rgba(245,158,11,0.2); color: #fde68a; }
+        .status-badge.warning { background: rgba(251,191,36,0.3); color: #fde68a; }
+
+        /* Row actions */
+        .row-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .row-actions button {
+            padding: 3px 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.72rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .row-actions button:hover { background: var(--bg-secondary); }
+        .row-actions button.confirmed { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
+
+        /* Header notes 區塊 */
+        .header-notes {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+        .header-notes .hn-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .header-notes .hn-content {
+            white-space: pre-wrap;
+            color: var(--text-primary);
+            font-family: 'Noto Sans TC', monospace;
+            font-size: 0.82rem;
+            line-height: 1.55;
+        }
+        .header-notes .hn-edit {
+            padding: 4px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.78rem;
+            cursor: pointer;
+        }
+        .header-notes textarea {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+            padding: 6px;
+            font-family: 'Noto Sans TC', monospace;
+            font-size: 0.82rem;
+            min-height: 80px;
+        }
+
+        /* 在窄螢幕降低欄寬 */
+        @media (max-width: 1280px) {
+            .col-extra { width: 160px; }
+            .col-exam { width: 150px; }
+            .col-tags { width: 100px; }
+            .visit-table { font-size: 0.8rem; }
+        }
+
+        /* Patient card (主表用) */
         .patient-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
@@ -527,17 +760,21 @@
     <div class="panel active" id="panel-clinic">
         <div class="toolbar">
             <select id="clinic-date-select"><option>載入中...</option></select>
-            <button class="primary" id="add-patient-btn">+ 新增病人</button>
-            <button class="search-toggle" id="search-toggle-btn">🔍</button>
-            <input type="text" id="search-input" placeholder="病歷號 / 姓">
+            <button id="prev-clinic-btn" title="上一個門診日">◀</button>
+            <button id="next-clinic-btn" title="下一個門診日">▶</button>
+            <span id="clinic-date-meta" style="color: var(--text-muted); font-size: 0.8rem;"></span>
             <span style="flex:1"></span>
+            <button class="primary" id="add-visit-btn">+ 新增病人</button>
+            <button class="search-toggle" id="visit-search-toggle-btn">🔍</button>
+            <input type="text" id="visit-search-input" placeholder="病歷號 / 姓">
             <button id="add-clinic-date-btn" title="新增加診日">+ 加診日</button>
         </div>
+        <div class="header-notes" id="header-notes"></div>
         <div class="tag-filter-bar" id="tag-filter-bar">
             <!-- tag chips 動態產生 -->
         </div>
-        <div id="patient-list">
-            <div class="empty-hint">（骨架完成，下一步開始建立病人卡片內容）</div>
+        <div id="visit-list">
+            <div class="empty-hint">請選擇門診日期</div>
         </div>
     </div>
 
@@ -619,6 +856,77 @@
             <span style="flex: 1;"></span>
             <button id="pt-modal-cancel">取消</button>
             <button id="pt-modal-save" class="primary">儲存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Visit 新增/編輯 Modal -->
+<div class="modal-overlay" id="visit-modal">
+    <div class="modal" style="max-width: 720px;">
+        <h3 id="visit-modal-title">新增本日病人</h3>
+
+        <div class="field" id="visit-paste-field">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📋 從 Word 整列貼上（自動填入）</span>
+                <button type="button" id="visit-paste-parse-btn" style="padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.78rem; cursor: pointer;">解析填入</button>
+            </label>
+            <textarea id="visit-paste-input" placeholder="從 Word OPD 表格整列複製貼上，10 欄將自動切分（也支援換行格式）" style="min-height: 50px;"></textarea>
+            <div id="visit-paste-status" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;"></div>
+        </div>
+
+        <div class="field-row">
+            <div class="field">
+                <label>序號（本日看診次序）</label>
+                <input type="number" id="v-order" placeholder="1, 3, 5...">
+            </div>
+            <div class="field">
+                <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
+                <input type="text" id="v-record-number" placeholder="W61564">
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label>姓</label>
+                <input type="text" id="v-surname" maxlength="2">
+            </div>
+            <div class="field">
+                <label>年齡 / 性別</label>
+                <input type="text" id="v-age-sex" placeholder="55/F">
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label>eGFR</label>
+                <input type="text" id="v-egfr" placeholder=">60">
+            </div>
+            <div class="field">
+                <label>INR</label>
+                <input type="text" id="v-inr">
+            </div>
+        </div>
+        <div class="field">
+            <label>額外資訊（病人主表，跨次共用）</label>
+            <textarea id="v-extra"></textarea>
+        </div>
+        <div class="field">
+            <label>本次標籤（多選）</label>
+            <div class="visit-tags" id="v-tag-picker" style="gap: 6px;">
+                <!-- 8 個預設 tag toggle 動態產生 -->
+            </div>
+        </div>
+        <div class="field">
+            <label>Exam &amp; Education（本次 visit）</label>
+            <textarea id="v-exam"></textarea>
+        </div>
+        <div class="field">
+            <label>Plan（本次 visit）</label>
+            <textarea id="v-plan" style="min-height: 140px; font-family: 'Noto Sans TC', monospace;"></textarea>
+        </div>
+        <div class="actions">
+            <button id="v-modal-delete" class="danger" style="display: none;">刪除</button>
+            <span style="flex: 1;"></span>
+            <button id="v-modal-cancel">取消</button>
+            <button id="v-modal-save" class="primary">儲存</button>
         </div>
     </div>
 </div>
@@ -800,7 +1108,719 @@
     // ========== 登入後初始化 ==========
     function onUserReady() {
         loadPatients();
+        loadAdHocClinicDates();
         bindPatientUI();
+        bindClinicDayUI();
+        initClinicDateSelector();
+    }
+
+    // ========== 門診日邏輯 ==========
+    // 規則：每月第 2 與第 4 個週三
+    function getNthWednesdayOfMonth(year, month, n) {
+        // year, month (1-12), n (1-5)
+        const d = new Date(year, month - 1, 1);
+        let count = 0;
+        while (d.getMonth() === month - 1) {
+            if (d.getDay() === 3) {
+                count++;
+                if (count === n) return new Date(d);
+            }
+            d.setDate(d.getDate() + 1);
+        }
+        return null;
+    }
+
+    function generateRegularClinicDates(monthsBack = 6, monthsForward = 6) {
+        const today = new Date();
+        const dates = [];
+        for (let offset = -monthsBack; offset <= monthsForward; offset++) {
+            const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+            const w2 = getNthWednesdayOfMonth(d.getFullYear(), d.getMonth() + 1, 2);
+            const w4 = getNthWednesdayOfMonth(d.getFullYear(), d.getMonth() + 1, 4);
+            if (w2) dates.push({ date: formatDate(w2), type: 'regular' });
+            if (w4) dates.push({ date: formatDate(w4), type: 'regular' });
+        }
+        return dates;
+    }
+
+    function formatDate(d) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function formatDateLabel(dateStr) {
+        // 2026-04-22 → "2026/04/22 (三)"
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        const days = ['日', '一', '二', '三', '四', '五', '六'];
+        return `${y}/${String(m).padStart(2,'0')}/${String(d).padStart(2,'0')} (${days[dt.getDay()]})`;
+    }
+
+    function findNearestClinicDate(allDates) {
+        // 找今日最接近的門診日（優先未來，其次最近過去）
+        const today = formatDate(new Date());
+        const future = allDates.filter(d => d.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+        if (future.length > 0) return future[0].date;
+        const past = allDates.filter(d => d.date < today).sort((a, b) => b.date.localeCompare(a.date));
+        return past[0]?.date || null;
+    }
+
+    // ========== 加診日 Firebase ==========
+    function loadAdHocClinicDates() {
+        if (!db) return;
+        db.ref('opd/clinicDates').on('value', (snap) => {
+            state.adHocClinicDates = snap.val() || {};
+            renderClinicDateSelector();
+        });
+    }
+
+    async function addAdHocClinicDate(dateStr, note = '') {
+        await db.ref('opd/clinicDates/' + dateStr).set({
+            date: dateStr,
+            type: 'ad-hoc',
+            note,
+            createdAt: Date.now()
+        });
+    }
+
+    async function removeAdHocClinicDate(dateStr) {
+        await db.ref('opd/clinicDates/' + dateStr).remove();
+    }
+
+    // ========== 門診日選擇器 UI ==========
+    function initClinicDateSelector() {
+        if (state.clinicSelectorInitialized) return;
+        state.clinicSelectorInitialized = true;
+        renderClinicDateSelector();
+    }
+
+    function renderClinicDateSelector() {
+        const select = document.getElementById('clinic-date-select');
+        if (!select) return;
+
+        const regular = generateRegularClinicDates();
+        const adHoc = Object.values(state.adHocClinicDates || {}).map(x => ({ date: x.date, type: 'ad-hoc' }));
+
+        // 合併、去重（adHoc 優先）
+        const map = new Map();
+        regular.forEach(d => map.set(d.date, d));
+        adHoc.forEach(d => map.set(d.date, d));
+        const allDates = [...map.values()].sort((a, b) => b.date.localeCompare(a.date));  // 新到舊
+
+        // 預設選最近一個門診日
+        const currentValue = state.currentClinicDate || findNearestClinicDate(allDates);
+
+        select.innerHTML = allDates.map(d => {
+            const label = formatDateLabel(d.date) + (d.type === 'ad-hoc' ? ' ★加診' : '');
+            return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+
+        if (currentValue && currentValue !== state.currentClinicDate) {
+            state.currentClinicDate = currentValue;
+            onClinicDateChanged(currentValue);
+        }
+        updateClinicDateMeta();
+    }
+
+    function updateClinicDateMeta() {
+        const meta = document.getElementById('clinic-date-meta');
+        const date = state.currentClinicDate;
+        if (!date) { meta.textContent = ''; return; }
+        const visits = state.visitsByDate?.[date] || {};
+        const count = Object.keys(visits).length;
+        meta.textContent = `${count} 位病人`;
+    }
+
+    function onClinicDateChanged(dateStr) {
+        if (state.visitsListener) state.visitsListener();
+        if (state.metaListener) state.metaListener();
+        loadVisitsForDate(dateStr);
+        loadClinicMetaForDate(dateStr);
+    }
+
+    function loadVisitsForDate(dateStr) {
+        if (!db) return;
+        const ref = db.ref('opd/visits/' + dateStr);
+        const handler = (snap) => {
+            state.visitsByDate = state.visitsByDate || {};
+            state.visitsByDate[dateStr] = snap.val() || {};
+            renderVisitList();
+            updateClinicDateMeta();
+        };
+        ref.on('value', handler);
+        state.visitsListener = () => ref.off('value', handler);
+    }
+
+    function loadClinicMetaForDate(dateStr) {
+        if (!db) return;
+        const ref = db.ref('opd/clinicMeta/' + dateStr);
+        const handler = (snap) => {
+            state.clinicMetaByDate = state.clinicMetaByDate || {};
+            state.clinicMetaByDate[dateStr] = snap.val() || {};
+            renderHeaderNotes();
+        };
+        ref.on('value', handler);
+        state.metaListener = () => ref.off('value', handler);
+    }
+
+    // ========== Plan parsing ==========
+    const PROC_KEYWORDS = [
+        { name: 'CT NB', re: /\bCT\s*NB\b/gi },
+        { name: 'pRF', re: /\bp?RF\b/g },
+        { name: 'SONO', re: /\bSONO\s*INJ\b/gi },
+        { name: 'TAME', re: /\b[sc]?TAME\b/gi },
+        { name: 'MRI', re: /\bMRI\b/g },
+        { name: 'PRP', re: /\bPRP\b/g },
+        { name: 'HA', re: /\bHA\b/g },
+        { name: 'Prolia', re: /\bProlia\b/gi },
+        { name: 'Aclasta', re: /\bAclasta\b/gi },
+        { name: 'Evenity', re: /\bEvenity\b/gi },
+        { name: 'Forteo', re: /\bForteo\b/gi },
+        { name: 'Fosamax', re: /\bFosamax\b/gi }
+    ];
+    const RTC_PATTERN = /(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC(\??)/gi;
+
+    function summarizePlan(plan, currentDate) {
+        if (!plan) return { items: [], rtcDates: [], hasMultiRTC: false, isSelfRTC: false };
+        const counts = {};
+        PROC_KEYWORDS.forEach(k => {
+            const matches = plan.match(k.re);
+            if (matches && matches.length) counts[k.name] = matches.length;
+        });
+
+        const isSelfRTC = /\bself\s*RTC\b/i.test(plan);
+
+        // 抽 RTC 日期
+        const rtcMatches = [...plan.matchAll(RTC_PATTERN)];
+        const today = currentDate || formatDate(new Date());
+        const futureDates = [];
+        rtcMatches.forEach(m => {
+            const yy = m[1] ? `20${m[1]}` : new Date(today).getFullYear().toString();
+            const mm = m[2].padStart(2, '0');
+            const dd = m[3].padStart(2, '0');
+            const dateStr = `${yy}-${mm}-${dd}`;
+            if (dateStr > today) futureDates.push(dateStr);
+        });
+        const uniqueFuture = [...new Set(futureDates)].sort();
+
+        const items = Object.entries(counts).map(([k, n]) => ({ name: k, count: n }));
+        return {
+            items,
+            rtcDates: uniqueFuture,
+            hasMultiRTC: uniqueFuture.length > 1,
+            isSelfRTC,
+            nextRTC: uniqueFuture[0] || null
+        };
+    }
+
+    function highlightPlanLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed) return '<br>';
+        let cls = '';
+        if (trimmed.startsWith('*')) cls = 'plan-line done';
+        else if (trimmed.startsWith('-')) cls = 'plan-line plan';
+        else if (/RTC/i.test(trimmed)) cls = 'plan-line rtc-line';
+        return `<span class="${cls}">${escapeHtml(trimmed)}</span>`;
+    }
+
+    // ========== Visit table 渲染 ==========
+    function renderVisitList() {
+        const wrap = document.getElementById('visit-list');
+        const date = state.currentClinicDate;
+        if (!date) {
+            wrap.innerHTML = `<div class="empty-hint">請選擇門診日期</div>`;
+            return;
+        }
+        const visits = Object.values((state.visitsByDate || {})[date] || {});
+
+        // 搜尋過濾
+        const searchVal = (document.getElementById('visit-search-input').value || '').trim().toLowerCase();
+        const filtered = searchVal
+            ? visits.filter(v => {
+                const p = state.patients[v.recordNumber] || {};
+                return v.recordNumber?.toLowerCase().includes(searchVal)
+                    || p.surname?.toLowerCase().includes(searchVal);
+              })
+            : visits;
+
+        if (filtered.length === 0) {
+            wrap.innerHTML = `<div class="empty-hint">${formatDateLabel(date)}<br><br>${visits.length === 0 ? '尚無病人，點「+ 新增病人」新增' : '查無相符結果'}</div>`;
+            return;
+        }
+
+        // 排序：noShow=false 在前，按 orderInClinic ASC；DC 後也按 orderInClinic
+        const came = filtered.filter(v => !v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
+        const noShow = filtered.filter(v => v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
+
+        const renderRow = (v) => {
+            const p = state.patients[v.recordNumber] || {};
+            const summary = summarizePlan(v.plan, date);
+            const planLines = (v.plan || '').split(/\r?\n/);
+            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-7);
+            const hasMore = planLines.length > showLines.length;
+
+            const summaryPills = [
+                ...summary.items.map(it => `<span class="pill">${escapeHtml(it.name)}×${it.count}</span>`),
+                summary.nextRTC ? `<span class="pill rtc">下次 RTC: ${summary.nextRTC.slice(5)}</span>` : '',
+                summary.hasMultiRTC ? `<span class="pill warn">多 RTC ${summary.rtcDates.length}</span>` : '',
+                summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
+            ].filter(Boolean).join('');
+
+            const tagChips = (v.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+
+            const statusBadges = [
+                v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
+                p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
+                summary.isSelfRTC ? '<span class="status-badge self-rtc">自約</span>' : '',
+                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
+            ].filter(Boolean).join('');
+
+            return `
+              <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
+                <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
+                <td class="col-record">
+                    <strong>${escapeHtml(v.recordNumber)}</strong>${p.surname ? ` (${escapeHtml(p.surname)})` : ''}
+                    <div class="status-badges">${statusBadges}</div>
+                </td>
+                <td class="col-age">${escapeHtml(p.ageSex || '')}</td>
+                <td class="col-egfr">${escapeHtml(p.eGFR || '')}${p.INR ? `<br><span style="color:var(--text-muted);font-size:0.72rem">INR ${escapeHtml(p.INR)}</span>` : ''}</td>
+                <td class="col-extra">${escapeHtml(p.extra || '')}</td>
+                <td class="col-exam">${escapeHtml(v.examEducation || '')}</td>
+                <td class="col-plan">
+                    <div class="plan-summary">${summaryPills || '<span style="color:var(--text-muted)">（plan 尚未填）</span>'}</div>
+                    <div class="plan-body">${showLines.map(highlightPlanLine).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 7 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
+                </td>
+                <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
+                <td class="col-actions">
+                    <div class="row-actions">
+                        <button data-action="confirm" data-record="${escapeAttr(v.recordNumber)}" class="${v.status === 'confirmed' ? 'confirmed' : ''}">${v.status === 'confirmed' ? '✓ 已確認' : '✓ 確認'}</button>
+                        <button data-action="copy-plan" data-record="${escapeAttr(v.recordNumber)}">📋 複製</button>
+                        <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">編輯</button>
+                        <button data-action="toggle-dc" data-record="${escapeAttr(v.recordNumber)}">${v.noShow ? '↑ 移回' : '↓ 移 DC'}</button>
+                    </div>
+                </td>
+              </tr>
+            `;
+        };
+
+        const dcDivider = noShow.length > 0 ? `
+          <tr class="dc-divider"><td colspan="9">─── D C ───  共 ${noShow.length} 位未到</td></tr>
+        ` : '';
+
+        wrap.innerHTML = `
+          <div class="visit-table-wrapper">
+            <table class="visit-table">
+              <colgroup>
+                <col class="col-num"><col class="col-record"><col class="col-age"><col class="col-egfr">
+                <col class="col-extra"><col class="col-exam"><col class="col-plan">
+                <col class="col-tags"><col class="col-actions">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th class="col-record">病歷號 (姓)</th>
+                  <th class="col-age">年齡</th>
+                  <th class="col-egfr">eGFR</th>
+                  <th class="col-extra">額外</th>
+                  <th class="col-exam">Exam</th>
+                  <th class="col-plan">Plan</th>
+                  <th class="col-tags">標籤</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${came.map(renderRow).join('')}
+                ${dcDivider}
+                ${noShow.map(renderRow).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+    }
+
+    function renderHeaderNotes() {
+        const date = state.currentClinicDate;
+        const wrap = document.getElementById('header-notes');
+        if (!wrap || !date) return;
+        const meta = (state.clinicMetaByDate || {})[date] || {};
+        const notes = meta.headerNotes || '';
+        if (state.editingHeaderNotes) {
+            wrap.innerHTML = `
+              <div class="hn-title">📌 標頭備註（${formatDateLabel(date)}）
+                <span><button class="hn-edit" id="hn-save">儲存</button> <button class="hn-edit" id="hn-cancel">取消</button></span>
+              </div>
+              <textarea id="hn-textarea">${escapeHtml(notes)}</textarea>
+            `;
+            const ta = document.getElementById('hn-textarea');
+            ta.focus();
+            document.getElementById('hn-save').onclick = async () => {
+                await db.ref('opd/clinicMeta/' + date + '/headerNotes').set(ta.value);
+                state.editingHeaderNotes = false;
+                renderHeaderNotes();
+            };
+            document.getElementById('hn-cancel').onclick = () => {
+                state.editingHeaderNotes = false;
+                renderHeaderNotes();
+            };
+        } else {
+            wrap.innerHTML = `
+              <div class="hn-title">📌 標頭備註
+                <button class="hn-edit" id="hn-edit-btn">編輯</button>
+              </div>
+              <div class="hn-content">${notes ? escapeHtml(notes) : '<span style="color:var(--text-muted)">（尚未填寫，點編輯加入這日的預約 CT NB / MRI 等）</span>'}</div>
+            `;
+            document.getElementById('hn-edit-btn').onclick = () => {
+                state.editingHeaderNotes = true;
+                renderHeaderNotes();
+            };
+        }
+    }
+
+    // ========== Visit CRUD ==========
+    async function saveVisit(visit, patientPartial) {
+        const now = Date.now();
+        const updates = {};
+
+        // patient 主表 upsert（若有提供 patientPartial）
+        if (patientPartial && patientPartial.recordNumber) {
+            const existing = state.patients[patientPartial.recordNumber] || {};
+            const merged = {
+                ...existing,
+                ...patientPartial,
+                createdAt: existing.createdAt || now,
+                updatedAt: now,
+                firstVisitDate: existing.firstVisitDate || visit.date
+            };
+            // 只寫非空值（避免清掉既有）
+            Object.keys(patientPartial).forEach(k => {
+                if (patientPartial[k] === '' && existing[k]) merged[k] = existing[k];
+            });
+            updates['opd/patients/' + patientPartial.recordNumber] = merged;
+        }
+
+        // visit
+        const visitData = {
+            ...visit,
+            updatedAt: now,
+            createdAt: ((state.visitsByDate?.[visit.date] || {})[visit.recordNumber]?.createdAt) || now
+        };
+        updates[`opd/visits/${visit.date}/${visit.recordNumber}`] = visitData;
+
+        // 倒查 index
+        updates[`opd/patientVisitIndex/${visit.recordNumber}/${visit.date}`] = true;
+
+        setStatus('saving', '儲存中...');
+        await db.ref().update(updates);
+        setStatus('connected', '已儲存');
+    }
+
+    async function deleteVisit(date, recordNumber) {
+        const updates = {};
+        updates[`opd/visits/${date}/${recordNumber}`] = null;
+        updates[`opd/patientVisitIndex/${recordNumber}/${date}`] = null;
+        setStatus('saving', '刪除中...');
+        await db.ref().update(updates);
+        setStatus('connected', '已刪除');
+    }
+
+    async function toggleNoShow(recordNumber) {
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        if (!visit) return;
+        await db.ref(`opd/visits/${date}/${recordNumber}/noShow`).set(!visit.noShow);
+    }
+
+    async function toggleConfirm(recordNumber) {
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        if (!visit) return;
+        const newStatus = visit.status === 'confirmed' ? 'draft' : 'confirmed';
+        const updates = { status: newStatus };
+        if (newStatus === 'confirmed') updates.confirmedAt = Date.now();
+        await db.ref(`opd/visits/${date}/${recordNumber}`).update(updates);
+        // RTC 自動傳遞下個版本實作
+    }
+
+    function copyPlanToClipboard(recordNumber) {
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        const p = state.patients[recordNumber] || {};
+        if (!visit) return;
+        const lines = [
+            `${visit.orderInClinic || ''} | ${visit.recordNumber} (${p.surname || ''}) | ${p.ageSex || ''} | eGFR ${p.eGFR || ''} ${p.INR ? '| INR ' + p.INR : ''}`,
+            p.extra ? `額外: ${p.extra}` : '',
+            visit.examEducation ? `Exam: ${visit.examEducation}` : '',
+            visit.plan ? `Plan:\n${visit.plan}` : ''
+        ].filter(Boolean).join('\n');
+        navigator.clipboard.writeText(lines).then(() => {
+            setStatus('connected', '已複製到剪貼簿');
+            setTimeout(() => setStatus('connected', '已連線'), 1500);
+        });
+    }
+
+    // ========== 綁定門診日 UI ==========
+    function bindClinicDayUI() {
+        if (state.clinicUiBound) return;
+        state.clinicUiBound = true;
+
+        // 日期選擇
+        document.getElementById('clinic-date-select').addEventListener('change', (e) => {
+            state.currentClinicDate = e.target.value;
+            onClinicDateChanged(state.currentClinicDate);
+            updateClinicDateMeta();
+        });
+
+        // 上一個 / 下一個
+        document.getElementById('prev-clinic-btn').addEventListener('click', () => navigateClinicDate(1));
+        document.getElementById('next-clinic-btn').addEventListener('click', () => navigateClinicDate(-1));
+
+        // 加診日
+        document.getElementById('add-clinic-date-btn').addEventListener('click', async () => {
+            const today = formatDate(new Date());
+            const input = prompt('輸入加診日期（YYYY-MM-DD）：', today);
+            if (!input) return;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                alert('日期格式錯誤，請用 YYYY-MM-DD');
+                return;
+            }
+            try {
+                await addAdHocClinicDate(input);
+                state.currentClinicDate = input;
+                renderClinicDateSelector();
+                onClinicDateChanged(input);
+            } catch (err) {
+                alert('新增加診日失敗：' + err.message);
+            }
+        });
+
+        // 搜尋切換
+        document.getElementById('visit-search-toggle-btn').addEventListener('click', () => {
+            const inp = document.getElementById('visit-search-input');
+            inp.classList.toggle('show');
+            if (inp.classList.contains('show')) inp.focus();
+            else { inp.value = ''; renderVisitList(); }
+        });
+        document.getElementById('visit-search-input').addEventListener('input', () => renderVisitList());
+
+        // 新增病人按鈕
+        document.getElementById('add-visit-btn').addEventListener('click', () => openVisitModal());
+
+        // 表格內按鈕
+        document.getElementById('visit-list').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            const more = e.target.closest('.more-toggle');
+            if (more) {
+                state.expandedPlans = state.expandedPlans || new Set();
+                const rec = more.dataset.record;
+                if (state.expandedPlans.has(rec)) state.expandedPlans.delete(rec);
+                else state.expandedPlans.add(rec);
+                renderVisitList();
+                return;
+            }
+            if (!btn) return;
+            const rec = btn.dataset.record;
+            const action = btn.dataset.action;
+            if (action === 'confirm') toggleConfirm(rec);
+            else if (action === 'copy-plan') copyPlanToClipboard(rec);
+            else if (action === 'edit') openVisitModal(rec);
+            else if (action === 'toggle-dc') toggleNoShow(rec);
+        });
+
+        // Visit modal 綁定
+        bindVisitModal();
+    }
+
+    // ========== Visit modal ==========
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'follow up', 'med'];
+
+    function renderVisitTagPicker(selected) {
+        const wrap = document.getElementById('v-tag-picker');
+        wrap.innerHTML = DEFAULT_TAGS.map(t => `
+            <span class="tag-chip" data-tag="${escapeAttr(t)}" style="cursor:pointer; opacity:${selected.includes(t) ? '1' : '0.35'}; outline:${selected.includes(t) ? '2px solid white' : 'none'};">${escapeHtml(t)}</span>
+        `).join('');
+    }
+
+    function openVisitModal(recordNumber) {
+        const date = state.currentClinicDate;
+        if (!date) { alert('請先選擇門診日期'); return; }
+        const isEdit = !!recordNumber;
+        const visit = isEdit ? ((state.visitsByDate?.[date] || {})[recordNumber] || {}) : {};
+        const patient = isEdit ? (state.patients[recordNumber] || {}) : {};
+
+        state.editingVisitRecord = isEdit ? recordNumber : null;
+        state.visitTagsTemp = [...(visit.tags || [])];
+
+        document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
+        document.getElementById('v-order').value = visit.orderInClinic || '';
+        document.getElementById('v-record-number').value = visit.recordNumber || '';
+        document.getElementById('v-record-number').disabled = isEdit;
+        document.getElementById('v-surname').value = patient.surname || '';
+        document.getElementById('v-age-sex').value = patient.ageSex || '';
+        document.getElementById('v-egfr').value = patient.eGFR || '';
+        document.getElementById('v-inr').value = patient.INR || '';
+        document.getElementById('v-extra').value = patient.extra || '';
+        document.getElementById('v-exam').value = visit.examEducation || '';
+        document.getElementById('v-plan').value = visit.plan || '';
+        document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
+
+        renderVisitTagPicker(state.visitTagsTemp);
+
+        document.getElementById('visit-paste-input').value = '';
+        document.getElementById('visit-paste-status').textContent = '';
+        document.getElementById('visit-modal').classList.add('show');
+        if (!isEdit) document.getElementById('v-record-number').focus();
+    }
+
+    function closeVisitModal() {
+        document.getElementById('visit-modal').classList.remove('show');
+        state.editingVisitRecord = null;
+        state.visitTagsTemp = [];
+    }
+
+    // 病歷號 input 失焦或變更 → 自動帶舊資料
+    function autoFillFromPatientLookup() {
+        const rec = document.getElementById('v-record-number').value.trim();
+        if (!rec) return;
+        const p = state.patients[rec];
+        if (!p) return;
+        // 只填空欄位，不覆蓋
+        const fillIfEmpty = (id, value) => {
+            const el = document.getElementById(id);
+            if (!el.value.trim() && value) {
+                el.value = value;
+                // 視覺提示
+                el.style.transition = 'background 0.15s';
+                el.style.background = 'rgba(59,130,246,0.2)';
+                setTimeout(() => { el.style.background = ''; }, 1000);
+            }
+        };
+        fillIfEmpty('v-surname', p.surname);
+        fillIfEmpty('v-age-sex', p.ageSex);
+        fillIfEmpty('v-egfr', p.eGFR);
+        fillIfEmpty('v-inr', p.INR);
+        fillIfEmpty('v-extra', p.extra);
+    }
+
+    async function handleVisitSave() {
+        const date = state.currentClinicDate;
+        const recordNumber = document.getElementById('v-record-number').value.trim();
+        if (!recordNumber) { alert('請輸入病歷號'); return; }
+
+        const visit = {
+            recordNumber,
+            date,
+            orderInClinic: parseInt(document.getElementById('v-order').value) || null,
+            examEducation: document.getElementById('v-exam').value.trim(),
+            plan: document.getElementById('v-plan').value.trim(),
+            tags: [...state.visitTagsTemp],
+            status: ((state.visitsByDate?.[date] || {})[recordNumber]?.status) || 'draft',
+            noShow: ((state.visitsByDate?.[date] || {})[recordNumber]?.noShow) || false
+        };
+        const patientPartial = {
+            recordNumber,
+            surname: document.getElementById('v-surname').value.trim(),
+            ageSex: document.getElementById('v-age-sex').value.trim(),
+            eGFR: document.getElementById('v-egfr').value.trim(),
+            INR: document.getElementById('v-inr').value.trim(),
+            extra: document.getElementById('v-extra').value.trim()
+        };
+
+        try {
+            await saveVisit(visit, patientPartial);
+            closeVisitModal();
+        } catch (err) {
+            alert('儲存失敗：' + err.message);
+        }
+    }
+
+    function handleVisitDelete() {
+        const date = state.currentClinicDate;
+        const rec = state.editingVisitRecord;
+        if (!rec) return;
+        showConfirm(`刪除 ${rec} 的本日 visit？`, '只刪除這次門診紀錄，不會刪掉病人主表。', async () => {
+            await deleteVisit(date, rec);
+            closeVisitModal();
+        });
+    }
+
+    function bindVisitModal() {
+        if (state.visitModalBound) return;
+        state.visitModalBound = true;
+
+        document.getElementById('v-modal-cancel').addEventListener('click', closeVisitModal);
+        document.getElementById('v-modal-save').addEventListener('click', handleVisitSave);
+        document.getElementById('v-modal-delete').addEventListener('click', handleVisitDelete);
+        document.getElementById('visit-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'visit-modal') closeVisitModal();
+        });
+
+        // 病歷號失焦自動帶資料
+        document.getElementById('v-record-number').addEventListener('blur', autoFillFromPatientLookup);
+
+        // Tag picker
+        document.getElementById('v-tag-picker').addEventListener('click', (e) => {
+            const chip = e.target.closest('.tag-chip');
+            if (!chip) return;
+            const tag = chip.dataset.tag;
+            const idx = state.visitTagsTemp.indexOf(tag);
+            if (idx >= 0) state.visitTagsTemp.splice(idx, 1);
+            else state.visitTagsTemp.push(tag);
+            renderVisitTagPicker(state.visitTagsTemp);
+        });
+
+        // Paste 解析
+        document.getElementById('visit-paste-parse-btn').addEventListener('click', () => {
+            const raw = document.getElementById('visit-paste-input').value;
+            const status = document.getElementById('visit-paste-status');
+            const result = parsePastedRow(raw);
+            if (!result.ok) {
+                status.textContent = '❌ ' + result.error;
+                status.style.color = 'var(--color-danger)';
+                return;
+            }
+            // 填入 visit 表單
+            document.getElementById('v-record-number').value = result.recordNumber;
+            document.getElementById('v-surname').value = result.surname;
+            document.getElementById('v-age-sex').value = result.ageSex;
+            document.getElementById('v-egfr').value = result.eGFR;
+            document.getElementById('v-inr').value = result.INR;
+            document.getElementById('v-extra').value = result.extra;
+            document.getElementById('v-exam').value = result.exam;
+            document.getElementById('v-plan').value = result.plan;
+            // tags 合併
+            (result.tags || []).forEach(t => {
+                if (DEFAULT_TAGS.includes(t) && !state.visitTagsTemp.includes(t)) state.visitTagsTemp.push(t);
+            });
+            renderVisitTagPicker(state.visitTagsTemp);
+
+            status.textContent = `✅ 已解析（${result.mode === 'tab' ? 'Tab 分隔' : '換行分隔'}，${result.partsCount} 欄）`;
+            status.style.color = 'var(--color-confirmed)';
+        });
+
+        document.getElementById('visit-paste-input').addEventListener('paste', () => {
+            setTimeout(() => {
+                const txt = document.getElementById('visit-paste-input').value;
+                const lc = txt.split(/\r?\n/).filter(l => l.trim()).length;
+                if (txt.includes('\t') || lc >= 4) {
+                    document.getElementById('visit-paste-parse-btn').click();
+                }
+            }, 50);
+        });
+    }
+
+    function navigateClinicDate(delta) {
+        // delta=1 表示上一個（較舊），-1 表示下一個（較新）
+        const select = document.getElementById('clinic-date-select');
+        const options = [...select.options];
+        const idx = options.findIndex(o => o.value === state.currentClinicDate);
+        const newIdx = idx + delta;
+        if (newIdx < 0 || newIdx >= options.length) return;
+        select.value = options[newIdx].value;
+        state.currentClinicDate = options[newIdx].value;
+        onClinicDateChanged(state.currentClinicDate);
+        updateClinicDateMeta();
     }
 
     // ========== 病人主表狀態 ==========
