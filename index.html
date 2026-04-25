@@ -2455,7 +2455,24 @@
             
             // 點擊遮罩或其他地方關閉舊分頁下拉選單
             document.addEventListener('click', (e) => {
-                if (!e.target.closest('.old-tabs-wrapper')) {
+                if (!e.target.closest('.old-tabs-wrapper') && !e.target.closest('.old-tabs-dropdown')) {
+                    hideOldTabsDropdown();
+                }
+            });
+
+            // 下拉選單已附到 body，事件需另外綁
+            document.addEventListener('click', (e) => {
+                const closeItem = e.target.closest('.old-tabs-dropdown .old-tab-close');
+                if (closeItem) {
+                    e.stopPropagation();
+                    state.tabToDelete = closeItem.dataset.tabId;
+                    document.getElementById('delete-tab-modal').classList.add('show');
+                    hideOldTabsDropdown();
+                    return;
+                }
+                const item = e.target.closest('.old-tabs-dropdown .old-tab-item');
+                if (item) {
+                    switchTab(item.dataset.tabId);
                     hideOldTabsDropdown();
                 }
             });
