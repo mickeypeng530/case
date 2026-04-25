@@ -882,6 +882,8 @@
             body.mobile-readonly #user-info { display: none; }
             body.mobile-readonly #logout-btn .btn-text { display: none; }
             body.mobile-readonly #logout-btn { padding: 6px 8px; }
+            body.mobile-readonly #goto-opd-btn .btn-text { display: none; }
+            body.mobile-readonly #goto-opd-btn { padding: 6px 8px; }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
@@ -995,6 +997,7 @@
         <header>
             <h1>📋 案例排程表</h1>
             <div style="display: flex; align-items: center; gap: 12px;">
+                <a href="opd.html" id="goto-opd-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="切換到 OPD 系統">🩺<span class="btn-text"> OPD</span></a>
                 <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
                 <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄 匯出</button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
