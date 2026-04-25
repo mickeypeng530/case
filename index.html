@@ -879,6 +879,9 @@
             body.mobile-readonly .tab .close-tab { display: none; }
             body.mobile-readonly .tab-header { display: none; }
             body.mobile-readonly #sync-btn { display: none; }
+            body.mobile-readonly #user-info { display: none; }
+            body.mobile-readonly #logout-btn .btn-text { display: none; }
+            body.mobile-readonly #logout-btn { padding: 6px 8px; }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
@@ -1000,7 +1003,7 @@
                     <span id="storage-text">本地</span>
                 </span>
                 <span id="user-info" style="font-size: 0.75rem; color: var(--text-muted);"></span>
-                <button id="logout-btn" style="padding: 6px 10px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;" title="登出">🚪 登出</button>
+                <button id="logout-btn" style="padding: 6px 10px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;" title="登出">🚪<span class="btn-text"> 登出</span></button>
             </div>
         </header>
 
@@ -1299,10 +1302,14 @@
                     document.getElementById('login-screen').style.display = 'none';
                     document.getElementById('main-app').style.display = 'block';
                     const provider = user.providerData[0]?.providerId || 'unknown';
-                    const providerLabel = provider === 'google.com' ? 'Google' : (provider === 'password' ? 'Email' : provider);
+                    const providerIcon = provider === 'google.com' ? 'G' : (provider === 'password' ? 'E' : '?');
+                    const shortName = (user.email || '').split('@')[0] || user.uid.substring(0, 6);
                     const userInfo = document.getElementById('user-info');
-                    if (userInfo) userInfo.textContent = `${providerLabel}：${user.email || user.uid.substring(0, 6)}`;
-                    console.log('已登入:', user.email, '| 登入方式:', providerLabel, '| UID:', user.uid);
+                    if (userInfo) {
+                        userInfo.textContent = `${providerIcon}:${shortName}`;
+                        userInfo.title = `${provider} | ${user.email || user.uid}`;
+                    }
+                    console.log('已登入:', user.email, '| 登入方式:', provider, '| UID:', user.uid);
                     init();
                 } else {
                     currentUser = null;
