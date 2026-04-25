@@ -945,6 +945,7 @@
     </style>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <!-- docx.js for Word export -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
@@ -952,12 +953,14 @@
 <body>
     <!-- 密碼驗證畫面 -->
     <div id="login-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg-primary);">
-        <div style="background: var(--bg-secondary); padding: 30px; border-radius: 12px; border: 1px solid var(--border); text-align: center;">
-            <h2 style="margin-bottom: 20px; color: var(--text-primary);">🔒 請輸入密碼</h2>
-            <input type="password" id="password-input" placeholder="密碼" style="padding: 10px 15px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; font-size: 1rem; width: 150px; text-align: center;">
-            <br><br>
-            <button id="login-btn" style="padding: 10px 25px; background: var(--color-ct-nb); border: none; color: #1a1a2e; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;">進入</button>
-            <p id="login-error" style="color: var(--color-blocked); margin-top: 15px; display: none;">密碼錯誤</p>
+        <div style="background: var(--bg-secondary); padding: 30px; border-radius: 12px; border: 1px solid var(--border); text-align: center; min-width: 280px;">
+            <h2 style="margin-bottom: 20px; color: var(--text-primary);">🔒 請登入</h2>
+            <button id="google-login-btn" style="padding: 10px 20px; background: white; color: #3c4043; border: 1px solid #dadce0; border-radius: 6px; font-size: 0.95rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 10px;">
+                <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+                使用 Google 登入
+            </button>
+            <p id="login-error" style="color: var(--color-blocked); margin-top: 15px; display: none;">登入失敗</p>
+            <p id="login-info" style="color: var(--text-muted); margin-top: 15px; display: none; font-size: 0.85rem;"></p>
         </div>
     </div>
 
@@ -1179,24 +1182,31 @@
             databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
         };
 
-        // ========== 密碼設定 ==========
-        const APP_PASSWORD = '1225';
+        // ========== Google 登入 ==========
+        let currentUser = null;
 
-        // 密碼驗證
-        function checkPassword() {
-            const input = document.getElementById('password-input');
+        async function loginWithGoogle() {
             const error = document.getElementById('login-error');
-            
-            if (input.value === APP_PASSWORD) {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                sessionStorage.setItem('authenticated', 'true');
-                init();
-            } else {
+            const info = document.getElementById('login-info');
+            error.style.display = 'none';
+            info.textContent = '登入中...';
+            info.style.display = 'block';
+
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await firebase.auth().signInWithPopup(provider);
+                // onAuthStateChanged 會處理後續
+            } catch (err) {
+                console.error('Google 登入失敗:', err);
+                error.textContent = '登入失敗：' + (err.message || err.code);
                 error.style.display = 'block';
-                input.value = '';
-                input.focus();
+                info.style.display = 'none';
             }
+        }
+
+        async function logout() {
+            await firebase.auth().signOut();
+            location.reload();
         }
 
         // 頁面載入時檢查
@@ -1206,23 +1216,29 @@
             if (isMobile) {
                 document.body.classList.add('mobile-readonly');
             }
-            
-            // 如果這個 session 已經驗證過，直接進入
-            if (sessionStorage.getItem('authenticated') === 'true') {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                init();
-            } else {
-                document.getElementById('password-input').focus();
+
+            // 初始化 Firebase（auth 需在登入前先 initializeApp）
+            if (!firebase.apps.length) {
+                firebase.initializeApp(FIREBASE_CONFIG);
             }
 
-            // 登入按鈕
-            document.getElementById('login-btn').addEventListener('click', checkPassword);
-            
-            // Enter 鍵登入
-            document.getElementById('password-input').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') checkPassword();
+            // 監聽登入狀態
+            firebase.auth().onAuthStateChanged((user) => {
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('login-screen').style.display = 'none';
+                    document.getElementById('main-app').style.display = 'block';
+                    console.log('已登入:', user.email, 'UID:', user.uid);
+                    init();
+                } else {
+                    currentUser = null;
+                    document.getElementById('login-screen').style.display = 'flex';
+                    document.getElementById('main-app').style.display = 'none';
+                }
             });
+
+            // Google 登入按鈕
+            document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
             
             // 手機版編輯模式切換
             document.getElementById('mobile-edit-btn').addEventListener('click', () => {
@@ -1295,7 +1311,9 @@
         async function initFirebase() {
             try {
                 showStatus('連線中...', true);
-                firebase.initializeApp(FIREBASE_CONFIG);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(FIREBASE_CONFIG);
+                }
                 db = firebase.database();
                 firebaseReady = true;
                 
