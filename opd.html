@@ -290,6 +290,183 @@
             .toolbar { gap: 6px; }
         }
 
+        /* 病人卡片（主表用） */
+        .pt-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .pt-card .pt-info { flex: 1; min-width: 0; }
+        .pt-card .pt-line1 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .pt-card .pt-line2 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .pt-card .pt-tags {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 8px;
+        }
+        .pt-card .pt-tag {
+            display: inline-flex;
+            padding: 2px 8px;
+            background: var(--color-tag-default);
+            color: white;
+            border-radius: 10px;
+            font-size: 0.7rem;
+        }
+        .pt-card .pt-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .pt-card .pt-actions button {
+            padding: 5px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .pt-card .pt-actions button.danger {
+            border-color: var(--color-danger);
+            color: var(--color-danger);
+        }
+        .pt-card .pt-actions button:hover { background: var(--bg-secondary); }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 22px;
+            width: 90%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal h3 {
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        .modal .field {
+            margin-bottom: 12px;
+        }
+        .modal .field label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .modal .field input, .modal .field textarea {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.95rem;
+        }
+        .modal .field textarea { resize: vertical; min-height: 60px; }
+        .modal .field-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .modal .actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 18px;
+        }
+        .modal .actions button {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .modal .actions button.primary {
+            background: var(--color-info);
+            border-color: var(--color-info);
+            color: white;
+        }
+        .modal .actions button.danger {
+            background: var(--color-danger);
+            border-color: var(--color-danger);
+            color: white;
+        }
+
+        /* Tag editor in modal */
+        .tag-editor {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-primary);
+            min-height: 38px;
+        }
+        .tag-editor .tag-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            background: var(--color-tag-default);
+            color: white;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            gap: 4px;
+        }
+        .tag-editor .tag-pill .remove {
+            cursor: pointer;
+            opacity: 0.7;
+            font-size: 0.85rem;
+        }
+        .tag-editor .tag-pill .remove:hover { opacity: 1; }
+        .tag-editor input {
+            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            flex: 1;
+            min-width: 60px;
+            padding: 2px 4px;
+        }
+
         /* Utility */
         .hidden { display: none !important; }
     </style>
@@ -367,10 +544,13 @@
     <!-- 病人主表 -->
     <div class="panel" id="panel-patients">
         <div class="toolbar">
-            <input type="text" id="patient-search-input" placeholder="輸入病歷號或姓搜尋..." style="display: inline-block; flex: 1; max-width: 320px;">
+            <input type="text" id="patient-search-input" placeholder="🔍 病歷號 / 姓" style="display: inline-block; flex: 1; max-width: 320px;">
+            <button class="primary" id="add-patient-master-btn">+ 新增病人</button>
+            <span style="flex:1"></span>
+            <span id="patient-count" style="color: var(--text-muted); font-size: 0.85rem;"></span>
         </div>
         <div id="patient-master-list">
-            <div class="empty-hint">（待實作：病人主表 CRUD 與歷次 visit timeline）</div>
+            <div class="empty-hint">載入中...</div>
         </div>
     </div>
 
@@ -379,6 +559,69 @@
         <div class="empty-hint">（待實作：Word 匯入、Procedure list 匯出）</div>
     </div>
 
+</div>
+
+<!-- 病人新增/編輯 Modal -->
+<div class="modal-overlay" id="patient-modal">
+    <div class="modal">
+        <h3 id="patient-modal-title">新增病人</h3>
+        <div class="field">
+            <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
+            <input type="text" id="pt-record-number" placeholder="例：W61564">
+        </div>
+        <div class="field">
+            <label>姓</label>
+            <input type="text" id="pt-surname" placeholder="例：楊" maxlength="2">
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label>年齡 / 性別</label>
+                <input type="text" id="pt-age-sex" placeholder="例：55/F">
+            </div>
+            <div class="field">
+                <label>eGFR</label>
+                <input type="text" id="pt-egfr" placeholder="例：>60">
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label>INR</label>
+                <input type="text" id="pt-inr" placeholder="例：1.04">
+            </div>
+            <div class="field">
+                <label>INR 日期</label>
+                <input type="text" id="pt-inr-date" placeholder="例：26/04">
+            </div>
+        </div>
+        <div class="field">
+            <label>額外資訊</label>
+            <textarea id="pt-extra" placeholder="轉介來源、過敏、特殊用藥等"></textarea>
+        </div>
+        <div class="field">
+            <label>標籤（按 Enter 新增）</label>
+            <div class="tag-editor" id="pt-tag-editor">
+                <input type="text" id="pt-tag-input" placeholder="鬆 / NB / f/u ...">
+            </div>
+        </div>
+        <div class="actions">
+            <button id="pt-modal-delete" class="danger" style="display: none;">刪除</button>
+            <span style="flex: 1;"></span>
+            <button id="pt-modal-cancel">取消</button>
+            <button id="pt-modal-save" class="primary">儲存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 確認對話框 -->
+<div class="modal-overlay" id="confirm-modal">
+    <div class="modal" style="max-width: 360px;">
+        <h3 id="confirm-title">確認</h3>
+        <p id="confirm-message" style="color: var(--text-secondary); margin-bottom: 12px;"></p>
+        <div class="actions">
+            <button id="confirm-cancel">取消</button>
+            <button id="confirm-ok" class="danger">確定</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -543,10 +786,283 @@
         });
     });
 
-    // ========== 登入後初始化（之後填內容） ==========
+    // ========== 登入後初始化 ==========
     function onUserReady() {
-        // TODO: 載入門診日清單、病人主表、tag 等
-        console.log('User ready, OPD modules will load here.');
+        loadPatients();
+        bindPatientUI();
+    }
+
+    // ========== 病人主表狀態 ==========
+    const state = {
+        patients: {},          // {recordNumber: patientObj}
+        editingRecordNumber: null,
+        currentTags: [],       // tag editor working state
+        confirmCallback: null  // confirm modal callback
+    };
+
+    // ========== 病人主表 Firebase ==========
+    function loadPatients() {
+        if (!db) return;
+        setStatus('saving', '載入中...');
+        db.ref('opd/patients').on('value', (snap) => {
+            state.patients = snap.val() || {};
+            renderPatientMaster();
+            setStatus('connected', '已連線');
+        }, (err) => {
+            console.error('讀取病人資料失敗:', err);
+            setStatus('', '連線失敗');
+            alert('讀取病人資料失敗：' + err.message + '\n\n如顯示權限不足，請確認 Firebase Realtime Database rules 已設定 opd 路徑允許你的 UID。');
+        });
+    }
+
+    async function savePatient(patient) {
+        const ref = db.ref('opd/patients/' + patient.recordNumber);
+        const now = Date.now();
+        const data = {
+            ...patient,
+            updatedAt: now,
+            createdAt: state.patients[patient.recordNumber]?.createdAt || now
+        };
+        setStatus('saving', '儲存中...');
+        await ref.set(data);
+        setStatus('connected', '已儲存');
+    }
+
+    async function deletePatient(recordNumber) {
+        setStatus('saving', '刪除中...');
+        await db.ref('opd/patients/' + recordNumber).remove();
+        setStatus('connected', '已刪除');
+    }
+
+    // ========== 病人主表 UI ==========
+    function renderPatientMaster() {
+        const list = document.getElementById('patient-master-list');
+        const countEl = document.getElementById('patient-count');
+        const searchVal = document.getElementById('patient-search-input').value.trim().toLowerCase();
+
+        const allPatients = Object.values(state.patients);
+        const filtered = searchVal
+            ? allPatients.filter(p =>
+                (p.recordNumber || '').toLowerCase().includes(searchVal) ||
+                (p.surname || '').toLowerCase().includes(searchVal))
+            : allPatients;
+
+        // 排序：依病歷號
+        filtered.sort((a, b) => (a.recordNumber || '').localeCompare(b.recordNumber || ''));
+
+        countEl.textContent = `共 ${allPatients.length} 位${searchVal ? `（顯示 ${filtered.length}）` : ''}`;
+
+        if (filtered.length === 0) {
+            list.innerHTML = `<div class="empty-hint">${allPatients.length === 0 ? '尚無病人資料，點「+ 新增病人」開始建立' : '查無相符結果'}</div>`;
+            return;
+        }
+
+        list.innerHTML = filtered.map(p => {
+            const tags = (p.tags || []).map(t => `<span class="pt-tag">${escapeHtml(t)}</span>`).join('');
+            const inrPart = p.INR ? ` ・ INR: ${escapeHtml(p.INR)}${p.INRDate ? ` (${escapeHtml(p.INRDate)})` : ''}` : '';
+            const egfrPart = p.eGFR ? ` ・ eGFR: ${escapeHtml(p.eGFR)}` : '';
+            const extraPart = p.extra ? `<div class="pt-line2" style="margin-top: 4px;">${escapeHtml(p.extra)}</div>` : '';
+            return `
+                <div class="pt-card" data-record="${escapeAttr(p.recordNumber)}">
+                    <div class="pt-info">
+                        <div class="pt-line1">
+                            ${escapeHtml(p.recordNumber)}${p.surname ? ` (${escapeHtml(p.surname)})` : ''}
+                            <span class="pt-tags">${tags}</span>
+                        </div>
+                        <div class="pt-line2">${escapeHtml(p.ageSex || '')}${egfrPart}${inrPart}</div>
+                        ${extraPart}
+                    </div>
+                    <div class="pt-actions">
+                        <button data-action="edit" data-record="${escapeAttr(p.recordNumber)}">編輯</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function escapeAttr(s) {
+        return String(s ?? '').replace(/"/g, '&quot;');
+    }
+
+    // ========== 病人 Modal ==========
+    function openPatientModal(recordNumber) {
+        const isEdit = !!recordNumber;
+        const p = isEdit ? (state.patients[recordNumber] || {}) : {};
+        state.editingRecordNumber = isEdit ? recordNumber : null;
+
+        document.getElementById('patient-modal-title').textContent = isEdit ? '編輯病人' : '新增病人';
+        document.getElementById('pt-record-number').value = p.recordNumber || '';
+        document.getElementById('pt-record-number').disabled = isEdit;  // 編輯時不能改病歷號（PK）
+        document.getElementById('pt-surname').value = p.surname || '';
+        document.getElementById('pt-age-sex').value = p.ageSex || '';
+        document.getElementById('pt-egfr').value = p.eGFR || '';
+        document.getElementById('pt-inr').value = p.INR || '';
+        document.getElementById('pt-inr-date').value = p.INRDate || '';
+        document.getElementById('pt-extra').value = p.extra || '';
+
+        state.currentTags = [...(p.tags || [])];
+        renderTagEditor();
+
+        document.getElementById('pt-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
+        document.getElementById('patient-modal').classList.add('show');
+        if (!isEdit) document.getElementById('pt-record-number').focus();
+    }
+
+    function closePatientModal() {
+        document.getElementById('patient-modal').classList.remove('show');
+        state.editingRecordNumber = null;
+        state.currentTags = [];
+    }
+
+    function renderTagEditor() {
+        const editor = document.getElementById('pt-tag-editor');
+        const input = document.getElementById('pt-tag-input');
+        // 移除既有 pill，保留 input
+        editor.querySelectorAll('.tag-pill').forEach(el => el.remove());
+        state.currentTags.forEach((tag, idx) => {
+            const pill = document.createElement('span');
+            pill.className = 'tag-pill';
+            pill.innerHTML = `${escapeHtml(tag)} <span class="remove" data-idx="${idx}">✕</span>`;
+            editor.insertBefore(pill, input);
+        });
+    }
+
+    async function handlePatientSave() {
+        const recordNumber = document.getElementById('pt-record-number').value.trim();
+        if (!recordNumber) {
+            alert('請輸入病歷號');
+            return;
+        }
+
+        const patient = {
+            recordNumber,
+            surname: document.getElementById('pt-surname').value.trim(),
+            ageSex: document.getElementById('pt-age-sex').value.trim(),
+            eGFR: document.getElementById('pt-egfr').value.trim(),
+            INR: document.getElementById('pt-inr').value.trim(),
+            INRDate: document.getElementById('pt-inr-date').value.trim(),
+            extra: document.getElementById('pt-extra').value.trim(),
+            tags: [...state.currentTags]
+        };
+
+        // 新增時若病歷號已存在 → 提示
+        if (!state.editingRecordNumber && state.patients[recordNumber]) {
+            if (!confirm(`病歷號 ${recordNumber} 已存在，是否覆蓋？`)) return;
+        }
+
+        try {
+            await savePatient(patient);
+            closePatientModal();
+        } catch (err) {
+            alert('儲存失敗：' + err.message);
+        }
+    }
+
+    function handlePatientDelete() {
+        if (!state.editingRecordNumber) return;
+        const rec = state.editingRecordNumber;
+        const surname = state.patients[rec]?.surname || '';
+        showConfirm(`刪除病人 ${rec}${surname ? ` (${surname})` : ''}？`, '此操作無法復原。', async () => {
+            try {
+                await deletePatient(rec);
+                closePatientModal();
+            } catch (err) {
+                alert('刪除失敗：' + err.message);
+            }
+        });
+    }
+
+    // ========== 通用確認對話框 ==========
+    function showConfirm(title, message, onConfirm) {
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        state.confirmCallback = onConfirm;
+        document.getElementById('confirm-modal').classList.add('show');
+    }
+
+    // ========== 綁定 UI ==========
+    function bindPatientUI() {
+        if (state.uiBound) return;
+        state.uiBound = true;
+
+        // 新增按鈕
+        document.getElementById('add-patient-master-btn').addEventListener('click', () => openPatientModal());
+
+        // 搜尋
+        document.getElementById('patient-search-input').addEventListener('input', () => renderPatientMaster());
+
+        // 病人卡片點擊（編輯）
+        document.getElementById('patient-master-list').addEventListener('click', (e) => {
+            const editBtn = e.target.closest('button[data-action="edit"]');
+            if (editBtn) {
+                openPatientModal(editBtn.dataset.record);
+            }
+        });
+
+        // Modal 按鈕
+        document.getElementById('pt-modal-cancel').addEventListener('click', closePatientModal);
+        document.getElementById('pt-modal-save').addEventListener('click', handlePatientSave);
+        document.getElementById('pt-modal-delete').addEventListener('click', handlePatientDelete);
+        document.getElementById('patient-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'patient-modal') closePatientModal();
+        });
+
+        // Tag editor
+        const tagInput = document.getElementById('pt-tag-input');
+        tagInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                const val = tagInput.value.trim();
+                if (val && !state.currentTags.includes(val)) {
+                    state.currentTags.push(val);
+                    renderTagEditor();
+                }
+                tagInput.value = '';
+            } else if (e.key === 'Backspace' && !tagInput.value && state.currentTags.length > 0) {
+                state.currentTags.pop();
+                renderTagEditor();
+            }
+        });
+        document.getElementById('pt-tag-editor').addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.remove');
+            if (removeBtn) {
+                const idx = parseInt(removeBtn.dataset.idx);
+                state.currentTags.splice(idx, 1);
+                renderTagEditor();
+            }
+        });
+
+        // Confirm modal
+        document.getElementById('confirm-cancel').addEventListener('click', () => {
+            document.getElementById('confirm-modal').classList.remove('show');
+            state.confirmCallback = null;
+        });
+        document.getElementById('confirm-ok').addEventListener('click', () => {
+            const cb = state.confirmCallback;
+            document.getElementById('confirm-modal').classList.remove('show');
+            state.confirmCallback = null;
+            if (cb) cb();
+        });
+        document.getElementById('confirm-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'confirm-modal') {
+                document.getElementById('confirm-modal').classList.remove('show');
+                state.confirmCallback = null;
+            }
+        });
+
+        // ESC 關閉 modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (document.getElementById('patient-modal').classList.contains('show')) closePatientModal();
+                if (document.getElementById('confirm-modal').classList.contains('show')) {
+                    document.getElementById('confirm-modal').classList.remove('show');
+                    state.confirmCallback = null;
+                }
+            }
+        });
     }
 </script>
 </body>
