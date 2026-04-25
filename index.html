@@ -999,6 +999,8 @@
                     <span class="storage-dot" id="storage-dot"></span>
                     <span id="storage-text">本地</span>
                 </span>
+                <span id="user-info" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+                <button id="logout-btn" style="padding: 6px 10px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;" title="登出">🚪 登出</button>
             </div>
         </header>
 
@@ -1296,7 +1298,11 @@
                     currentUser = user;
                     document.getElementById('login-screen').style.display = 'none';
                     document.getElementById('main-app').style.display = 'block';
-                    console.log('已登入:', user.email, 'UID:', user.uid);
+                    const provider = user.providerData[0]?.providerId || 'unknown';
+                    const providerLabel = provider === 'google.com' ? 'Google' : (provider === 'password' ? 'Email' : provider);
+                    const userInfo = document.getElementById('user-info');
+                    if (userInfo) userInfo.textContent = `${providerLabel}：${user.email || user.uid.substring(0, 6)}`;
+                    console.log('已登入:', user.email, '| 登入方式:', providerLabel, '| UID:', user.uid);
                     init();
                 } else {
                     currentUser = null;
@@ -1315,6 +1321,11 @@
 
             // Google 登入按鈕
             document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
+
+            // 登出按鈕
+            document.getElementById('logout-btn')?.addEventListener('click', () => {
+                if (confirm('確定要登出嗎？')) logout();
+            });
             
             // 手機版編輯模式切換
             document.getElementById('mobile-edit-btn').addEventListener('click', () => {
