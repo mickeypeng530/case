@@ -960,6 +960,23 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <!-- Modular auth specifically for Google popup (compat popup broken on iOS PWA) -->
+    <script type="module">
+        import { getApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        // 等 compat 把 default app 建好後，把 modular signInWithPopup 暴露到 window
+        const expose = () => {
+            try {
+                const auth = getAuth(getApp());
+                window.modularGoogleSignIn = async () => {
+                    return signInWithPopup(auth, new GoogleAuthProvider());
+                };
+            } catch (e) {
+                setTimeout(expose, 100);
+            }
+        };
+        expose();
+    </script>
     <!-- mammoth.js for Word .docx parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.2/mammoth.browser.min.js"></script>
 </head>
@@ -1352,20 +1369,13 @@
         info.style.display = 'block';
         try {
             await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-            const provider = new firebase.auth.GoogleAuthProvider();
-            // 先試 popup，失敗 fallback 到 redirect
-            try {
-                await firebase.auth().signInWithPopup(provider);
-            } catch (popupErr) {
-                console.warn('Popup failed, falling back to redirect:', popupErr.code);
-                if (popupErr.code === 'auth/popup-blocked'
-                    || popupErr.code === 'auth/popup-closed-by-user'
-                    || popupErr.code === 'auth/cancelled-popup-request'
-                    || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
-                    await firebase.auth().signInWithRedirect(provider);
-                } else {
-                    throw popupErr;
-                }
+            // 使用 modular signInWithPopup（iOS PWA compat 不可靠）
+            if (window.modularGoogleSignIn) {
+                await window.modularGoogleSignIn();
+            } else {
+                // fallback：modular 還沒 ready → 用 compat
+                console.warn('modularGoogleSignIn not ready, using compat');
+                await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
             }
         } catch (err) {
             showLoginError(err);
