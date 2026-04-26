@@ -261,13 +261,13 @@
             z-index: 10;
         }
         .visit-table tbody td {
-            padding: 10px 8px;
+            padding: 6px 8px;
             vertical-align: top;
             border-bottom: 1px solid var(--border);
             color: var(--text-primary);
             word-break: break-word;
-            white-space: pre-wrap;  /* 保留 plan 內換行 */
-            line-height: 1.45;
+            white-space: pre-wrap;
+            line-height: 1.3;
         }
         .visit-table tbody tr:hover td {
             background: rgba(255,255,255,0.03);
@@ -279,23 +279,28 @@
 
         /* 欄寬 */
         .col-num    { width: 36px; text-align: center; }
-        .col-record { width: 130px; }
+        .col-record { width: 110px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
-        .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-        .col-age    { width: 60px; }
-        .col-egfr   { width: 70px; }
-        .col-extra  { width: 200px; font-size: 0.82rem; }
-        .col-exam   { width: 200px; font-size: 0.82rem; }
+        .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-weight: 600; }
+        .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-secondary); }
+        .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-muted); font-style: italic; }
+        .visit-table tbody td.col-record .egfr-line { font-size: 0.74rem; color: var(--text-muted); }
+        .col-labs   { width: 140px; font-size: 0.78rem; }
+        .col-extra  { width: 140px; font-size: 0.8rem; }
+        .col-exam   { width: 160px; font-size: 0.8rem; }
         .visit-table tbody td.col-extra,
-        .visit-table tbody td.col-exam {
-            max-height: 140px;
+        .visit-table tbody td.col-exam,
+        .visit-table tbody td.col-labs {
+            max-height: 130px;
             overflow-y: auto;
             scrollbar-width: thin;
         }
         .visit-table tbody td.col-extra::-webkit-scrollbar,
-        .visit-table tbody td.col-exam::-webkit-scrollbar { width: 4px; }
+        .visit-table tbody td.col-exam::-webkit-scrollbar,
+        .visit-table tbody td.col-labs::-webkit-scrollbar { width: 4px; }
         .visit-table tbody td.col-extra::-webkit-scrollbar-thumb,
-        .visit-table tbody td.col-exam::-webkit-scrollbar-thumb {
+        .visit-table tbody td.col-exam::-webkit-scrollbar-thumb,
+        .visit-table tbody td.col-labs::-webkit-scrollbar-thumb {
             background: var(--border);
             border-radius: 2px;
         }
@@ -347,8 +352,9 @@
         .plan-body {
             font-family: 'Noto Sans TC', monospace;
             font-size: 0.82rem;
-            line-height: 1.55;
+            line-height: 1.35;
         }
+        .plan-summary { margin-bottom: 4px; padding-bottom: 4px; }
         .plan-body .more-toggle {
             display: inline-block;
             margin-top: 4px;
@@ -915,13 +921,17 @@
                 <input type="text" id="v-egfr" placeholder=">60">
             </div>
             <div class="field">
-                <label>INR</label>
-                <input type="text" id="v-inr">
+                <label>來源</label>
+                <input type="text" id="v-referrer" placeholder="Buo / Hsu / Huang / web ...">
             </div>
         </div>
         <div class="field">
-            <label>額外資訊（病人主表，跨次共用）</label>
-            <textarea id="v-extra"></textarea>
+            <label>抽血 / Labs（病人主表，多行）</label>
+            <textarea id="v-labs" placeholder="INR 1.04 (26/04)&#10;Ca 9.4 (26/04)&#10;T -2.8 (R hip)" style="min-height: 70px;"></textarea>
+        </div>
+        <div class="field">
+            <label>其他背景（病人主表，跨次共用）</label>
+            <textarea id="v-extra" placeholder="過敏、特殊用藥、家族史等"></textarea>
         </div>
         <div class="field">
             <label>本次標籤（多選）</label>
@@ -941,8 +951,9 @@
             <button id="v-modal-delete" class="danger" style="display: none;">刪除</button>
             <span style="flex: 1;"></span>
             <button id="v-modal-cancel">取消</button>
-            <button id="v-modal-save" class="primary">儲存</button>
+            <button id="v-modal-save" class="primary" title="僅儲存草稿；門診後請按表格上的『✓ 確認』正式定案">儲存草稿</button>
         </div>
+        <p style="margin-top: 8px; color: var(--text-muted); font-size: 0.75rem;">💡 此處「儲存草稿」只記錄；門診結束後在表格列上按「✓ 確認」正式定案，下次回診才會自動帶過。</p>
     </div>
 </div>
 
@@ -1165,6 +1176,25 @@
         return `${yyyy}-${mm}-${dd}`;
     }
 
+    // 從 ageSex (e.g., "55/F") 解析 birthYear & sex
+    function parseAgeSex(str, refDate) {
+        if (!str) return null;
+        const m = str.match(/(\d+)\s*\/\s*([MFmf])/);
+        if (!m) return null;
+        const age = parseInt(m[1]);
+        const sex = m[2].toUpperCase();
+        const refYear = refDate ? new Date(refDate).getFullYear() : new Date().getFullYear();
+        return { birthYear: refYear - age, sex };
+    }
+    // 顯示用：根據 birthYear 與當前年計算 age 字串
+    function displayAgeSex(patient, refDate) {
+        if (patient?.birthYear) {
+            const refYear = refDate ? new Date(refDate).getFullYear() : new Date().getFullYear();
+            return `${refYear - patient.birthYear}/${patient.sex || ''}`;
+        }
+        return patient?.ageSex || '';
+    }
+
     function formatDateLabel(dateStr) {
         // 2026-04-22 → "2026/04/22 (三)"
         const [y, m, d] = dateStr.split('-').map(Number);
@@ -1224,21 +1254,24 @@
         adHoc.forEach(d => map.set(d.date, d));
         const allDates = [...map.values()].sort((a, b) => b.date.localeCompare(a.date));  // 新到舊
 
-        // 預設選最近一個門診日
-        const currentValue = state.currentClinicDate || findNearestClinicDate(allDates);
+        // 預設選最近一個門診日（只在尚未選擇時）
+        if (!state.currentClinicDate) {
+            state.currentClinicDate = findNearestClinicDate(allDates);
+        }
+        const currentValue = state.currentClinicDate;
 
         select.innerHTML = allDates.map(d => {
             const label = (d.type === 'ad-hoc' ? '★ ' : '') + formatDateLabel(d.date) + (d.type === 'ad-hoc' ? '（加診）' : '');
             return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''} style="${d.type === 'ad-hoc' ? 'color:#fca5a5;' : ''}">${label}</option>`;
         }).join('');
 
-        // 在 metadata 也標記
         const isAdHoc = allDates.find(d => d.date === currentValue)?.type === 'ad-hoc';
         select.style.color = isAdHoc ? '#fca5a5' : '';
         select.style.fontWeight = isAdHoc ? '600' : '';
 
-        if (currentValue && currentValue !== state.currentClinicDate) {
-            state.currentClinicDate = currentValue;
+        // 只在「首次設定」時 trigger onClinicDateChanged，避免覆寫使用者選擇
+        if (currentValue && !state.clinicDateInitialized) {
+            state.clinicDateInitialized = true;
             onClinicDateChanged(currentValue);
         }
         updateClinicDateMeta();
@@ -1397,15 +1430,18 @@
                 summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
             ].filter(Boolean).join('');
 
+            const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
+            const labsDisplay = p.labs || (p.INR ? `INR ${p.INR}${p.INRDate ? ` (${p.INRDate})` : ''}` : '');
             return `
               <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
-                    <span class="record-line"><strong>${escapeHtml(v.recordNumber)}</strong>${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
+                    <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
+                    ${ageDisplay ? `<div class="age-line">${escapeHtml(ageDisplay)}${p.eGFR ? ` ‧ <span class="egfr-line">eGFR ${escapeHtml(p.eGFR)}</span>` : ''}</div>` : ''}
+                    ${p.referrer ? `<div class="ref-line">${escapeHtml(p.referrer)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
                 </td>
-                <td class="col-age">${escapeHtml(p.ageSex || '')}</td>
-                <td class="col-egfr">${escapeHtml(p.eGFR || '')}${p.INR ? `<br><span style="color:var(--text-muted);font-size:0.72rem">INR ${escapeHtml(p.INR)}</span>` : ''}</td>
+                <td class="col-labs">${escapeHtml(labsDisplay)}</td>
                 <td class="col-extra">${escapeHtml(p.extra || '')}</td>
                 <td class="col-exam">${escapeHtml(v.examEducation || '')}</td>
                 <td class="col-plan">
@@ -1426,24 +1462,23 @@
         };
 
         const dcDivider = noShow.length > 0 ? `
-          <tr class="dc-divider"><td colspan="9">─── D C ───  共 ${noShow.length} 位未到</td></tr>
+          <tr class="dc-divider"><td colspan="8">─── D C ───  共 ${noShow.length} 位未到</td></tr>
         ` : '';
 
         wrap.innerHTML = `
           <div class="visit-table-wrapper">
             <table class="visit-table">
               <colgroup>
-                <col class="col-num"><col class="col-record"><col class="col-age"><col class="col-egfr">
+                <col class="col-num"><col class="col-record"><col class="col-labs">
                 <col class="col-extra"><col class="col-exam"><col class="col-plan">
                 <col class="col-tags"><col class="col-actions">
               </colgroup>
               <thead>
                 <tr>
                   <th class="col-num">#</th>
-                  <th class="col-record">病歷號 (姓)</th>
-                  <th class="col-age">年齡</th>
-                  <th class="col-egfr">eGFR</th>
-                  <th class="col-extra">額外</th>
+                  <th class="col-record">病人</th>
+                  <th class="col-labs">抽血</th>
+                  <th class="col-extra">背景</th>
                   <th class="col-exam">Exam</th>
                   <th class="col-plan">Plan</th>
                   <th class="col-tags">標籤</th>
@@ -1681,9 +1716,11 @@
         document.getElementById('v-record-number').disabled = false;
         document.getElementById('v-record-number').dataset.original = visit.recordNumber || '';
         document.getElementById('v-surname').value = patient.surname || '';
-        document.getElementById('v-age-sex').value = patient.ageSex || '';
+        // 年齡/性別：若已有 birthYear 則計算當前年齡顯示
+        document.getElementById('v-age-sex').value = displayAgeSex(patient, date) || patient.ageSex || '';
         document.getElementById('v-egfr').value = patient.eGFR || '';
-        document.getElementById('v-inr').value = patient.INR || '';
+        document.getElementById('v-referrer').value = patient.referrer || '';
+        document.getElementById('v-labs').value = patient.labs || (patient.INR ? `INR ${patient.INR}${patient.INRDate ? ` (${patient.INRDate})` : ''}` : '');
         document.getElementById('v-extra').value = patient.extra || '';
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
@@ -1750,12 +1787,17 @@
             status: ((state.visitsByDate?.[date] || {})[recordNumber]?.status) || 'draft',
             noShow: ((state.visitsByDate?.[date] || {})[recordNumber]?.noShow) || false
         };
+        const ageSexInput = document.getElementById('v-age-sex').value.trim();
+        const parsed = parseAgeSex(ageSexInput, date);
         const patientPartial = {
             recordNumber,
             surname: document.getElementById('v-surname').value.trim(),
-            ageSex: document.getElementById('v-age-sex').value.trim(),
+            ageSex: ageSexInput,  // 保留原樣供顯示備份
+            birthYear: parsed?.birthYear || null,
+            sex: parsed?.sex || '',
             eGFR: document.getElementById('v-egfr').value.trim(),
-            INR: document.getElementById('v-inr').value.trim(),
+            referrer: document.getElementById('v-referrer').value.trim(),
+            labs: document.getElementById('v-labs').value.trim(),
             extra: document.getElementById('v-extra').value.trim()
         };
 
@@ -1812,14 +1854,27 @@
                 status.style.color = 'var(--color-danger)';
                 return;
             }
-            // 填入 visit 表單
+            // 填入 visit 表單；referrer / labs 從 extra 抽出
             if (result.order != null) document.getElementById('v-order').value = result.order;
             document.getElementById('v-record-number').value = result.recordNumber;
             document.getElementById('v-surname').value = result.surname;
             document.getElementById('v-age-sex').value = result.ageSex;
             document.getElementById('v-egfr').value = result.eGFR;
-            document.getElementById('v-inr').value = result.INR;
-            document.getElementById('v-extra').value = result.extra;
+
+            const refDetected = extractReferrer(result.extra);
+            const labStuff = extractLabs(result.extra);
+            // 也把 INR 加進 labs（如果 parser 抓到）
+            const inrLine = result.INR ? `INR ${result.INR}${result.INRDate ? ` (${result.INRDate})` : ''}` : '';
+            const labsCombined = [labStuff.labs, inrLine].filter(Boolean).join(' / ');
+
+            document.getElementById('v-referrer').value = refDetected;
+            document.getElementById('v-labs').value = labsCombined;
+            // extra 剩餘部分（去掉抽出的 lab/referrer）
+            let extraRemaining = labStuff.remaining;
+            if (refDetected) {
+                extraRemaining = extraRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
+            }
+            document.getElementById('v-extra').value = extraRemaining;
             document.getElementById('v-exam').value = result.exam;
             document.getElementById('v-plan').value = result.plan;
             // tags 合併
@@ -2008,6 +2063,44 @@
         const m = (text || '').match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
         if (!m) return { INR: '', INRDate: '' };
         return { INR: m[1], INRDate: (m[2] || '').trim() };
+    }
+
+    // 從 extra 偵測常見來源關鍵字（Buo/Hsu/Huang/web 等短詞）
+    const REFERRER_KEYWORDS = ['Buo', 'Hsu', 'Huang', 'Yen', 'Lin', 'Chen', 'Wang', 'Wu', 'web', 'Web', 'WEB'];
+    function extractReferrer(text) {
+        if (!text) return '';
+        for (const kw of REFERRER_KEYWORDS) {
+            const re = new RegExp(`(^|[\\s/、,，])${kw}([\\s/、,，]|$)`);
+            if (re.test(text)) return kw;
+        }
+        return '';
+    }
+
+    // 從 extra 抽出常見 lab 行（含 INR、Ca、T-Score、TBS、eGFR 等）
+    const LAB_PATTERNS = [
+        /INR:?\s*[\d.]+(?:\s*\([^)]+\))?/i,
+        /Ca:?\s*[\d.]+(?:\s*\([^)]+\))?/i,
+        /T[-\s]?(?:Score)?:?\s*-?[\d.]+(?:\s*\([^)]+\))?/i,
+        /TBS:?\s*[\d.]+/i,
+        /eGFR:?\s*[><=]*\s*[\d.]+/i,
+        /Cr:?\s*[\d.]+/i,
+        /Hip\s*fr:?\s*[\d.]+%?/i,
+        /[Mm]ajor:?\s*[\d.]+%?/i
+    ];
+    function extractLabs(text) {
+        if (!text) return { labs: '', remaining: '' };
+        const found = [];
+        let remaining = text;
+        for (const re of LAB_PATTERNS) {
+            const m = text.match(re);
+            if (m) {
+                found.push(m[0]);
+                remaining = remaining.replace(m[0], '').trim();
+            }
+        }
+        // 清理 remaining 多餘 / 與空白
+        remaining = remaining.replace(/\s*\/\s*/g, ' / ').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
+        return { labs: found.join(' / '), remaining };
     }
 
     // Tab 分隔解析（單列、cell 內可能含換行）
