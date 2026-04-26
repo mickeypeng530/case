@@ -523,18 +523,19 @@
         .row-actions {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
         .row-actions button {
-            padding: 3px 8px;
+            padding: 2px 6px;
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
             color: var(--text-primary);
             border-radius: 4px;
             font-family: inherit;
-            font-size: 0.72rem;
+            font-size: 0.66rem;
             cursor: pointer;
             white-space: nowrap;
+            line-height: 1.2;
         }
         .row-actions button:hover { background: var(--bg-secondary); }
         .row-actions button.confirmed { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
@@ -835,6 +836,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <!-- mammoth.js for Word .docx parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.2/mammoth.browser.min.js"></script>
 </head>
 <body>
 
@@ -926,7 +929,25 @@
 
     <!-- 匯入 / 匯出 -->
     <div class="panel" id="panel-io">
-        <div class="empty-hint">（待實作：Word 匯入、Procedure list 匯出）</div>
+        <h3 style="margin-bottom: 12px;">📥 從 Word 匯入</h3>
+        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                <input type="file" id="import-file-input" accept=".docx" style="color: var(--text-primary); font-family: inherit;">
+                <button class="primary" id="import-parse-btn">解析</button>
+                <span style="flex: 1;"></span>
+                <span style="font-size: 0.78rem; color: var(--text-muted);">支援 26_04_22 OPD.docx 格式</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">門診日期：</label>
+                <input type="date" id="import-clinic-date" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
+                <span id="import-date-hint" style="font-size: 0.78rem; color: var(--text-muted);">會從檔名自動偵測</span>
+            </div>
+            <div id="import-status" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
+        </div>
+        <div id="import-preview"></div>
+
+        <h3 style="margin: 24px 0 12px;">📤 匯出 Procedure List（待實作）</h3>
+        <div style="color: var(--text-muted); font-size: 0.9rem;">下個 commit 實作。</div>
     </div>
 
 </div>
@@ -1091,8 +1112,11 @@
             <div style="margin-top: 4px; font-size: 0.7rem; color: var(--text-muted);">點處置切換狀態：無→待→已→PM→AM→無</div>
         </div>
         <div class="field">
-            <label>Exam &amp; Education（本次 visit）</label>
-            <textarea id="v-exam"></textarea>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>本次說明 / 概況（顯示於「本次概況」欄底部）</span>
+                <button type="button" id="v-generate-exam" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.78rem; cursor: pointer;">🤖 從 plan 生成摘要</button>
+            </label>
+            <textarea id="v-exam" style="min-height: 50px;"></textarea>
         </div>
         <div class="field">
             <label>Plan（本次 visit）</label>
@@ -1310,7 +1334,268 @@
         loadAdHocClinicDates();
         bindPatientUI();
         bindClinicDayUI();
+        bindImportUI();
         initClinicDateSelector();
+    }
+
+    // ========== Word 匯入 ==========
+    let importedRows = [];
+    let importedHeaderNotes = '';
+
+    async function parseDocxFile(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const html = result.value;
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+
+        // 解析表格前的段落 → headerNotes
+        const preTableParagraphs = [];
+        let elem = doc.body.firstChild;
+        while (elem && elem.tagName !== 'TABLE') {
+            if (elem.tagName === 'P') {
+                const txt = elem.textContent.trim();
+                if (txt) preTableParagraphs.push(txt);
+            }
+            elem = elem.nextSibling;
+        }
+        const headerNotes = preTableParagraphs.join('\n');
+
+        const table = doc.querySelector('table');
+        if (!table) return { ok: false, error: '檔案內找不到表格' };
+
+        const rows = [...table.querySelectorAll('tr')];
+        if (rows.length < 2) return { ok: false, error: '表格資料過少' };
+
+        const parsed = [];
+        let isAfterDC = false;
+        rows.slice(1).forEach((tr, idx) => {
+            const cells = [...tr.querySelectorAll('td, th')].map(td => {
+                // 保留 cell 內的換行，把 <br> 與多個 <p> 都轉成 \n
+                let txt = '';
+                td.querySelectorAll('p').forEach((p, i) => {
+                    if (i > 0) txt += '\n';
+                    txt += p.textContent;
+                });
+                if (!txt) txt = td.textContent;
+                return txt.trim();
+            });
+            if (cells.every(c => !c) || cells.length === 0) return;
+
+            const isDCRow = cells.some(c => /^DC$/i.test(c));
+            if (isDCRow) { isAfterDC = true; return; }
+
+            const tabbed = cells.join('\t');
+            const result = parsePastedRow(tabbed);
+            if (result.ok) {
+                parsed.push({ ...result, noShow: isAfterDC, originalRow: idx + 1 });
+            } else {
+                parsed.push({ ok: false, error: result.error, raw: cells, noShow: isAfterDC, originalRow: idx + 1 });
+            }
+        });
+
+        return { ok: true, rows: parsed, headerNotes };
+    }
+
+    function detectDateFromFilename(filename) {
+        const m = filename.match(/(\d{2})[_\-](\d{1,2})[_\-](\d{1,2})/);
+        if (!m) return '';
+        return `20${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    }
+
+    function renderImportPreview() {
+        const wrap = document.getElementById('import-preview');
+        if (!importedRows.length) {
+            wrap.innerHTML = '<div class="empty-hint">尚未解析或無資料</div>';
+            return;
+        }
+        const okRows = importedRows.filter(r => r.ok);
+        const failRows = importedRows.filter(r => !r.ok);
+        wrap.innerHTML = `
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                <button id="import-select-all">全選</button>
+                <button id="import-select-none">全不選</button>
+                <span style="flex: 1;"></span>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">${okRows.length} 筆可匯入${failRows.length ? `，${failRows.length} 筆失敗` : ''}</span>
+                <button class="primary" id="import-confirm-btn">✓ 匯入勾選的</button>
+            </div>
+            <table class="visit-table" style="font-size: 0.85rem;">
+                <thead><tr>
+                    <th style="width: 30px;"><input type="checkbox" id="import-toggle-all" checked></th>
+                    <th style="width: 30px;">#</th>
+                    <th style="width: 110px;">病歷號 (姓)</th>
+                    <th style="width: 60px;">年齡</th>
+                    <th>抽血 / extra</th>
+                    <th>Plan 預覽</th>
+                    <th style="width: 40px;">DC</th>
+                    <th style="width: 60px;">狀態</th>
+                </tr></thead>
+                <tbody>
+                ${importedRows.map((r, i) => {
+                    if (!r.ok) {
+                        return `<tr style="opacity: 0.6;">
+                            <td><input type="checkbox" disabled></td>
+                            <td colspan="6" style="color: var(--color-danger); font-size: 0.75rem;">解析失敗：${escapeHtml(r.error)}（行 ${r.originalRow}）</td>
+                            <td>—</td>
+                        </tr>`;
+                    }
+                    const planPreview = (r.plan || '').split('\n').slice(0, 2).join(' / ').slice(0, 100);
+                    return `<tr>
+                        <td><input type="checkbox" class="import-row-check" data-idx="${i}" checked></td>
+                        <td>${escapeHtml(String(r.order || ''))}</td>
+                        <td><strong>${escapeHtml(r.recordNumber)}</strong>${r.surname ? ` (${escapeHtml(r.surname)})` : ''}</td>
+                        <td>${escapeHtml(r.ageSex || '')}</td>
+                        <td style="font-size: 0.75rem;">${escapeHtml((r.extra || '').slice(0, 80))}${(r.extra || '').length > 80 ? '...' : ''}</td>
+                        <td style="font-size: 0.75rem;">${escapeHtml(planPreview)}${(r.plan || '').length > 100 ? '...' : ''}</td>
+                        <td>${r.noShow ? '✓' : ''}</td>
+                        <td style="font-size: 0.75rem; color: var(--color-confirmed);">OK</td>
+                    </tr>`;
+                }).join('')}
+                </tbody>
+            </table>
+        `;
+        document.getElementById('import-select-all').onclick = () => {
+            wrap.querySelectorAll('.import-row-check').forEach(c => c.checked = true);
+        };
+        document.getElementById('import-select-none').onclick = () => {
+            wrap.querySelectorAll('.import-row-check').forEach(c => c.checked = false);
+        };
+        document.getElementById('import-toggle-all').onchange = (e) => {
+            wrap.querySelectorAll('.import-row-check').forEach(c => c.checked = e.target.checked);
+        };
+        document.getElementById('import-confirm-btn').onclick = handleImportConfirm;
+    }
+
+    async function handleImportConfirm() {
+        const date = document.getElementById('import-clinic-date').value;
+        if (!date) { alert('請選擇門診日期'); return; }
+
+        const checked = [...document.querySelectorAll('.import-row-check:checked')]
+            .map(c => importedRows[parseInt(c.dataset.idx)]).filter(r => r && r.ok);
+        if (!checked.length) { alert('請勾選至少 1 筆'); return; }
+
+        if (!confirm(`確定匯入 ${checked.length} 筆病人到 ${date}？\n\n（已存在的病歷號會被合併更新；既有同日 visit 會被覆蓋。）`)) return;
+
+        const status = document.getElementById('import-status');
+        status.textContent = `匯入中... 0 / ${checked.length}`;
+        status.style.color = 'var(--text-secondary)';
+
+        const updates = {};
+        const now = Date.now();
+
+        checked.forEach((r, i) => {
+            const labLines = [];
+            if (r.eGFR) labLines.push(`eGFR ${r.eGFR}`);
+            const labStuff = extractLabs(r.extra || '');
+            if (labStuff.labs) labLines.push(labStuff.labs);
+            if (r.INR && !/INR/i.test(labStuff.labs || '')) {
+                labLines.push(`INR ${r.INR}${r.INRDate ? ` (${r.INRDate})` : ''}`);
+            }
+            const refDetected = extractReferrer(r.extra || '');
+            const parsedAge = parseAgeSex(r.ageSex, date);
+
+            const existingPatient = state.patients[r.recordNumber] || {};
+            updates[`opd/patients/${r.recordNumber}`] = {
+                ...existingPatient,
+                recordNumber: r.recordNumber,
+                surname: r.surname || existingPatient.surname || '',
+                ageSex: r.ageSex || existingPatient.ageSex || '',
+                birthYear: parsedAge?.birthYear || existingPatient.birthYear || null,
+                sex: parsedAge?.sex || existingPatient.sex || '',
+                referrer: refDetected || existingPatient.referrer || '',
+                labs: labLines.join('\n') || existingPatient.labs || '',
+                pastHistory: existingPatient.pastHistory || '',
+                boneScore: existingPatient.boneScore || '',
+                anticoagState: existingPatient.anticoagState || 'unknown',
+                anticoagulants: existingPatient.anticoagulants || [],
+                bonePlanSummary: existingPatient.bonePlanSummary || '',
+                painPlanSummary: existingPatient.painPlanSummary || '',
+                firstVisitDate: existingPatient.firstVisitDate || date,
+                createdAt: existingPatient.createdAt || now,
+                updatedAt: now
+            };
+            updates[`opd/visits/${date}/${r.recordNumber}`] = {
+                recordNumber: r.recordNumber,
+                date,
+                orderInClinic: r.order || null,
+                examEducation: r.exam || '',
+                plan: r.plan || '',
+                tags: r.tags || [],
+                procedureStatuses: {},
+                status: 'confirmed',
+                noShow: r.noShow || false,
+                createdAt: now,
+                updatedAt: now,
+                confirmedAt: now
+            };
+            updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+        });
+
+        if (importedHeaderNotes) {
+            updates[`opd/clinicMeta/${date}/headerNotes`] = importedHeaderNotes;
+        }
+        const dayOfWeek = new Date(date + 'T00:00').getDay();
+        if (dayOfWeek !== 3) {
+            updates[`opd/clinicDates/${date}`] = { date, type: 'ad-hoc', note: '從匯入建立', createdAt: now };
+        }
+
+        try {
+            await db.ref().update(updates);
+            status.textContent = `✅ 匯入完成：${checked.length} 筆`;
+            status.style.color = 'var(--color-confirmed)';
+            setTimeout(() => {
+                state.currentClinicDate = date;
+                localStorage.setItem('opd:currentClinicDate', date);
+                activateTab('panel-clinic');
+                renderClinicDateSelector();
+                onClinicDateChanged(date);
+            }, 1000);
+        } catch (err) {
+            status.textContent = `❌ 失敗：${err.message}`;
+            status.style.color = 'var(--color-danger)';
+        }
+    }
+
+    function bindImportUI() {
+        const fileInput = document.getElementById('import-file-input');
+        const parseBtn = document.getElementById('import-parse-btn');
+        const dateInput = document.getElementById('import-clinic-date');
+        if (!fileInput) return;
+
+        fileInput.addEventListener('change', () => {
+            const f = fileInput.files[0];
+            if (f) {
+                const auto = detectDateFromFilename(f.name);
+                if (auto) dateInput.value = auto;
+                document.getElementById('import-date-hint').textContent = auto ? `已從檔名偵測 → ${auto}` : '檔名未含日期，請手動選擇';
+            }
+        });
+
+        parseBtn.addEventListener('click', async () => {
+            const f = fileInput.files[0];
+            if (!f) { alert('請先選擇 .docx 檔'); return; }
+            const status = document.getElementById('import-status');
+            status.textContent = '解析中...';
+            status.style.color = 'var(--text-secondary)';
+            try {
+                const result = await parseDocxFile(f);
+                if (!result.ok) {
+                    status.textContent = `❌ ${result.error}`;
+                    status.style.color = 'var(--color-danger)';
+                    return;
+                }
+                importedRows = result.rows;
+                importedHeaderNotes = result.headerNotes || '';
+                const okCount = importedRows.filter(r => r.ok).length;
+                const failCount = importedRows.length - okCount;
+                status.textContent = `✓ 解析完成：${okCount} 筆成功${failCount ? `, ${failCount} 筆失敗` : ''}${importedHeaderNotes ? '；含標頭備註 ' + importedHeaderNotes.length + ' 字' : ''}`;
+                status.style.color = 'var(--color-confirmed)';
+                renderImportPreview();
+            } catch (err) {
+                console.error(err);
+                status.textContent = `❌ 解析錯誤：${err.message}`;
+                status.style.color = 'var(--color-danger)';
+            }
+        });
     }
 
     // ========== 門診日邏輯 ==========
@@ -1553,18 +1838,19 @@
         const counts = {};  // { name: { done, planned } }
         PROC_KEYWORDS.forEach(k => { counts[k.name] = { done: 0, planned: 0 }; });
 
+        // 為每個 procedure 紀錄關聯日期（給 hover tooltip 用）
+        PROC_KEYWORDS.forEach(k => { counts[k.name].dates = []; });
+
         // 只抓「明確帶年份」的日期（YY/MM/DD 或 YYYY/MM/DD）
         const EXPLICIT_YEAR_DATE = /\b(\d{2,4})\/(\d{1,2})\/(\d{1,2})\b/g;
+        const SHORT_DATE_RE = /\b(\d{1,2})\/(\d{1,2})\b(?!\/)/g;
         lines.forEach(line => {
             if (!line.trim()) return;
-            // 排除討論行
             if (DISCUSS_PATTERN.test(line)) return;
 
-            // 是否 * 開頭（用戶習慣 * = 已完成）
             const starsMatch = line.trim().match(/^\*\s*/);
             const isAnchor = !!starsMatch;
 
-            // 找有明確年份的日期
             const explicitDates = [];
             let m;
             const re = new RegExp(EXPLICIT_YEAR_DATE.source, 'g');
@@ -1576,19 +1862,18 @@
             const hasExplicitFuture = explicitDates.some(d => d > today);
             const hasExplicitPastOrToday = explicitDates.some(d => d <= today);
 
+            // 該行最早的明確日期，給 tooltip 顯示
+            const lineDateLabel = explicitDates[0] ? explicitDates[0].slice(2).replace(/-/g, '/') : (line.match(SHORT_DATE_RE)?.[0] || '');
+
             PROC_KEYWORDS.forEach(k => {
                 const matches = line.match(k.re);
                 if (!matches || !matches.length) return;
-                if (isAnchor) {
-                    // * 開頭一律 done
-                    counts[k.name].done += matches.length;
-                } else if (hasExplicitFuture && !hasExplicitPastOrToday) {
-                    // 明確未來日期，無過去 → planned
-                    counts[k.name].planned += matches.length;
-                } else {
-                    // 其他（- 開頭無明確日期、僅 MM/DD 等）→ done
-                    counts[k.name].done += matches.length;
-                }
+                let kind;
+                if (isAnchor) kind = 'done';
+                else if (hasExplicitFuture && !hasExplicitPastOrToday) kind = 'planned';
+                else kind = 'done';
+                counts[k.name][kind] += matches.length;
+                counts[k.name].dates.push({ date: lineDateLabel, kind, line: line.trim() });
             });
         });
 
@@ -1608,7 +1893,7 @@
 
         const items = Object.entries(counts)
             .filter(([_, c]) => c.done || c.planned)
-            .map(([name, c]) => ({ name, done: c.done, planned: c.planned, count: c.done }));
+            .map(([name, c]) => ({ name, done: c.done, planned: c.planned, count: c.done, dates: c.dates || [] }));
 
         return {
             items,
@@ -1717,22 +2002,27 @@
                     const needs = visitNeedsAnticoagCheck(v);
                     let acIcon = '';
                     if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
-                        const drugs = (p.anticoagulants || []).map(d => `${escapeHtml(d)} (${getAnticoagHold(d)})`).join(', ');
-                        acIcon = `<span class="ac-icon ac-yes" title="抗凝劑：${drugs}　hold 後再做侵入處置">🩸 ${(p.anticoagulants || []).map(escapeHtml).join('/')}</span>`;
-                    } else if (p.anticoagState === 'none') {
+                        // 有抗凝藥永遠顯示 🩸 + 藥名（hover 顯示 hold 天數）
+                        const drugs = (p.anticoagulants || []).map(d => `${escapeHtml(d)} hold ${getAnticoagHold(d)}`).join('；');
+                        acIcon = `<span class="ac-icon ac-yes" title="抗凝劑（侵入處置前需 hold）：${drugs}">🩸 ${(p.anticoagulants || []).map(escapeHtml).join('/')}</span>`;
+                    } else if (needs && p.anticoagState === 'none') {
+                        // 只在本次有 CT NB / TAME / pRF 時，秀「✅ 已確認無」
                         acIcon = `<span class="ac-icon ac-none" title="已確認無抗凝">✅ 無抗凝</span>`;
                     } else if (needs) {
-                        acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / SONO / TAME，請於門診確認">⚠️ 未確認抗凝</span>`;
+                        // 未確認，且本次有 CT NB / TAME / pRF
+                        acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / TAME / pRF，請於門診確認">⚠️ 未確認抗凝</span>`;
                     }
-                    // Procedure auto-summary（done×N，計畫中另外標）
+                    // Procedure auto-summary（done×N，計畫中另外標）+ hover 顯示日期
                     const summaryPills = [
                         ...summary.items.map(it => {
                             const planNote = it.planned ? `<span style="opacity:0.7;font-size:0.65rem"> +${it.planned}計</span>` : '';
                             const main = it.done ? `${escapeHtml(it.name)}×${it.done}` : `${escapeHtml(it.name)} 計${it.planned}`;
-                            return `<span class="pill" title="已完成 ${it.done}, 計畫中 ${it.planned}">${main}${planNote}</span>`;
+                            const datesText = (it.dates || []).map(d => `${d.date || '-'} (${d.kind === 'planned' ? '計' : '已'})`).join('\n');
+                            const tip = `已完成 ${it.done}, 計畫中 ${it.planned}` + (datesText ? `\n────\n${datesText}` : '');
+                            return `<span class="pill" title="${escapeAttr(tip)}">${main}${planNote}</span>`;
                         }),
                         summary.nextRTC ? `<span class="pill rtc">下次 RTC: ${summary.nextRTC.slice(5)}</span>` : '',
-                        summary.hasMultiRTC ? `<span class="pill warn">多 RTC ${summary.rtcDates.length}</span>` : '',
+                        summary.hasMultiRTC ? `<span class="pill warn" title="${escapeAttr(summary.rtcDates.join('\n'))}">多 RTC ${summary.rtcDates.length}</span>` : '',
                         summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
                     ].filter(Boolean).join('');
                     return `
@@ -2029,10 +2319,10 @@
         const key = Object.keys(ANTICOAG_HOLD_DAYS).find(k => k.toLowerCase() === name.toLowerCase());
         return key ? ANTICOAG_HOLD_DAYS[key] : '?';
     }
-    // 是否本次 visit 有 procedure 需要關注抗凝（CT NB / SONO / TAME / pRF）
+    // 本次 visit 是否需要「確認抗凝」（只 CT NB / TAME / pRF；SONO 不需要）
     function visitNeedsAnticoagCheck(v) {
         const ps = v?.procedureStatuses || {};
-        return ['CT NB', 'SONO', 'TAME', 'pRF'].some(k => ps[k]);
+        return ['CT NB', 'TAME', 'pRF'].some(k => ps[k]);
     }
 
     function renderProcedurePicker(statuses) {
@@ -2230,6 +2520,31 @@
             const inp = document.getElementById('v-anticoag-list');
             inp.style.display = (e.target.value === 'yes') ? 'inline-block' : 'none';
             if (e.target.value !== 'yes') inp.value = '';
+        });
+
+        // 「🤖 從 plan 生成本次說明」按鈕
+        document.getElementById('v-generate-exam').addEventListener('click', () => {
+            const date = state.currentClinicDate;
+            const planText = document.getElementById('v-plan').value;
+            const summary = summarizePlan(planText, date);
+            const lines = [];
+            summary.items.forEach(it => {
+                const datesStr = (it.dates || []).map(d => d.date || '-').filter(Boolean).join(', ');
+                const main = it.done ? `${it.name}×${it.done}` : `${it.name} 計${it.planned}`;
+                const planNote = it.planned ? ` +${it.planned}計` : '';
+                lines.push(`${main}${planNote}${datesStr ? ` (${datesStr})` : ''}`);
+            });
+            if (summary.nextRTC) lines.push(`下次 RTC: ${summary.nextRTC.slice(2).replace(/-/g, '/')}`);
+            if (summary.isSelfRTC) lines.push('自我約診');
+            const generated = lines.join('\n');
+            const ta = document.getElementById('v-exam');
+            const cur = ta.value.trim();
+            if (cur && !confirm('本次說明已有內容，是否要替換？\n\n（取消會附加在後面）')) {
+                ta.value = cur + '\n\n' + generated;
+            } else {
+                ta.value = generated;
+            }
+            ta.focus();
         });
 
         // Tag picker（單純多選）
