@@ -356,6 +356,30 @@
         .col-tags   { width: 56px; }
         .col-actions { width: 90px; }
 
+        /* 本日統計列 */
+        .stats-bar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .stats-bar .stat-num { color: var(--text-primary); font-weight: 600; }
+        .stats-bar .stat-divider {
+            border-left: 1px solid var(--border);
+            height: 16px;
+        }
+        .stats-bar .stat-tags {
+            display: inline-flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
         /* DC divider row */
         tr.dc-divider td {
             text-align: center;
@@ -471,9 +495,9 @@
         }
         .visit-tags .tag-chip {
             display: inline-flex;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.8rem;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 0.68rem;
             color: white;
             white-space: nowrap;
         }
@@ -828,47 +852,47 @@
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 14px 16px;
+            padding: 10px 12px;
             width: 90%;
             max-width: 480px;
-            max-height: 92vh;
+            max-height: 94vh;
             overflow-y: auto;
         }
         .modal h3 {
-            margin-bottom: 8px;
-            font-size: 1rem;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
             color: var(--text-primary);
         }
         .modal .field {
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
         .modal .field label {
             display: block;
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             color: var(--text-secondary);
             margin-bottom: 1px;
         }
         .modal .field input, .modal .field textarea {
             width: 100%;
-            padding: 4px 8px;
+            padding: 3px 7px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             color: var(--text-primary);
             border-radius: 5px;
             font-family: inherit;
-            font-size: 0.88rem;
+            font-size: 0.86rem;
         }
-        .modal .field textarea { resize: vertical; min-height: 40px; line-height: 1.35; }
+        .modal .field textarea { resize: vertical; min-height: 34px; line-height: 1.3; }
         .modal .field-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 6px;
         }
         .modal .actions {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             justify-content: flex-end;
-            margin-top: 12px;
+            margin-top: 8px;
         }
         .modal .actions button {
             padding: 8px 16px;
@@ -1209,10 +1233,6 @@
             <textarea id="v-pain-summary" placeholder="例：CT NB ×6 (L spine 4, C 1, SI 1) / HA L×3 R×4"></textarea>
         </div>
         <div class="field">
-            <label>本次標籤（多選）</label>
-            <div class="visit-tags" id="v-tag-picker" style="gap: 6px;"></div>
-        </div>
-        <div class="field">
             <label>本次說明（visit-level，本次特有評估）</label>
             <textarea id="v-exam" style="min-height: 50px;" placeholder="例：Recur R radiculopathy / 衛教（運動 飲食）"></textarea>
         </div>
@@ -1225,9 +1245,6 @@
                 <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 4px;"></span>
                 <button type="button" data-insert="[待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[待]</button>
                 <button type="button" data-insert="[已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[已]</button>
-                <button type="button" data-insert="[PM]" class="plan-insert-btn" style="background: rgba(191,219,254,0.6); color: #1e3a8a; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[PM]</button>
-                <button type="button" data-insert="[AM]" class="plan-insert-btn" style="background: rgba(199,210,254,0.6); color: #3730a3; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[AM]</button>
-                <button type="button" data-insert="[約]" class="plan-insert-btn" style="background: rgba(251,146,60,0.5); color: #7c2d12; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[約]</button>
                 <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 4px;"></span>
                 <button type="button" data-insert="[鬆 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 已]</button>
                 <button type="button" data-insert="[鬆 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 待]</button>
@@ -1240,6 +1257,10 @@
                 <button type="button" data-insert="[TAME 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 已]</button>
                 <button type="button" data-insert="[TAME 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 待]</button>
             </div>
+        </div>
+        <div class="field">
+            <label>本次標籤（多選，最後選擇）</label>
+            <div class="visit-tags" id="v-tag-picker" style="gap: 6px;"></div>
         </div>
         <div class="actions">
             <button id="v-modal-delete" class="danger" style="display: none;">刪除</button>
@@ -1926,7 +1947,7 @@
         { name: 'Fosamax', re: /\bFosamax\b/gi }
     ];
     const BONE_PROCS = ['Prolia', 'Aclasta', 'Evenity', 'Forteo', 'Fosamax'];
-    const PAIN_PROCS = ['CT NB', 'pRF', 'SONO', 'TAME', 'PRP', 'HA', 'MRI'];
+    const PAIN_PROCS = ['CT NB', 'pRF', 'SONO', 'TAME', 'PRP', 'HA'];  // MRI 不算入 pain summary
     const RTC_PATTERN = /(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC(\??)/gi;
 
     // 行級日期偵測（line 中所有日期）
@@ -2109,6 +2130,29 @@
             return;
         }
 
+        // 統計列
+        const came = filtered.filter(v => !v.noShow);
+        const dc = filtered.filter(v => v.noShow);
+        const prepared = came.filter(v => v.prepared && v.status !== 'confirmed').length;
+        const confirmed = came.filter(v => v.status === 'confirmed').length;
+        const tagCounts = {};
+        DEFAULT_TAGS.forEach(t => { tagCounts[t] = 0; });
+        came.forEach(v => {
+            const ts = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            ts.forEach(t => { if (tagCounts[t] !== undefined) tagCounts[t]++; });
+        });
+        const tagPills = Object.entries(tagCounts)
+            .filter(([_, n]) => n > 0)
+            .map(([t, n]) => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
+        const statsHtml = `
+            <div class="stats-bar">
+                <span>👤 <span class="stat-num">${came.length}</span> 人${dc.length ? `<span style="color:var(--color-dc);"> + DC ${dc.length}</span>` : ''}</span>
+                <span class="stat-divider"></span>
+                <span>備齊 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
+                ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}</span>` : ''}
+            </div>
+        `;
+
         // 排序：noShow=false 在前，按 orderInClinic ASC；DC 後也按 orderInClinic
         const came = filtered.filter(v => !v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
         const noShow = filtered.filter(v => v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
@@ -2133,7 +2177,8 @@
                 summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
             ].filter(Boolean).join('');
 
-            const tagChips = (v.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+            const normalizedTags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            const tagChips = normalizedTags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
 
             const statusBadges = [
                 v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
@@ -2242,6 +2287,7 @@
         ` : '';
 
         wrap.innerHTML = `
+          ${statsHtml}
           <div class="visit-table-wrapper">
             <table class="visit-table">
               <colgroup>
@@ -2552,7 +2598,8 @@
         const patient = isEdit ? (state.patients[recordNumber] || {}) : {};
 
         state.editingVisitRecord = isEdit ? recordNumber : null;
-        state.visitTagsTemp = [...(visit.tags || [])];
+        // 舊 tag 名稱遷移：follow up → f/u
+        state.visitTagsTemp = [...new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
         state.procStatusesTemp = { ...(visit.procedureStatuses || {}) };
 
         document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
@@ -2767,7 +2814,7 @@
             fillSummaryField('v-pain-summary', generateSummaryByCategory(PAIN_PROCS));
         });
 
-        // 插入 status tag 到 plan textarea 游標位置
+        // 插入 status tag 到 plan textarea 游標位置；同時自動連動 visit tag
         document.querySelectorAll('.plan-insert-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const ta = document.getElementById('v-plan');
@@ -2776,13 +2823,23 @@
                 const end = ta.selectionEnd;
                 const before = ta.value.substring(0, start);
                 const after = ta.value.substring(end);
-                // 自動補空白：游標前不是空白且不是行首 → 加一個空白
                 const needSpace = before.length > 0 && !/[\s\n]$/.test(before);
                 const insertText = (needSpace ? ' ' : '') + text;
                 ta.value = before + insertText + after;
                 const cursorPos = start + insertText.length;
                 ta.selectionStart = ta.selectionEnd = cursorPos;
                 ta.focus();
+
+                // 自動連動主 tag：badge 內含 tag 名稱 → 自動勾選
+                const inner = text.replace(/^\[|\]$/g, '');
+                DEFAULT_TAGS.forEach(tag => {
+                    const safe = tag.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+                    const re = new RegExp(`(^|\\s)${safe}(\\s|$)`, 'i');
+                    if (re.test(inner) && !state.visitTagsTemp.includes(tag)) {
+                        state.visitTagsTemp.push(tag);
+                    }
+                });
+                renderVisitTagPicker(state.visitTagsTemp);
             });
         });
 
