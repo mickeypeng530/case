@@ -957,9 +957,6 @@
         /* Utility */
         .hidden { display: none !important; }
     </style>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <!-- mammoth.js for Word .docx parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.2/mammoth.browser.min.js"></script>
 </head>
@@ -1284,8 +1281,19 @@
     </div>
 </div>
 
-<script>
+<script type="module">
     // ========== Firebase 設定（與 index.html 同一個專案） ==========
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+        getAuth, GoogleAuthProvider,
+        signInWithPopup, signInWithRedirect, signInWithEmailAndPassword,
+        getRedirectResult, onAuthStateChanged, signOut,
+        setPersistence, browserLocalPersistence, inMemoryPersistence
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import {
+        getDatabase, ref, set, get, update, remove, onValue, off
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
     const FIREBASE_CONFIG = {
         apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
         authDomain: "case-scheduler-f752b.firebaseapp.com",
@@ -1296,8 +1304,12 @@
         databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
     };
 
+    const fbApp = initializeApp(FIREBASE_CONFIG);
+    const fbAuth = getAuth(fbApp);
+    const fbDb = getDatabase(fbApp);
+
     let currentUser = null;
-    let db = null;
+    let db = fbDb;  // 保留 db 變數名以減少改動範圍
 
     // ========== 登入 / 登出 ==========
     function showLoginError(err) {
@@ -1330,8 +1342,8 @@
         info.textContent = '登入中...';
         info.style.display = 'block';
         try {
-            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
-            await firebase.auth().signInWithEmailAndPassword(email, password);
+            await setPersistence(fbAuth, inMemoryPersistence);
+            await signInWithEmailAndPassword(fbAuth, email, password);
         } catch (err) {
             showLoginError(err);
             passwordInput.value = '';
@@ -1351,18 +1363,17 @@
         info.textContent = '登入中...';
         info.style.display = 'block';
         try {
-            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-            const provider = new firebase.auth.GoogleAuthProvider();
-            // 先試 popup，失敗 fallback 到 redirect
+            await setPersistence(fbAuth, browserLocalPersistence);
+            const provider = new GoogleAuthProvider();
             try {
-                await firebase.auth().signInWithPopup(provider);
+                await signInWithPopup(fbAuth, provider);
             } catch (popupErr) {
                 console.warn('Popup failed, falling back to redirect:', popupErr.code);
                 if (popupErr.code === 'auth/popup-blocked'
                     || popupErr.code === 'auth/popup-closed-by-user'
                     || popupErr.code === 'auth/cancelled-popup-request'
                     || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
-                    await firebase.auth().signInWithRedirect(provider);
+                    await signInWithRedirect(fbAuth, provider);
                 } else {
                     throw popupErr;
                 }
@@ -1373,16 +1384,13 @@
     }
 
     async function logout() {
-        await firebase.auth().signOut();
+        await signOut(fbAuth);
         location.reload();
     }
 
     // ========== Firebase 初始化 ==========
     function initFirebase() {
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
-        db = firebase.database();
+        // app/db 已在 module 頂部初始化；此處保留為相容呼叫點
         setStatus('connected', '已連線');
     }
 
@@ -1424,12 +1432,12 @@
         initFirebase();
 
         // 處理 redirect 回傳（PWA / standalone 模式 Google 登入用）
-        firebase.auth().getRedirectResult().catch((err) => {
+        getRedirectResult(fbAuth).catch((err) => {
             if (err.code !== 'auth/no-auth-event') showLoginError(err);
         });
 
         // 監聽登入狀態
-        firebase.auth().onAuthStateChanged((user) => {
+        onAuthStateChanged(fbAuth, (user) => {
             if (user) {
                 currentUser = user;
                 document.getElementById('login-screen').style.display = 'none';
@@ -1687,7 +1695,7 @@
         }
 
         try {
-            await db.ref().update(updates);
+            await update(ref(fbDb), updates);
             status.textContent = `✅ 匯入完成：${checked.length} 筆`;
             status.style.color = 'var(--color-confirmed)';
             setTimeout(() => {
@@ -1821,14 +1829,14 @@
     // ========== 加診日 Firebase ==========
     function loadAdHocClinicDates() {
         if (!db) return;
-        db.ref('opd/clinicDates').on('value', (snap) => {
+        onValue(ref(fbDb, 'opd/clinicDates'), (snap) => {
             state.adHocClinicDates = snap.val() || {};
             renderClinicDateSelector();
         });
     }
 
     async function addAdHocClinicDate(dateStr, note = '') {
-        await db.ref('opd/clinicDates/' + dateStr).set({
+        await set(ref(fbDb, 'opd/clinicDates/' + dateStr), {
             date: dateStr,
             type: 'ad-hoc',
             note,
@@ -1837,7 +1845,7 @@
     }
 
     async function removeAdHocClinicDate(dateStr) {
-        await db.ref('opd/clinicDates/' + dateStr).remove();
+        await remove(ref(fbDb, 'opd/clinicDates/' + dateStr));
     }
 
     // ========== 門診日選擇器 UI ==========
@@ -1911,27 +1919,25 @@
 
     function loadVisitsForDate(dateStr) {
         if (!db) return;
-        const ref = db.ref('opd/visits/' + dateStr);
-        const handler = (snap) => {
+        const r = ref(fbDb, 'opd/visits/' + dateStr);
+        const unsub = onValue(r, (snap) => {
             state.visitsByDate = state.visitsByDate || {};
             state.visitsByDate[dateStr] = snap.val() || {};
             renderVisitList();
             updateClinicDateMeta();
-        };
-        ref.on('value', handler);
-        state.visitsListener = () => ref.off('value', handler);
+        });
+        state.visitsListener = unsub;
     }
 
     function loadClinicMetaForDate(dateStr) {
         if (!db) return;
-        const ref = db.ref('opd/clinicMeta/' + dateStr);
-        const handler = (snap) => {
+        const r = ref(fbDb, 'opd/clinicMeta/' + dateStr);
+        const unsub = onValue(r, (snap) => {
             state.clinicMetaByDate = state.clinicMetaByDate || {};
             state.clinicMetaByDate[dateStr] = snap.val() || {};
             renderHeaderNotes();
-        };
-        ref.on('value', handler);
-        state.metaListener = () => ref.off('value', handler);
+        });
+        state.metaListener = unsub;
     }
 
     // ========== Plan parsing ==========
@@ -2335,7 +2341,7 @@
             const ta = document.getElementById('hn-textarea');
             ta.focus();
             document.getElementById('hn-save').onclick = async () => {
-                await db.ref('opd/clinicMeta/' + date + '/headerNotes').set(ta.value);
+                await set(ref(fbDb, 'opd/clinicMeta/' + date + '/headerNotes'), ta.value);
                 state.editingHeaderNotes = false;
                 renderHeaderNotes();
             };
@@ -2391,7 +2397,7 @@
         updates[`opd/patientVisitIndex/${visit.recordNumber}/${visit.date}`] = true;
 
         setStatus('saving', '儲存中...');
-        await db.ref().update(updates);
+        await update(ref(fbDb), updates);
         setStatus('connected', '已儲存');
     }
 
@@ -2400,7 +2406,7 @@
         updates[`opd/visits/${date}/${recordNumber}`] = null;
         updates[`opd/patientVisitIndex/${recordNumber}/${date}`] = null;
         setStatus('saving', '刪除中...');
-        await db.ref().update(updates);
+        await update(ref(fbDb), updates);
         setStatus('connected', '已刪除');
     }
 
@@ -2408,7 +2414,7 @@
         const date = state.currentClinicDate;
         const visit = (state.visitsByDate?.[date] || {})[recordNumber];
         if (!visit) return;
-        await db.ref(`opd/visits/${date}/${recordNumber}/noShow`).set(!visit.noShow);
+        await set(ref(fbDb, `opd/visits/${date}/${recordNumber}/noShow`), !visit.noShow);
     }
 
     async function toggleConfirm(recordNumber) {
@@ -2423,7 +2429,7 @@
             updates.prepared = false;
             updates.preparedAt = null;
         }
-        await db.ref(`opd/visits/${date}/${recordNumber}`).update(updates);
+        await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
         // RTC 自動傳遞下個版本實作
     }
 
@@ -2435,7 +2441,7 @@
         const updates = { prepared: newPrepared };
         if (newPrepared) updates.preparedAt = Date.now();
         else updates.preparedAt = null;
-        await db.ref(`opd/visits/${date}/${recordNumber}`).update(updates);
+        await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
     }
 
     function copyPlanToClipboard(recordNumber) {
@@ -2949,7 +2955,7 @@
     function loadPatients() {
         if (!db) return;
         setStatus('saving', '載入中...');
-        db.ref('opd/patients').on('value', (snap) => {
+        onValue(ref(fbDb, 'opd/patients'), (snap) => {
             state.patients = snap.val() || {};
             renderPatientMaster();
             setStatus('connected', '已連線');
@@ -2961,7 +2967,7 @@
     }
 
     async function savePatient(patient) {
-        const ref = db.ref('opd/patients/' + patient.recordNumber);
+        const r = ref(fbDb, 'opd/patients/' + patient.recordNumber);
         const now = Date.now();
         const data = {
             ...patient,
@@ -2969,13 +2975,13 @@
             createdAt: state.patients[patient.recordNumber]?.createdAt || now
         };
         setStatus('saving', '儲存中...');
-        await ref.set(data);
+        await set(r, data);
         setStatus('connected', '已儲存');
     }
 
     async function deletePatient(recordNumber) {
         setStatus('saving', '刪除中...');
-        await db.ref('opd/patients/' + recordNumber).remove();
+        await remove(ref(fbDb, 'opd/patients/' + recordNumber));
         setStatus('connected', '已刪除');
     }
 
