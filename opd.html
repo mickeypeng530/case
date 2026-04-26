@@ -2638,7 +2638,6 @@
         document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
 
         renderVisitTagPicker(state.visitTagsTemp);
-        renderProcedurePicker(state.procStatusesTemp);
 
         document.getElementById('visit-paste-input').value = '';
         document.getElementById('visit-paste-status').textContent = '';
@@ -2854,18 +2853,7 @@
             renderVisitTagPicker(state.visitTagsTemp);
         });
 
-        // Procedure status picker（點循環狀態）
-        document.getElementById('v-proc-picker').addEventListener('click', (e) => {
-            const chip = e.target.closest('.tag-chip');
-            if (!chip) return;
-            const proc = chip.dataset.proc;
-            const cur = state.procStatusesTemp[proc];
-            const idx = STATUS_CYCLE.indexOf(cur);
-            const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-            if (next) state.procStatusesTemp[proc] = next;
-            else delete state.procStatusesTemp[proc];
-            renderProcedurePicker(state.procStatusesTemp);
-        });
+        // Procedure status picker 已移除（改用 plan inline [X] badge）
 
         // Paste 解析
         document.getElementById('visit-paste-parse-btn').addEventListener('click', () => {
