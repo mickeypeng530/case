@@ -280,10 +280,25 @@
         /* 欄寬 */
         .col-num    { width: 36px; text-align: center; }
         .col-record { width: 130px; }
+        .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
+        .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
         .col-age    { width: 60px; }
         .col-egfr   { width: 70px; }
         .col-extra  { width: 200px; font-size: 0.82rem; }
         .col-exam   { width: 200px; font-size: 0.82rem; }
+        .visit-table tbody td.col-extra,
+        .visit-table tbody td.col-exam {
+            max-height: 140px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        .visit-table tbody td.col-extra::-webkit-scrollbar,
+        .visit-table tbody td.col-exam::-webkit-scrollbar { width: 4px; }
+        .visit-table tbody td.col-extra::-webkit-scrollbar-thumb,
+        .visit-table tbody td.col-exam::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
         .col-plan   { /* 彈性 */ }
         .col-tags   { width: 130px; }
         .col-actions { width: 110px; }
@@ -1213,9 +1228,14 @@
         const currentValue = state.currentClinicDate || findNearestClinicDate(allDates);
 
         select.innerHTML = allDates.map(d => {
-            const label = formatDateLabel(d.date) + (d.type === 'ad-hoc' ? ' ★加診' : '');
-            return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''}>${label}</option>`;
+            const label = (d.type === 'ad-hoc' ? '★ ' : '') + formatDateLabel(d.date) + (d.type === 'ad-hoc' ? '（加診）' : '');
+            return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''} style="${d.type === 'ad-hoc' ? 'color:#fca5a5;' : ''}">${label}</option>`;
         }).join('');
+
+        // 在 metadata 也標記
+        const isAdHoc = allDates.find(d => d.date === currentValue)?.type === 'ad-hoc';
+        select.style.color = isAdHoc ? '#fca5a5' : '';
+        select.style.fontWeight = isAdHoc ? '600' : '';
 
         if (currentValue && currentValue !== state.currentClinicDate) {
             state.currentClinicDate = currentValue;
@@ -1381,7 +1401,7 @@
               <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
-                    <strong>${escapeHtml(v.recordNumber)}</strong>${p.surname ? ` (${escapeHtml(p.surname)})` : ''}
+                    <span class="record-line"><strong>${escapeHtml(v.recordNumber)}</strong>${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
                     <div class="status-badges">${statusBadges}</div>
                 </td>
                 <td class="col-age">${escapeHtml(p.ageSex || '')}</td>
@@ -1637,9 +1657,12 @@
 
     function renderVisitTagPicker(selected) {
         const wrap = document.getElementById('v-tag-picker');
-        wrap.innerHTML = DEFAULT_TAGS.map(t => `
-            <span class="tag-chip" data-tag="${escapeAttr(t)}" style="cursor:pointer; opacity:${selected.includes(t) ? '1' : '0.35'}; outline:${selected.includes(t) ? '2px solid white' : 'none'};">${escapeHtml(t)}</span>
-        `).join('');
+        wrap.innerHTML = DEFAULT_TAGS.map(t => {
+            const isOn = selected.includes(t);
+            const styleOn = `cursor:pointer; outline:2px solid white; outline-offset:1px;`;
+            const styleOff = `cursor:pointer; background:transparent !important; color:var(--text-secondary) !important; border:1px dashed var(--border);`;
+            return `<span class="tag-chip" data-tag="${escapeAttr(t)}" style="${isOn ? styleOn : styleOff}">${escapeHtml(t)}</span>`;
+        }).join('');
     }
 
     function openVisitModal(recordNumber) {
@@ -1655,7 +1678,8 @@
         document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
         document.getElementById('v-order').value = visit.orderInClinic || '';
         document.getElementById('v-record-number').value = visit.recordNumber || '';
-        document.getElementById('v-record-number').disabled = isEdit;
+        document.getElementById('v-record-number').disabled = false;
+        document.getElementById('v-record-number').dataset.original = visit.recordNumber || '';
         document.getElementById('v-surname').value = patient.surname || '';
         document.getElementById('v-age-sex').value = patient.ageSex || '';
         document.getElementById('v-egfr').value = patient.eGFR || '';
@@ -1707,6 +1731,14 @@
         const date = state.currentClinicDate;
         const recordNumber = document.getElementById('v-record-number').value.trim();
         if (!recordNumber) { alert('請輸入病歷號'); return; }
+
+        // 病歷號變更檢查
+        const original = document.getElementById('v-record-number').dataset.original || '';
+        if (original && original !== recordNumber) {
+            if (!confirm(`病歷號將從「${original}」改為「${recordNumber}」。\n\n這會把本次 visit 搬到新病歷號名下。確定？`)) return;
+            // 刪舊
+            await deleteVisit(date, original);
+        }
 
         const visit = {
             recordNumber,
@@ -1781,6 +1813,7 @@
                 return;
             }
             // 填入 visit 表單
+            if (result.order != null) document.getElementById('v-order').value = result.order;
             document.getElementById('v-record-number').value = result.recordNumber;
             document.getElementById('v-surname').value = result.surname;
             document.getElementById('v-age-sex').value = result.ageSex;
@@ -2005,11 +2038,19 @@
             }
         }
 
+        // 序號：recIdx 之前若有純數字格，取為 orderInClinic
+        let order = null;
+        for (let i = 0; i < recIdx; i++) {
+            const m = parts[i].match(/^\s*(\d+)\s*$/);
+            if (m) { order = parseInt(m[1]); break; }
+        }
+
         return {
             ok: true,
             mode: 'tab',
+            order,
             recordNumber: recMatch[1],
-            surname: (recMatch[2] || '').trim(),
+            surname: (recMatch[2] || '').trim().replace(/\s+/g, ''),
             ageSex: parts[recIdx + 1] || '',
             eGFR: parts[recIdx + 2] || '',
             extra,
@@ -2067,16 +2108,24 @@
         const extra = extraLines.join(' / ');
         const inr = extractINR(extra);
 
+        // 序號：recIdx 之前的純數字行取為 order
+        let order = null;
+        for (let i = 0; i < recIdx; i++) {
+            const m = lines[i].match(/^\s*(\d+)\s*$/);
+            if (m) { order = parseInt(m[1]); break; }
+        }
+
         return {
             ok: true,
             mode: 'line',
+            order,
             recordNumber: recMatch[1],
-            surname: (recMatch[2] || '').trim(),
+            surname: (recMatch[2] || '').trim().replace(/\s+/g, ''),
             ageSex,
             eGFR,
             extra,
             ...inr,
-            tags: [],  // 換行格式無法可靠抓到 tag
+            tags: [],
             exam: examLine,
             plan: planLines.join('\n'),
             partsCount: lines.length
