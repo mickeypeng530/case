@@ -290,9 +290,9 @@
         .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-weight: 600; }
         .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-primary); margin-top: 1px; }
         .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
-        .col-labs   { width: 100px; font-size: 0.76rem; }
-        .col-extra  { width: 140px; font-size: 0.8rem; }
-        .col-exam   { width: 160px; font-size: 0.8rem; }
+        .col-labs   { width: 100px; font-size: 0.85rem; }
+        .col-extra  { width: 140px; font-size: 0.88rem; }
+        .col-exam   { width: 160px; font-size: 0.88rem; }
         .visit-table tbody td.col-extra,
         .visit-table tbody td.col-labs {
             max-height: 130px;
@@ -388,11 +388,11 @@
         }
         .plan-body {
             font-family: 'Noto Sans TC', monospace;
-            font-size: 0.82rem;
+            font-size: 0.9rem;
             line-height: 1.35;
         }
         .patient-summary {
-            font-size: 0.75rem;
+            font-size: 0.82rem;
             line-height: 1.3;
             padding: 3px 6px;
             border-radius: 4px;
@@ -422,7 +422,7 @@
             display: inline-flex;
             padding: 2px 8px;
             border-radius: 10px;
-            font-size: 0.72rem;
+            font-size: 0.8rem;
             color: white;
             white-space: nowrap;
         }
@@ -443,7 +443,7 @@
         .tag-chip[data-status="am"] { background: #c7d2fe !important; color: #3730a3 !important; }
         .tag-chip .status-flag {
             display: inline-block;
-            font-size: 0.65rem;
+            font-size: 0.72rem;
             font-weight: 700;
             margin-left: 3px;
             padding: 0 3px;
@@ -477,7 +477,7 @@
             border: 1px solid rgba(99,102,241,0.3);
             color: #c7d2fe;
             border-radius: 4px;
-            font-size: 0.7rem;
+            font-size: 0.78rem;
         }
         .exam-summary .pill.rtc {
             background: rgba(34,197,94,0.18);
@@ -493,7 +493,7 @@
             display: inline-flex;
             padding: 1px 6px;
             border-radius: 4px;
-            font-size: 0.72rem;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: help;
         }
@@ -534,7 +534,7 @@
             color: var(--text-primary);
             border-radius: 4px;
             font-family: inherit;
-            font-size: 0.66rem;
+            font-size: 0.74rem;
             cursor: pointer;
             white-space: nowrap;
             line-height: 1.2;
@@ -1098,12 +1098,18 @@
             </div>
         </div>
         <div class="field">
-            <label>🦴 骨鬆摘要（病人主表，跨次累積）</label>
-            <textarea id="v-bone-summary" placeholder="例：NHI Prolia 1-3rd (25/03/26, 09/24, 26/04/22) / Forteo 11 doses self paid"></textarea>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>🦴 骨鬆摘要（病人主表，跨次累積）</span>
+                <button type="button" id="v-generate-bone" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">🤖 從 plan 生成</button>
+            </label>
+            <textarea id="v-bone-summary" placeholder="例：Prolia ×3 NHI (25/03/26, 09/24, 26/04/22)"></textarea>
         </div>
         <div class="field">
-            <label>💢 Pain 摘要（病人主表，跨次累積）</label>
-            <textarea id="v-pain-summary" placeholder="例：CT NB ×6 (L spine 4, C 1, SI 1) / HA L×3 R×4 / TAME ×2"></textarea>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>💢 Pain 摘要（病人主表，跨次累積）</span>
+                <button type="button" id="v-generate-pain" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">🤖 從 plan 生成</button>
+            </label>
+            <textarea id="v-pain-summary" placeholder="例：CT NB ×6 (L spine 4, C 1, SI 1) / HA L×3 R×4"></textarea>
         </div>
         <div class="field">
             <label>本次標籤（多選）</label>
@@ -1115,11 +1121,8 @@
             <div style="margin-top: 4px; font-size: 0.7rem; color: var(--text-muted);">點處置切換狀態：無→待→已→PM→AM→無</div>
         </div>
         <div class="field">
-            <label style="display:flex; justify-content:space-between; align-items:center;">
-                <span>本次說明 / 概況（顯示於「本次概況」欄底部）</span>
-                <button type="button" id="v-generate-exam" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.78rem; cursor: pointer;">🤖 從 plan 生成摘要</button>
-            </label>
-            <textarea id="v-exam" style="min-height: 50px;"></textarea>
+            <label>本次說明（visit-level，本次特有評估）</label>
+            <textarea id="v-exam" style="min-height: 50px;" placeholder="例：Recur R radiculopathy / 衛教（運動 飲食）"></textarea>
         </div>
         <div class="field">
             <label>Plan（本次 visit）</label>
@@ -1809,6 +1812,8 @@
         { name: 'Forteo', re: /\bForteo\b/gi },
         { name: 'Fosamax', re: /\bFosamax\b/gi }
     ];
+    const BONE_PROCS = ['Prolia', 'Aclasta', 'Evenity', 'Forteo', 'Fosamax'];
+    const PAIN_PROCS = ['CT NB', 'pRF', 'SONO', 'TAME', 'PRP', 'HA', 'MRI'];
     const RTC_PATTERN = /(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC(\??)/gi;
 
     // 行級日期偵測（line 中所有日期）
@@ -2029,9 +2034,21 @@
                         // 未確認，且本次有 CT NB / TAME / pRF
                         acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / TAME / pRF，請於門診確認">⚠️ 未確認抗凝</span>`;
                     }
+                    // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)
+                    const filteredItems = summary.items.filter(it => {
+                        if (p.bonePlanSummary && BONE_PROCS.includes(it.name)) return false;
+                        if (p.painPlanSummary && PAIN_PROCS.includes(it.name)) return false;
+                        return true;
+                    });
+                    // 手動摘要 chip（hover 顯示全文）
+                    const truncate = (s, n) => (s.length > n ? s.slice(0, n).trim() + '…' : s);
+                    const manualChips = [
+                        p.bonePlanSummary ? `<span class="pill" title="${escapeAttr(p.bonePlanSummary)}" style="background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.4); color: #d8b4fe;">🦴 ${escapeHtml(truncate(p.bonePlanSummary.replace(/\n/g, ' '), 30))}</span>` : '',
+                        p.painPlanSummary ? `<span class="pill" title="${escapeAttr(p.painPlanSummary)}" style="background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); color: #fbcfe8;">💢 ${escapeHtml(truncate(p.painPlanSummary.replace(/\n/g, ' '), 30))}</span>` : ''
+                    ].filter(Boolean).join('');
                     // Procedure auto-summary（done×N，計畫中另外標）+ hover 顯示日期 + NHI/self
-                    const summaryPills = [
-                        ...summary.items.map(it => {
+                    const summaryPills = manualChips + [
+                        ...filteredItems.map(it => {
                             const planNote = it.planned ? `<span style="opacity:0.7;font-size:0.65rem"> +${it.planned}計</span>` : '';
                             // 若 done 都同一付款型，chip 直接顯示
                             const donePayments = (it.dates || []).filter(d => d.kind === 'done').map(d => d.payment).filter(Boolean);
@@ -2062,8 +2079,6 @@
                             `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
                         ).join('')}</div>`;
                     })()}
-                    ${p.bonePlanSummary ? `<div class="patient-summary bone">🦴 ${escapeHtml(p.bonePlanSummary)}</div>` : ''}
-                    ${p.painPlanSummary ? `<div class="patient-summary pain">💢 ${escapeHtml(p.painPlanSummary)}</div>` : ''}
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 3 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
@@ -2543,52 +2558,52 @@
             if (e.target.value !== 'yes') inp.value = '';
         });
 
-        // 「🤖 從 plan 生成本次說明」按鈕
-        document.getElementById('v-generate-exam').addEventListener('click', () => {
+        // 共用：依 procedure 類別生成摘要文字
+        function generateSummaryByCategory(procFilter) {
             const date = state.currentClinicDate;
             const planText = document.getElementById('v-plan').value;
             const summary = summarizePlan(planText, date);
             const lines = [];
-            summary.items.forEach(it => {
-                // done 與 planned 分組顯示
+            summary.items.filter(it => procFilter.includes(it.name)).forEach(it => {
                 const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
                 const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
-
                 const formatGroup = (events) => {
                     if (!events.length) return '';
                     const payments = events.map(e => e.payment).filter(Boolean);
                     const samePayment = payments.length && payments.length === events.length && payments.every(p => p === payments[0]);
                     if (samePayment) {
-                        // Prolia×3 NHI (25/03/26, 09/24, 26/04/22)
                         const dates = events.map(e => e.date).filter(Boolean).join(', ');
                         return `×${events.length} ${payments[0]}${dates ? ` (${dates})` : ''}`;
                     } else {
-                        // 混合或無付款標記：列每個 (NHI 25/03/26, self 04/22) 等
                         const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
                         return `×${events.length} (${parts.join(', ')})`;
                     }
                 };
-
                 const doneStr = formatGroup(doneEvts);
                 const planStr = planEvts.length ? `, 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : '') : '';
-
-                if (doneEvts.length) {
-                    lines.push(`${it.name}${doneStr}${planStr}`);
-                } else if (planEvts.length) {
-                    lines.push(`${it.name} 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : ''));
-                }
+                if (doneEvts.length) lines.push(`${it.name}${doneStr}${planStr}`);
+                else if (planEvts.length) lines.push(`${it.name} 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : ''));
             });
-            if (summary.hasMultiRTC) lines.push(`⚠ 多 RTC: ${summary.rtcDates.join(', ')}`);
-            if (summary.isSelfRTC) lines.push('自我約診');
-            const generated = lines.join('\n');
-            const ta = document.getElementById('v-exam');
+            return lines.join('\n');
+        }
+
+        function fillSummaryField(targetId, generated) {
+            if (!generated) { alert('plan 內未偵測到此類處置'); return; }
+            const ta = document.getElementById(targetId);
             const cur = ta.value.trim();
-            if (cur && !confirm('本次說明已有內容，是否要替換？\n\n（取消會附加在後面）')) {
-                ta.value = cur + '\n\n' + generated;
+            if (cur && !confirm('該欄已有內容，是否要替換？\n\n（取消會附加在後面）')) {
+                ta.value = cur + '\n' + generated;
             } else {
                 ta.value = generated;
             }
             ta.focus();
+        }
+
+        document.getElementById('v-generate-bone').addEventListener('click', () => {
+            fillSummaryField('v-bone-summary', generateSummaryByCategory(BONE_PROCS));
+        });
+        document.getElementById('v-generate-pain').addEventListener('click', () => {
+            fillSummaryField('v-pain-summary', generateSummaryByCategory(PAIN_PROCS));
         });
 
         // Tag picker（單純多選）
