@@ -2124,9 +2124,9 @@
             return;
         }
 
-        // 統計列
-        const came = filtered.filter(v => !v.noShow);
-        const dc = filtered.filter(v => v.noShow);
+        // 統計列（came / dc 後續排序也用）
+        const came = filtered.filter(v => !v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
+        const dc = filtered.filter(v => v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
         const prepared = came.filter(v => v.prepared && v.status !== 'confirmed').length;
         const confirmed = came.filter(v => v.status === 'confirmed').length;
         const tagCounts = {};
@@ -2147,9 +2147,8 @@
             </div>
         `;
 
-        // 排序：noShow=false 在前，按 orderInClinic ASC；DC 後也按 orderInClinic
-        const came = filtered.filter(v => !v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
-        const noShow = filtered.filter(v => v.noShow).sort((a, b) => (a.orderInClinic || 999) - (b.orderInClinic || 999));
+        // 排序：came / dc 已在 stats 區排好，DC 顯示用 noShow 變數
+        const noShow = dc;
 
         const renderRow = (v) => {
             const p = state.patients[v.recordNumber] || {};
