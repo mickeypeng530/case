@@ -292,11 +292,40 @@
         .col-extra  { width: 140px; font-size: 0.8rem; }
         .col-exam   { width: 160px; font-size: 0.8rem; }
         .visit-table tbody td.col-extra,
-        .visit-table tbody td.col-exam,
         .visit-table tbody td.col-labs {
             max-height: 130px;
             overflow-y: auto;
             scrollbar-width: thin;
+        }
+        /* Exam：預設只顯示前 3 行；hover 或 expanded 顯示全部 */
+        .exam-content {
+            max-height: 60px;
+            overflow: hidden;
+            position: relative;
+            transition: max-height 0.15s;
+        }
+        .exam-content.expanded,
+        .exam-content:hover {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .exam-content::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 16px;
+            background: linear-gradient(transparent, var(--bg-secondary));
+            pointer-events: none;
+        }
+        .exam-content.expanded::after,
+        .exam-content:hover::after { display: none; }
+        .exam-content.short::after { display: none; }
+        .exam-toggle {
+            display: inline-block;
+            margin-top: 2px;
+            color: var(--color-info);
+            font-size: 0.72rem;
+            cursor: pointer;
         }
         .visit-table tbody td.col-extra::-webkit-scrollbar,
         .visit-table tbody td.col-exam::-webkit-scrollbar,
@@ -308,7 +337,7 @@
             border-radius: 2px;
         }
         .col-plan   { /* 彈性 */ }
-        .col-tags   { width: 70px; }
+        .col-tags   { width: 56px; }
         .col-actions { width: 90px; }
 
         /* DC divider row */
@@ -415,6 +444,22 @@
             gap: 4px;
             margin-bottom: 4px;
         }
+
+        /* 抗凝劑 icon (放在 Exam 第一行) */
+        .ac-line {
+            margin-bottom: 3px;
+        }
+        .ac-icon {
+            display: inline-flex;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: help;
+        }
+        .ac-icon.ac-yes { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+        .ac-icon.ac-none { background: rgba(34,197,94,0.18); color: #86efac; border: 1px solid rgba(34,197,94,0.4); }
+        .ac-icon.ac-unknown { background: rgba(251,191,36,0.2); color: #fde68a; border: 1px solid rgba(251,191,36,0.4); }
 
         /* Status badges */
         .status-badges {
@@ -957,12 +1002,36 @@
             </datalist>
         </div>
         <div class="field">
-            <label>抽血 / Labs（病人主表，多行；包含 eGFR、Cr、Ca、INR、WBC、Plt 等）</label>
-            <textarea id="v-labs" placeholder="eGFR >60&#10;Cr 0.83&#10;Ca 9.4 (26/04)&#10;INR 1.04 (26/04)&#10;T -2.8 (R hip)" style="min-height: 90px;"></textarea>
+            <label>抽血 / Labs（病人主表）</label>
+            <textarea id="v-labs" placeholder="eGFR >60&#10;Cr 0.83&#10;Ca 9.4 (26/04)&#10;INR 1.04 (26/04)" style="min-height: 60px;"></textarea>
         </div>
         <div class="field">
-            <label>其他背景（病人主表，跨次共用）</label>
-            <textarea id="v-extra" placeholder="過敏、特殊用藥、家族史等"></textarea>
+            <label>骨鬆評估（病人主表）</label>
+            <textarea id="v-bone-score" placeholder="T -2.8 (R hip);  TBS 1.284;  FRAX 9.2/3.1%;  BMD ..." style="min-height: 50px;"></textarea>
+        </div>
+        <div class="field">
+            <label>慢性病史 / PH（病人主表）</label>
+            <textarea id="v-past-history" placeholder="L5 cpfr; L L5/S NF; S/P L1-S1 fixation; NF1; ..."></textarea>
+        </div>
+        <div class="field">
+            <label>抗凝劑 / 抗血小板（病人主表）</label>
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <select id="v-anticoag-state" style="padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
+                    <option value="unknown">未確認</option>
+                    <option value="none">已確認 — 無抗凝</option>
+                    <option value="yes">有用 — 列出藥名</option>
+                </select>
+                <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="可多筆，用 , 分隔" style="flex: 1; min-width: 200px; padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; font-family: inherit; font-size: 0.9rem; display: none;">
+                <datalist id="anticoag-options">
+                    <option value="Aspirin">
+                    <option value="Plavix">
+                    <option value="Lixiana">
+                    <option value="Eliquis">
+                    <option value="Xarelto">
+                    <option value="Pradaxa">
+                    <option value="Warfarin">
+                </datalist>
+            </div>
         </div>
         <div class="field">
             <label>本次標籤（多選）</label>
@@ -1472,7 +1541,7 @@
             // 去除前後空行避免顯示空白
             while (planLines.length && !planLines[0].trim()) planLines.shift();
             while (planLines.length && !planLines[planLines.length - 1].trim()) planLines.pop();
-            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-7);
+            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-3);
             const hasMore = planLines.length > showLines.length;
 
             const summaryPills = [
@@ -1512,8 +1581,27 @@
                     <div class="status-badges">${statusBadges}</div>
                 </td>
                 <td class="col-labs">${escapeHtml(labsDisplay)}</td>
-                <td class="col-extra">${escapeHtml(p.extra || '')}</td>
-                <td class="col-exam">${escapeHtml(v.examEducation || '')}</td>
+                <td class="col-extra">${(() => {
+                    const bs = p.boneScore || '';
+                    const ph = p.pastHistory || p.extra || '';
+                    const parts = [];
+                    if (bs) parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`);
+                    if (ph) parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`);
+                    return parts.join('<br>');
+                })()}</td>
+                <td class="col-exam">${(() => {
+                    const needs = visitNeedsAnticoagCheck(v);
+                    let acIcon = '';
+                    if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
+                        const drugs = (p.anticoagulants || []).map(d => `${escapeHtml(d)} (${getAnticoagHold(d)})`).join(', ');
+                        acIcon = `<span class="ac-icon ac-yes" title="抗凝劑：${drugs}　hold 後再做侵入處置">🩸 ${(p.anticoagulants || []).map(escapeHtml).join('/')}</span>`;
+                    } else if (p.anticoagState === 'none') {
+                        acIcon = `<span class="ac-icon ac-none" title="已確認無抗凝">✅ 無抗凝</span>`;
+                    } else if (needs) {
+                        acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / SONO / TAME，請於門診確認">⚠️ 未確認抗凝</span>`;
+                    }
+                    return `${acIcon ? `<div class="ac-line">${acIcon}</div>` : ''}<div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}">${escapeHtml(v.examEducation || '')}</div>`;
+                })()}</td>
                 <td class="col-plan">
                     ${(() => {
                         const procEntries = Object.entries(v.procedureStatuses || {}).filter(([_, s]) => s);
@@ -1523,7 +1611,7 @@
                         ).join('')}</div>`;
                     })()}
                     <div class="plan-summary">${summaryPills || '<span style="color:var(--text-muted)">（plan 尚未填）</span>'}</div>
-                    <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 7 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
+                    <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 3 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="col-actions">
@@ -1555,7 +1643,7 @@
                   <th class="col-num">#</th>
                   <th class="col-record">病人</th>
                   <th class="col-labs">抽血</th>
-                  <th class="col-extra">背景</th>
+                  <th class="col-extra">慢性病史</th>
                   <th class="col-exam">Exam</th>
                   <th class="col-plan">Plan</th>
                   <th class="col-tags">標籤</th>
@@ -1771,6 +1859,26 @@
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
 
+    // 抗凝劑停藥天數對照
+    const ANTICOAG_HOLD_DAYS = {
+        'Aspirin':  '1–2d',
+        'Plavix':   '5d',
+        'Lixiana':  '2–3d',
+        'Eliquis':  '2–3d',
+        'Xarelto':  '2–3d',
+        'Pradaxa':  '2–3d',
+        'Warfarin': '依 INR'
+    };
+    function getAnticoagHold(name) {
+        const key = Object.keys(ANTICOAG_HOLD_DAYS).find(k => k.toLowerCase() === name.toLowerCase());
+        return key ? ANTICOAG_HOLD_DAYS[key] : '?';
+    }
+    // 是否本次 visit 有 procedure 需要關注抗凝（CT NB / SONO / TAME / pRF）
+    function visitNeedsAnticoagCheck(v) {
+        const ps = v?.procedureStatuses || {};
+        return ['CT NB', 'SONO', 'TAME', 'pRF'].some(k => ps[k]);
+    }
+
     function renderProcedurePicker(statuses) {
         const wrap = document.getElementById('v-proc-picker');
         if (!wrap) return;
@@ -1821,7 +1929,16 @@
             labsValue = synthesized.join('\n');
         }
         document.getElementById('v-labs').value = labsValue;
-        document.getElementById('v-extra').value = patient.extra || '';
+        document.getElementById('v-bone-score').value = patient.boneScore || '';
+        // pastHistory 取代 extra；舊資料 fallback 從 extra 帶
+        document.getElementById('v-past-history').value = patient.pastHistory || patient.extra || '';
+
+        // 抗凝劑 state 載入
+        const acState = patient.anticoagState || (patient.anticoagulants && patient.anticoagulants.length ? 'yes' : 'unknown');
+        document.getElementById('v-anticoag-state').value = acState;
+        document.getElementById('v-anticoag-list').value = (patient.anticoagulants || []).join(', ');
+        document.getElementById('v-anticoag-list').style.display = (acState === 'yes') ? 'inline-block' : 'none';
+
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
         document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
@@ -1896,6 +2013,11 @@
         };
         const ageSexInput = document.getElementById('v-age-sex').value.trim();
         const parsed = parseAgeSex(ageSexInput, date);
+        const acState = document.getElementById('v-anticoag-state').value;
+        const acListRaw = document.getElementById('v-anticoag-list').value.trim();
+        const anticoagulants = (acState === 'yes' && acListRaw)
+            ? acListRaw.split(/[,，、]+/).map(s => s.trim()).filter(Boolean)
+            : [];
         const patientPartial = {
             recordNumber,
             surname: document.getElementById('v-surname').value.trim(),
@@ -1904,7 +2026,10 @@
             sex: parsed?.sex || '',
             referrer: document.getElementById('v-referrer').value.trim(),
             labs: document.getElementById('v-labs').value.trim(),
-            extra: document.getElementById('v-extra').value.trim()
+            boneScore: document.getElementById('v-bone-score').value.trim(),
+            pastHistory: document.getElementById('v-past-history').value.trim(),
+            anticoagState: acState,
+            anticoagulants
         };
 
         try {
@@ -1938,6 +2063,13 @@
 
         // 病歷號失焦自動帶資料
         document.getElementById('v-record-number').addEventListener('blur', autoFillFromPatientLookup);
+
+        // 抗凝劑 state 切換 → 顯示/隱藏藥名輸入
+        document.getElementById('v-anticoag-state').addEventListener('change', (e) => {
+            const inp = document.getElementById('v-anticoag-list');
+            inp.style.display = (e.target.value === 'yes') ? 'inline-block' : 'none';
+            if (e.target.value !== 'yes') inp.value = '';
+        });
 
         // Tag picker（單純多選）
         document.getElementById('v-tag-picker').addEventListener('click', (e) => {
@@ -1981,11 +2113,13 @@
 
             const refDetected = extractReferrer(result.extra);
             const labStuff = extractLabs(result.extra);
-            // 把 eGFR、INR 也加進 labs（用換行分隔，方便閱讀）
+            // 把 eGFR 與 labs 整合；如果 labStuff.labs 已含 INR 則不重複加
             const labLines = [];
             if (result.eGFR) labLines.push(`eGFR ${result.eGFR}`);
             if (labStuff.labs) labLines.push(labStuff.labs);
-            if (result.INR) labLines.push(`INR ${result.INR}${result.INRDate ? ` (${result.INRDate})` : ''}`);
+            if (result.INR && !/INR/i.test(labStuff.labs || '')) {
+                labLines.push(`INR ${result.INR}${result.INRDate ? ` (${result.INRDate})` : ''}`);
+            }
             const labsCombined = labLines.join('\n');
 
             document.getElementById('v-referrer').value = refDetected;
