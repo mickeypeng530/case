@@ -1339,20 +1339,7 @@
             try {
                 await setPersistence(fbAuth, browserLocalPersistence);
                 const provider = new GoogleAuthProvider();
-                // 先試 popup（最可靠）。若 PWA standalone 失敗 → fallback 用 redirect
-                try {
-                    await signInWithPopup(fbAuth, provider);
-                } catch (popupErr) {
-                    console.warn('Popup failed, falling back to redirect:', popupErr.code);
-                    if (popupErr.code === 'auth/popup-blocked'
-                        || popupErr.code === 'auth/popup-closed-by-user'
-                        || popupErr.code === 'auth/cancelled-popup-request'
-                        || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
-                        await signInWithRedirect(fbAuth, provider);
-                    } else {
-                        throw popupErr;
-                    }
-                }
+                await signInWithPopup(fbAuth, provider);
             } catch (err) {
                 showLoginError(err);
             }
@@ -1370,13 +1357,6 @@
             if (isMobile) {
                 document.body.classList.add('mobile-readonly');
             }
-
-            // 處理 redirect 回傳（PWA / standalone 模式 Google 登入用）
-            getRedirectResult(fbAuth).catch((err) => {
-                if (err.code !== 'auth/no-auth-event') {
-                    showLoginError(err);
-                }
-            });
 
             // 監聽登入狀態
             onAuthStateChanged(fbAuth, (user) => {
