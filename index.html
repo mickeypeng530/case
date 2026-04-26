@@ -1337,7 +1337,6 @@
             info.style.display = 'block';
 
             try {
-                await setPersistence(fbAuth, browserLocalPersistence);
                 const provider = new GoogleAuthProvider();
                 await signInWithPopup(fbAuth, provider);
             } catch (err) {
