@@ -282,9 +282,8 @@
         .col-record { width: 110px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
         .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-weight: 600; }
-        .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-secondary); }
-        .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-muted); font-style: italic; }
-        .visit-table tbody td.col-record .egfr-line { font-size: 0.74rem; color: var(--text-muted); }
+        .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-primary); margin-top: 1px; }
+        .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
         .col-labs   { width: 140px; font-size: 0.78rem; }
         .col-extra  { width: 140px; font-size: 0.8rem; }
         .col-exam   { width: 160px; font-size: 0.8rem; }
@@ -323,11 +322,12 @@
         .plan-summary {
             display: flex;
             flex-wrap: wrap;
-            gap: 4px 10px;
-            margin-bottom: 6px;
-            padding-bottom: 6px;
-            border-bottom: 1px dashed rgba(255,255,255,0.1);
-            font-size: 0.78rem;
+            gap: 2px 6px;
+            margin-bottom: 2px;
+            padding: 0;
+            border: none;
+            font-size: 0.72rem;
+            line-height: 1.3;
             color: var(--text-secondary);
         }
         .plan-summary .pill {
@@ -354,7 +354,6 @@
             font-size: 0.82rem;
             line-height: 1.35;
         }
-        .plan-summary { margin-bottom: 4px; padding-bottom: 4px; }
         .plan-body .more-toggle {
             display: inline-block;
             margin-top: 4px;
