@@ -285,7 +285,7 @@
 
         /* 欄寬 */
         .col-num    { width: 36px; text-align: center; }
-        .col-record { width: 110px; }
+        .col-record { width: 120px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
         .visit-table tbody td.col-record .record-line {
             overflow: hidden;
@@ -293,13 +293,15 @@
             white-space: nowrap;
             display: block;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
         }
-        .visit-table tbody td.col-record .record-line .age-inline {
-            font-weight: 400;
-            font-size: 0.78rem;
-            color: var(--text-secondary);
-            margin-left: 4px;
+        .visit-table tbody td.col-record .age-line {
+            font-size: 0.76rem;
+            color: var(--text-primary);
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
         .col-labs   { width: 100px; font-size: 0.85rem; }
@@ -446,6 +448,20 @@
         .inline-badge.ib-am { background: rgba(199,210,254,0.85); color: #3730a3; }
         .inline-badge.ib-appt { background: rgba(251,146,60,0.85); color: #7c2d12; }
         .inline-badge.ib-gray { background: rgba(148,163,184,0.5); color: var(--text-primary); }
+        /* procedure × status combos */
+        .inline-badge.ib-songyi { background: rgba(253,230,138,0.85); color: #78350f; }     /* 鬆已 黃 */
+        .inline-badge.ib-mriyi { background: rgba(196,181,253,0.85); color: #4c1d95; }       /* MRI已 紫 */
+        .inline-badge.ib-ctnbyi { background: rgba(251,146,60,0.85); color: #7c2d12; }       /* CT NB已 橘 */
+        .inline-badge.ib-sonopm { background: rgba(96,165,250,0.85); color: #1e3a8a; }       /* SONO PM 淺藍 */
+        .inline-badge.ib-sonoyue { background: rgba(30,64,175,0.85); color: #dbeafe; }       /* SONO 約 深藍 */
+        /* 本次 anchor — 醒目 */
+        .inline-badge.ib-anchor {
+            background: rgba(99,102,241,0.7);
+            color: white;
+            font-weight: 700;
+            padding: 1px 8px;
+            box-shadow: 0 0 0 1px #6366f1 inset;
+        }
 
         /* Tag chips in row */
         .visit-tags {
@@ -468,7 +484,7 @@
         .visit-tags .tag-chip[data-tag="TAME"] { background: #3b82f6; }
         .visit-tags .tag-chip[data-tag="MRI"] { background: #c4b5fd; color: #1a1a2e; }
         .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
-        .visit-tags .tag-chip[data-tag="follow up"] { background: #64748b; }
+        .visit-tags .tag-chip[data-tag="f/u"] { background: #64748b; }
         .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
 
         /* Procedure status overlay：覆蓋背景色 */
@@ -619,6 +635,9 @@
         }
         .row-actions button:hover { background: var(--bg-secondary); }
         .row-actions button.confirmed { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
+        .row-actions button.prepared { background: rgba(34,197,94,0.4); border-color: rgba(34,197,94,0.6); color: #f0fdf4; }
+        /* 已備的 row：lab 欄背景變綠 */
+        tr.prepared td.col-labs { background: rgba(34,197,94,0.12); }
 
         /* Header notes 區塊 */
         .header-notes {
@@ -1194,27 +1213,32 @@
             <div class="visit-tags" id="v-tag-picker" style="gap: 6px;"></div>
         </div>
         <div class="field">
-            <label>本次處置狀態（顯示於 Plan 上方）</label>
-            <div class="visit-tags" id="v-proc-picker" style="gap: 6px;"></div>
-            <div style="margin-top: 4px; font-size: 0.7rem; color: var(--text-muted);">點處置切換狀態：無→待→已→PM→AM→無</div>
-        </div>
-        <div class="field">
             <label>本次說明（visit-level，本次特有評估）</label>
             <textarea id="v-exam" style="min-height: 50px;" placeholder="例：Recur R radiculopathy / 衛教（運動 飲食）"></textarea>
         </div>
         <div class="field">
             <label>Plan（本次 visit）</label>
             <textarea id="v-plan" style="min-height: 140px; font-family: 'Noto Sans TC', monospace;"></textarea>
-            <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
-                <span style="font-size: 0.74rem; color: var(--text-muted);">點插入到游標位置：</span>
-                <button type="button" data-insert="[待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.3); color: #fbcfe8; border: 1px solid rgba(251,207,232,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[待]</button>
-                <button type="button" data-insert="[已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.3); color: #fde68a; border: 1px solid rgba(253,230,138,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[已]</button>
-                <button type="button" data-insert="[PM]" class="plan-insert-btn" style="background: rgba(191,219,254,0.3); color: #bfdbfe; border: 1px solid rgba(191,219,254,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[PM]</button>
-                <button type="button" data-insert="[AM]" class="plan-insert-btn" style="background: rgba(199,210,254,0.3); color: #c7d2fe; border: 1px solid rgba(199,210,254,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[AM]</button>
-                <button type="button" data-insert="[約]" class="plan-insert-btn" style="background: rgba(251,146,60,0.3); color: #fdba74; border: 1px solid rgba(251,146,60,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[約]</button>
-                <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 2px;"></span>
-                <button type="button" data-insert="[鬆 已]" class="plan-insert-btn" style="background: rgba(168,85,247,0.25); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 已]</button>
-                <button type="button" data-insert="[鬆 待]" class="plan-insert-btn" style="background: rgba(168,85,247,0.25); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 待]</button>
+            <div style="margin-top: 4px; font-size: 0.74rem; color: var(--text-muted);">點插入到游標位置：</div>
+            <div style="margin-top: 2px; display: flex; gap: 3px; flex-wrap: wrap; align-items: center;" id="v-plan-insert-row">
+                <button type="button" data-insert="[本次]" class="plan-insert-btn" style="background: rgba(99,102,241,0.4); color: white; border: 1px solid #6366f1; padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer; font-weight: 600;">[本次]</button>
+                <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 4px;"></span>
+                <button type="button" data-insert="[待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[待]</button>
+                <button type="button" data-insert="[已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[已]</button>
+                <button type="button" data-insert="[PM]" class="plan-insert-btn" style="background: rgba(191,219,254,0.6); color: #1e3a8a; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[PM]</button>
+                <button type="button" data-insert="[AM]" class="plan-insert-btn" style="background: rgba(199,210,254,0.6); color: #3730a3; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[AM]</button>
+                <button type="button" data-insert="[約]" class="plan-insert-btn" style="background: rgba(251,146,60,0.5); color: #7c2d12; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[約]</button>
+                <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 4px;"></span>
+                <button type="button" data-insert="[鬆 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 已]</button>
+                <button type="button" data-insert="[鬆 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 待]</button>
+                <button type="button" data-insert="[CT NB 已]" class="plan-insert-btn" style="background: rgba(251,146,60,0.5); color: #7c2d12; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[CT NB 已]</button>
+                <button type="button" data-insert="[CT NB 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[CT NB 待]</button>
+                <button type="button" data-insert="[MRI 已]" class="plan-insert-btn" style="background: rgba(196,181,253,0.6); color: #4c1d95; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[MRI 已]</button>
+                <button type="button" data-insert="[MRI 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[MRI 待]</button>
+                <button type="button" data-insert="[SONO PM]" class="plan-insert-btn" style="background: rgba(96,165,250,0.5); color: #1e3a8a; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO PM]</button>
+                <button type="button" data-insert="[SONO 約]" class="plan-insert-btn" style="background: rgba(30,64,175,0.6); color: #dbeafe; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO 約]</button>
+                <button type="button" data-insert="[TAME 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 已]</button>
+                <button type="button" data-insert="[TAME 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 待]</button>
             </div>
         </div>
         <div class="actions">
@@ -2022,24 +2046,42 @@
         if (trimmed.startsWith('*')) cls = 'plan-line done';
         else if (trimmed.startsWith('-')) cls = 'plan-line plan';
         else if (/RTC/i.test(trimmed)) cls = 'plan-line rtc-line';
-        // 把 [X] inline badge 渲染（只匹配方括號內單行短文字，避免抓到大段）
+        // 把 [X] inline badge 渲染：依 procedure + status 組合配色
         const escaped = escapeHtml(trimmed);
-        const withBadges = escaped.replace(/\[([^\]\n]{1,12})\]/g, (_, content) => {
+        const withBadges = escaped.replace(/\[([^\]\n]{1,16})\]/g, (_, content) => {
             const c = content.trim();
-            let badgeColor = 'gray';
-            if (/^已|done/i.test(c)) badgeColor = 'done';
-            else if (/^待|pending/i.test(c)) badgeColor = 'pending';
-            else if (/^PM/i.test(c)) badgeColor = 'pm';
-            else if (/^AM/i.test(c)) badgeColor = 'am';
-            else if (/^約|appt/i.test(c)) badgeColor = 'appt';
-            else if (/已$|done$/i.test(c)) badgeColor = 'done';
-            else if (/待$|pending$/i.test(c)) badgeColor = 'pending';
-            else if (/PM$/i.test(c)) badgeColor = 'pm';
-            else if (/AM$/i.test(c)) badgeColor = 'am';
-            else if (/約$/i.test(c)) badgeColor = 'appt';
-            return `<span class="inline-badge ib-${badgeColor}">${escapeHtml(c)}</span>`;
+            const cls = pickBadgeClass(c);
+            return `<span class="inline-badge ${cls}">${escapeHtml(c)}</span>`;
         });
         return `<span class="${cls}">${withBadges}</span>`;
+    }
+
+    function pickBadgeClass(c) {
+        // 「本次」 anchor
+        if (/^(本次|today|本日)$/i.test(c)) return 'ib-anchor';
+        // procedure + status 組合
+        if (/鬆.*已|鬆.*done/i.test(c)) return 'ib-songyi';
+        if (/鬆.*待|鬆.*pending/i.test(c)) return 'ib-pending';
+        if (/MRI.*已/i.test(c)) return 'ib-mriyi';
+        if (/MRI.*待/i.test(c)) return 'ib-pending';
+        if (/CT\s*NB.*已/i.test(c)) return 'ib-ctnbyi';
+        if (/CT\s*NB.*待/i.test(c)) return 'ib-pending';
+        if (/SONO.*PM/i.test(c)) return 'ib-sonopm';
+        if (/SONO.*約/i.test(c)) return 'ib-sonoyue';
+        if (/TAME.*已/i.test(c)) return 'ib-done';
+        if (/TAME.*待/i.test(c)) return 'ib-pending';
+        // 通用 status
+        if (/^已$|^done$/i.test(c)) return 'ib-done';
+        if (/^待$|^pending$/i.test(c)) return 'ib-pending';
+        if (/^PM$/i.test(c)) return 'ib-pm';
+        if (/^AM$/i.test(c)) return 'ib-am';
+        if (/^約$|^appt$/i.test(c)) return 'ib-appt';
+        if (/已$|done$/i.test(c)) return 'ib-done';
+        if (/待$|pending$/i.test(c)) return 'ib-pending';
+        if (/PM$/i.test(c)) return 'ib-pm';
+        if (/AM$/i.test(c)) return 'ib-am';
+        if (/約$/i.test(c)) return 'ib-appt';
+        return 'ib-gray';
     }
 
     // ========== Visit table 渲染 ==========
@@ -2078,7 +2120,10 @@
             // 去除前後空行避免顯示空白
             while (planLines.length && !planLines[0].trim()) planLines.shift();
             while (planLines.length && !planLines[planLines.length - 1].trim()) planLines.pop();
-            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-4);
+            // [本次] / [today] anchor：找到該行 → 預設從這行到底全顯示
+            const anchorIdx = planLines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+            const defaultShow = anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines.slice(-4);
+            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : defaultShow;
             const hasMore = planLines.length > showLines.length;
 
             const summaryPills = [
@@ -2109,10 +2154,11 @@
             // 如果 patient 殘留 referrer-like 內容在 eGFR（legacy bug），自動把它當 referrer 顯示
             const referrerDisplay = p.referrer || (p.eGFR && !isValidEGFR(p.eGFR) ? p.eGFR : '');
             return `
-              <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
+              <tr class="${v.noShow ? 'no-show' : ''} ${v.prepared && v.status !== 'confirmed' ? 'prepared' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
-                    <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}${ageDisplay ? `<span class="age-inline">${escapeHtml(ageDisplay)}</span>` : ''}</span>
+                    <span class="record-line">${escapeHtml(v.recordNumber)}</span>
+                    <div class="age-line">${p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}${ageDisplay ? ` ${escapeHtml(ageDisplay)}` : ''}</div>
                     ${referrerDisplay ? `<div class="ref-line">${escapeHtml(referrerDisplay)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
                 </td>
@@ -2130,9 +2176,10 @@
                     const needs = visitNeedsAnticoagCheck(v);
                     let acIcon = '';
                     if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
-                        // 有抗凝藥永遠顯示 🩸 + 藥名（hover 顯示 hold 天數）
-                        const drugs = (p.anticoagulants || []).map(d => `${escapeHtml(d)} hold ${getAnticoagHold(d)}`).join('；');
-                        acIcon = `<span class="ac-icon ac-yes" title="抗凝劑（侵入處置前需 hold）：${drugs}">🩸 ${(p.anticoagulants || []).map(escapeHtml).join('/')}</span>`;
+                        // 有抗凝藥：chip 顯示藥名（簡潔），hover 跳紫色 popover 顯示 hold 天數
+                        const drugNames = (p.anticoagulants || []).map(escapeHtml).join('/');
+                        const holdInfo = (p.anticoagulants || []).map(d => `${d} hold ${getAnticoagHold(d)}`).join('\n');
+                        acIcon = `<span class="ac-icon ac-yes pill expandable" data-full="${escapeAttr(holdInfo)}"><span class="pill-text">🩸 ${drugNames}</span></span>`;
                     } else if (needs && p.anticoagState === 'none') {
                         // 只在本次有 CT NB / TAME / pRF 時，秀「✅ 已確認無」
                         acIcon = `<span class="ac-icon ac-none" title="已確認無抗凝">✅ 無抗凝</span>`;
@@ -2172,20 +2219,16 @@
                     `;
                 })()}</td>
                 <td class="col-plan">
-                    ${(() => {
-                        const procEntries = Object.entries(v.procedureStatuses || {}).filter(([_, s]) => s);
-                        if (!procEntries.length) return '';
-                        return `<div class="proc-status-bar">${procEntries.map(([p, s]) =>
-                            `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
-                        ).join('')}</div>`;
-                    })()}
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
                         <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">✏️ 編輯</button>
-                        <button data-action="confirm" data-record="${escapeAttr(v.recordNumber)}" class="${v.status === 'confirmed' ? 'confirmed' : ''}">${v.status === 'confirmed' ? '✓ 已確認' : '✓ 確認'}</button>
+                        <div style="display: flex; gap: 3px;">
+                            <button data-action="prep" data-record="${escapeAttr(v.recordNumber)}" class="${v.prepared ? 'prepared' : ''}" style="flex: 1;">${v.prepared ? '✓ 備' : '備'}</button>
+                            <button data-action="confirm" data-record="${escapeAttr(v.recordNumber)}" class="${v.status === 'confirmed' ? 'confirmed' : ''}" style="flex: 1;">${v.status === 'confirmed' ? '✓ 確' : '確'}</button>
+                        </div>
                         <button data-action="copy-plan" data-record="${escapeAttr(v.recordNumber)}">📋 複製</button>
                         <button data-action="toggle-dc" data-record="${escapeAttr(v.recordNumber)}">${v.noShow ? '↑ 移回' : '↓ 移 DC'}</button>
                     </div>
@@ -2326,9 +2369,25 @@
         if (!visit) return;
         const newStatus = visit.status === 'confirmed' ? 'draft' : 'confirmed';
         const updates = { status: newStatus };
-        if (newStatus === 'confirmed') updates.confirmedAt = Date.now();
+        if (newStatus === 'confirmed') {
+            updates.confirmedAt = Date.now();
+            // 確認後 prepared 自動清除（門診已完成）
+            updates.prepared = false;
+            updates.preparedAt = null;
+        }
         await db.ref(`opd/visits/${date}/${recordNumber}`).update(updates);
         // RTC 自動傳遞下個版本實作
+    }
+
+    async function togglePrepared(recordNumber) {
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        if (!visit) return;
+        const newPrepared = !visit.prepared;
+        const updates = { prepared: newPrepared };
+        if (newPrepared) updates.preparedAt = Date.now();
+        else updates.preparedAt = null;
+        await db.ref(`opd/visits/${date}/${recordNumber}`).update(updates);
     }
 
     function copyPlanToClipboard(recordNumber) {
@@ -2428,6 +2487,7 @@
             const rec = btn.dataset.record;
             const action = btn.dataset.action;
             if (action === 'confirm') toggleConfirm(rec);
+            else if (action === 'prep') togglePrepared(rec);
             else if (action === 'copy-plan') copyPlanToClipboard(rec);
             else if (action === 'edit') openVisitModal(rec);
             else if (action === 'toggle-dc') toggleNoShow(rec);
@@ -2438,7 +2498,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'follow up', 'med'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
