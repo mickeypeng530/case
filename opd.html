@@ -387,6 +387,15 @@
             font-size: 0.82rem;
             line-height: 1.35;
         }
+        .patient-summary {
+            font-size: 0.75rem;
+            line-height: 1.3;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin-bottom: 3px;
+        }
+        .patient-summary.bone { background: rgba(168,85,247,0.12); color: #d8b4fe; border-left: 2px solid #a855f7; }
+        .patient-summary.pain { background: rgba(236,72,153,0.12); color: #fbcfe8; border-left: 2px solid #ec4899; }
         .plan-body .more-toggle {
             display: inline-block;
             margin-top: 4px;
@@ -1061,6 +1070,14 @@
             </div>
         </div>
         <div class="field">
+            <label>🦴 骨鬆摘要（病人主表，跨次累積）</label>
+            <textarea id="v-bone-summary" placeholder="例：NHI Prolia 1-3rd (25/03/26, 09/24, 26/04/22) / Forteo 11 doses self paid"></textarea>
+        </div>
+        <div class="field">
+            <label>💢 Pain 摘要（病人主表，跨次累積）</label>
+            <textarea id="v-pain-summary" placeholder="例：CT NB ×6 (L spine 4, C 1, SI 1) / HA L×3 R×4 / TAME ×2"></textarea>
+        </div>
+        <div class="field">
             <label>本次標籤（多選）</label>
             <div class="visit-tags" id="v-tag-picker" style="gap: 6px;"></div>
         </div>
@@ -1524,22 +1541,40 @@
         const counts = {};  // { name: { done, planned } }
         PROC_KEYWORDS.forEach(k => { counts[k.name] = { done: 0, planned: 0 }; });
 
+        // 只抓「明確帶年份」的日期（YY/MM/DD 或 YYYY/MM/DD）
+        const EXPLICIT_YEAR_DATE = /\b(\d{2,4})\/(\d{1,2})\/(\d{1,2})\b/g;
         lines.forEach(line => {
             if (!line.trim()) return;
-            // 排除討論行（含 Consider / may / favor 等）
-            const isDiscuss = DISCUSS_PATTERN.test(line);
-            const dates = extractLineDates(line, today);
-            const hasFutureDate = dates.some(d => d > today);
-            const hasPastOrToday = dates.some(d => d <= today);
+            // 排除討論行
+            if (DISCUSS_PATTERN.test(line)) return;
+
+            // 是否 * 開頭（用戶習慣 * = 已完成）
+            const starsMatch = line.trim().match(/^\*\s*/);
+            const isAnchor = !!starsMatch;
+
+            // 找有明確年份的日期
+            const explicitDates = [];
+            let m;
+            const re = new RegExp(EXPLICIT_YEAR_DATE.source, 'g');
+            while ((m = re.exec(line)) !== null) {
+                let yy = m[1];
+                if (yy.length === 2) yy = '20' + yy;
+                explicitDates.push(`${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
+            }
+            const hasExplicitFuture = explicitDates.some(d => d > today);
+            const hasExplicitPastOrToday = explicitDates.some(d => d <= today);
 
             PROC_KEYWORDS.forEach(k => {
                 const matches = line.match(k.re);
                 if (!matches || !matches.length) return;
-                if (isDiscuss) return;  // 討論行不計
-                if (hasFutureDate && !hasPastOrToday) {
+                if (isAnchor) {
+                    // * 開頭一律 done
+                    counts[k.name].done += matches.length;
+                } else if (hasExplicitFuture && !hasExplicitPastOrToday) {
+                    // 明確未來日期，無過去 → planned
                     counts[k.name].planned += matches.length;
                 } else {
-                    // 有過去/今日日期，或無日期（默認當完成）
+                    // 其他（- 開頭無明確日期、僅 MM/DD 等）→ done
                     counts[k.name].done += matches.length;
                 }
             });
@@ -1702,6 +1737,8 @@
                             `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
                         ).join('')}</div>`;
                     })()}
+                    ${p.bonePlanSummary ? `<div class="patient-summary bone">🦴 ${escapeHtml(p.bonePlanSummary)}</div>` : ''}
+                    ${p.painPlanSummary ? `<div class="patient-summary pain">💢 ${escapeHtml(p.painPlanSummary)}</div>` : ''}
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 3 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
@@ -1735,7 +1772,7 @@
                   <th class="col-record">病人</th>
                   <th class="col-labs">抽血</th>
                   <th class="col-extra">慢性病史</th>
-                  <th class="col-exam">Exam</th>
+                  <th class="col-exam">本次概況</th>
                   <th class="col-plan">Plan</th>
                   <th class="col-tags">標籤</th>
                   <th class="col-actions">操作</th>
@@ -2030,6 +2067,9 @@
         document.getElementById('v-anticoag-list').value = (patient.anticoagulants || []).join(', ');
         document.getElementById('v-anticoag-list').style.display = (acState === 'yes') ? 'inline-block' : 'none';
 
+        document.getElementById('v-bone-summary').value = patient.bonePlanSummary || '';
+        document.getElementById('v-pain-summary').value = patient.painPlanSummary || '';
+
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
         document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
@@ -2120,7 +2160,9 @@
             boneScore: document.getElementById('v-bone-score').value.trim(),
             pastHistory: document.getElementById('v-past-history').value.trim(),
             anticoagState: acState,
-            anticoagulants
+            anticoagulants,
+            bonePlanSummary: document.getElementById('v-bone-summary').value.trim(),
+            painPlanSummary: document.getElementById('v-pain-summary').value.trim()
         };
 
         try {
