@@ -1353,10 +1353,19 @@
         try {
             await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
             const provider = new firebase.auth.GoogleAuthProvider();
-            if (isStandaloneMode()) {
-                await firebase.auth().signInWithRedirect(provider);
-            } else {
+            // 先試 popup，失敗 fallback 到 redirect
+            try {
                 await firebase.auth().signInWithPopup(provider);
+            } catch (popupErr) {
+                console.warn('Popup failed, falling back to redirect:', popupErr.code);
+                if (popupErr.code === 'auth/popup-blocked'
+                    || popupErr.code === 'auth/popup-closed-by-user'
+                    || popupErr.code === 'auth/cancelled-popup-request'
+                    || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
+                    await firebase.auth().signInWithRedirect(provider);
+                } else {
+                    throw popupErr;
+                }
             }
         } catch (err) {
             showLoginError(err);
