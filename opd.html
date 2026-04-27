@@ -551,6 +551,7 @@
         .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
         .visit-tags .tag-chip[data-tag="f/u"] { background: #64748b; }
         .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
+        .visit-tags .tag-chip[data-tag="回診"] { background: #6366f1; }
 
         /* Procedure status overlay：覆蓋背景色 */
         .tag-chip[data-status="pending"] { background: #fbcfe8 !important; color: #831843 !important; }
@@ -681,6 +682,8 @@
         .status-badge.warning { background: rgba(251,191,36,0.3); color: #fde68a; }
         .status-badge.propagated { background: rgba(99,102,241,0.25); color: #c7d2fe; }
         .status-badge.propagated-from { background: rgba(139,92,246,0.25); color: #ddd6fe; }
+        .status-badge.clickable { cursor: pointer; }
+        .status-badge.clickable:hover { filter: brightness(1.4); }
 
         /* Row actions */
         .row-actions {
@@ -2235,8 +2238,8 @@
                 p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
                 summary.isSelfRTC ? '<span class="status-badge self-rtc">自約</span>' : '',
                 summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : '',
-                v.propagatedTo ? `<span class="status-badge propagated" title="已傳遞到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
-                v.propagatedFrom ? `<span class="status-badge propagated-from" title="從 ${escapeAttr(v.propagatedFrom)} 傳來">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
+                v.propagatedTo ? `<span class="status-badge propagated clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
+                v.propagatedFrom ? `<span class="status-badge propagated-from clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
             ].filter(Boolean).join('');
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
@@ -2524,7 +2527,7 @@
             status: 'draft',
             plan: visit.plan || '',
             examEducation: '',
-            tags: [],
+            tags: ['回診'],
             anticoagState: 'unknown',
             anticoagulants: [],
             bonePlanSummary: visit.bonePlanSummary || '',
@@ -2598,6 +2601,7 @@
             'PRP':   { bg: 'EC4899', fg: 'FFFFFF' },
             'f/u':   { bg: '64748B', fg: 'FFFFFF' },
             'med':   { bg: 'F97316', fg: 'FFFFFF' },
+            '回診':  { bg: '6366F1', fg: 'FFFFFF' },
             'other': { bg: '94A3B8', fg: 'FFFFFF' },
             '確':    { bg: '16A34A', fg: 'FFFFFF' }
         };
@@ -2829,6 +2833,15 @@
                 renderVisitList();
                 return;
             }
+            const jump = e.target.closest('[data-jump-date]');
+            if (jump) {
+                const target = jump.dataset.jumpDate;
+                onClinicDateChanged(target);
+                localStorage.setItem('opd:currentClinicDate', target);
+                state.currentClinicDate = target;
+                renderClinicDateSelector();
+                return;
+            }
             const btn = e.target.closest('button[data-action]');
             const more = e.target.closest('.more-toggle');
             if (more) {
@@ -2854,7 +2867,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med', '回診', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
