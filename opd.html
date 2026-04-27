@@ -380,6 +380,47 @@
             gap: 4px;
             flex-wrap: wrap;
         }
+        .stats-bar .stat-tags .tag-chip { cursor: pointer; }
+        .stats-bar .stat-tags .tag-chip.active {
+            outline: 2px solid var(--text-primary);
+            outline-offset: 1px;
+        }
+        .stat-tag-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            font-size: 0.82rem;
+        }
+        .stat-tag-panel .stp-title {
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-size: 0.78rem;
+        }
+        .stat-tag-panel .stp-row {
+            display: flex;
+            gap: 10px;
+            padding: 3px 0;
+            border-top: 1px dashed var(--border);
+            align-items: baseline;
+        }
+        .stat-tag-panel .stp-row:first-of-type { border-top: 0; }
+        .stat-tag-panel .stp-rec {
+            color: var(--accent);
+            font-weight: 600;
+            font-family: monospace;
+            min-width: 80px;
+        }
+        .stat-tag-panel .stp-name {
+            color: var(--text-primary);
+            min-width: 90px;
+        }
+        .stat-tag-panel .stp-tags {
+            display: inline-flex;
+            gap: 3px;
+            flex-wrap: wrap;
+        }
         /* DC divider row */
         tr.dc-divider td {
             text-align: center;
@@ -638,6 +679,8 @@
         .status-badge.first-visit { background: rgba(239,68,68,0.2); color: #fca5a5; }
         .status-badge.self-rtc { background: rgba(245,158,11,0.2); color: #fde68a; }
         .status-badge.warning { background: rgba(251,191,36,0.3); color: #fde68a; }
+        .status-badge.propagated { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+        .status-badge.propagated-from { background: rgba(139,92,246,0.25); color: #ddd6fe; }
 
         /* Row actions */
         .row-actions {
@@ -960,6 +1003,8 @@
     </style>
     <!-- mammoth.js for Word .docx parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.2/mammoth.browser.min.js"></script>
+    <!-- docx.js for Word .docx export -->
+    <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 </head>
 <body>
 
@@ -1026,6 +1071,7 @@
             <button class="search-toggle" id="visit-search-toggle-btn">🔍</button>
             <input type="text" id="visit-search-input" placeholder="病歷號 / 姓">
             <button id="add-clinic-date-btn" title="新增加診日">+ 加診日</button>
+            <button id="export-opd-btn" title="匯出本次門診名單為 docx">📤 匯出</button>
         </div>
         <div class="header-notes" id="header-notes"></div>
         <div class="tag-filter-bar" id="tag-filter-bar">
@@ -2124,9 +2170,30 @@
             const ts = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
             ts.forEach(t => { if (tagCounts[t] !== undefined) tagCounts[t]++; });
         });
+        const activeStatTag = state.statTagExpanded || '';
         const tagPills = Object.entries(tagCounts)
             .filter(([_, n]) => n > 0)
-            .map(([t, n]) => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
+            .map(([t, n]) => `<span class="tag-chip ${t === activeStatTag ? 'active' : ''}" data-stat-tag="${escapeAttr(t)}" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
+        let statTagPanelHtml = '';
+        if (activeStatTag) {
+            const matched = came.filter(v => (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t).includes(activeStatTag));
+            const rows = matched.map(v => {
+                const p = state.patients[v.recordNumber] || {};
+                const tagChips = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))]
+                    .map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+                const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+                const ageSex = displayAgeSex(p, date) || p.ageSex || '';
+                return `<div class="stp-row">
+                    <span class="stp-rec">${escapeHtml(v.recordNumber)}</span>
+                    <span class="stp-name">${escapeHtml(surname)}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
+                    <span class="stp-tags visit-tags">${tagChips}</span>
+                </div>`;
+            }).join('');
+            statTagPanelHtml = `<div class="stat-tag-panel">
+                <div class="stp-title">標籤「${escapeHtml(activeStatTag)}」共 ${matched.length} 位（再點一次收合）</div>
+                ${rows}
+            </div>`;
+        }
         const statsHtml = `
             <div class="stats-bar">
                 <span>👤 <span class="stat-num">${came.length}</span> 人${dc.length ? `<span style="color:var(--color-dc);"> + DC ${dc.length}</span>` : ''}</span>
@@ -2134,6 +2201,7 @@
                 <span>已準備 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
                 ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}</span>` : ''}
             </div>
+            ${statTagPanelHtml}
         `;
 
         // 排序：came / dc 已在 stats 區排好，DC 顯示用 noShow 變數
@@ -2166,7 +2234,9 @@
                 v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
                 p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
                 summary.isSelfRTC ? '<span class="status-badge self-rtc">自約</span>' : '',
-                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
+                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : '',
+                v.propagatedTo ? `<span class="status-badge propagated" title="已傳遞到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
+                v.propagatedFrom ? `<span class="status-badge propagated-from" title="從 ${escapeAttr(v.propagatedFrom)} 傳來">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
             ].filter(Boolean).join('');
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
@@ -2403,7 +2473,223 @@
             updates.preparedAt = null;
         }
         await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
-        // RTC 自動傳遞下個版本實作
+
+        // RTC 自動傳遞：只在 draft → confirmed 且尚未傳遞過時
+        if (newStatus === 'confirmed' && !visit.propagatedTo) {
+            await propagateRTC(date, recordNumber, visit);
+        }
+    }
+
+    async function propagateRTC(date, recordNumber, visit) {
+        const summary = summarizePlan(visit.plan, date);
+        if (summary.isSelfRTC) {
+            setStatus('connected', '✓ 確認（self RTC，不傳遞）');
+            return;
+        }
+        if (!summary.rtcDates || summary.rtcDates.length === 0) {
+            setStatus('connected', '✓ 確認（plan 無 RTC 日期）');
+            return;
+        }
+        let nextRTC = summary.rtcDates[0];
+        if (summary.rtcDates.length > 1) {
+            const choice = prompt(
+                `本次 plan 有 ${summary.rtcDates.length} 個未來 RTC：\n${summary.rtcDates.join('\n')}\n\n` +
+                `請輸入要傳遞的日期（YYYY-MM-DD）；留空取消傳遞：`,
+                summary.rtcDates[0]
+            );
+            if (!choice) {
+                setStatus('connected', '✓ 確認（已取消 RTC 傳遞）');
+                return;
+            }
+            if (!summary.rtcDates.includes(choice)) {
+                alert(`「${choice}」不在 RTC 候選日期，取消傳遞`);
+                return;
+            }
+            nextRTC = choice;
+        }
+
+        // 查重
+        const existsSnap = await get(ref(fbDb, `opd/visits/${nextRTC}/${recordNumber}`));
+        if (existsSnap.exists()) {
+            await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { propagatedTo: nextRTC });
+            setStatus('connected', `✓ 確認（${nextRTC} 已有 visit，未覆蓋）`);
+            return;
+        }
+
+        // 建立 next visit
+        const now = Date.now();
+        const newVisit = {
+            recordNumber,
+            date: nextRTC,
+            status: 'draft',
+            plan: visit.plan || '',
+            examEducation: '',
+            tags: [],
+            anticoagState: 'unknown',
+            anticoagulants: [],
+            bonePlanSummary: visit.bonePlanSummary || '',
+            painPlanSummary: visit.painPlanSummary || '',
+            propagatedFrom: date,
+            orderInClinic: null,
+            createdAt: now,
+            updatedAt: now
+        };
+        const multiUpdates = {};
+        multiUpdates[`opd/visits/${nextRTC}/${recordNumber}`] = newVisit;
+        multiUpdates[`opd/patientVisitIndex/${recordNumber}/${nextRTC}`] = true;
+        multiUpdates[`opd/visits/${date}/${recordNumber}/propagatedTo`] = nextRTC;
+        // 若 nextRTC 不是常規門診日（雙週三），自動建立加診日
+        const dow = new Date(nextRTC + 'T00:00').getDay();
+        if (dow !== 3 && !state.adHocClinicDates?.[nextRTC]) {
+            multiUpdates[`opd/clinicDates/${nextRTC}`] = {
+                date: nextRTC, type: 'ad-hoc', note: 'RTC 自動建立', createdAt: now
+            };
+        }
+        await update(ref(fbDb), multiUpdates);
+        setStatus('connected', `✓ 確認 + 已傳至 ${nextRTC}`);
+    }
+
+    // ========== 匯出 docx (本日 OPD 名單) ==========
+    function exportOpdDocx() {
+        const date = state.currentClinicDate;
+        if (!date) { alert('未選擇門診日'); return; }
+        const visitsObj = state.visitsByDate?.[date] || {};
+        const visits = Object.values(visitsObj);
+        if (visits.length === 0) { alert('本日無病人'); return; }
+
+        const came = visits.filter(v => !v.noShow).sort((a,b) => (a.orderInClinic||999) - (b.orderInClinic||999));
+        const dc = visits.filter(v => v.noShow).sort((a,b) => (a.orderInClinic||999) - (b.orderInClinic||999));
+        const all = [...came, ...dc];
+        const total = all.length;
+
+        const D = window.docx;
+        const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType,
+                PageOrientation, BorderStyle, WidthType, ShadingType, HeightRule } = D;
+
+        const border = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+        const cellBorders = { top: border, bottom: border, left: border, right: border };
+
+        const COL_WIDTHS = [315, 1110, 465, 705, 2940, 3330, 5430, 285, 315, 315]; // 同範本
+        const TABLE_W = COL_WIDTHS.reduce((a,b)=>a+b,0);
+
+        const para = (text, opts = {}) => {
+            const lines = String(text ?? '').split(/\r?\n/);
+            return lines.map(line => new Paragraph({
+                spacing: { line: 240, lineRule: 'auto' },
+                children: [new TextRun({ text: line, size: opts.size || 18 })]
+            }));
+        };
+
+        const cell = (text, idx, opts = {}) => new TableCell({
+            borders: cellBorders,
+            width: { size: COL_WIDTHS[idx], type: WidthType.DXA },
+            margins: { top: 60, bottom: 60, left: 80, right: 80 },
+            shading: opts.shading ? { fill: opts.shading, type: ShadingType.CLEAR } : undefined,
+            children: para(text, opts)
+        });
+
+        const headerRow = new TableRow({
+            children: ['', '', '', 'eGFR', '', 'Exam & education', 'Plan', 'NB', '確', 'f/u']
+                .map((t, i) => cell(t, i))
+        });
+
+        const rows = all.map(v => {
+            const p = state.patients[v.recordNumber] || {};
+            const ageSex = displayAgeSex(p, date) || p.ageSex || '';
+            const recordWithSurname = `${v.recordNumber}${p.surname ? ' ('+String(p.surname).replace(/\s+/g,'')+')' : ''}`;
+
+            // c4: referrer + labs
+            const labsParts = [];
+            if (p.referrer) labsParts.push(p.referrer);
+            if (p.labs) labsParts.push(p.labs);
+            else {
+                if (p.eGFR && !/^>?\d/.test(p.eGFR)) labsParts.push(`eGFR ${p.eGFR}`);
+                if (p.INR) labsParts.push(`INR: ${p.INR}${p.INRDate ? ' ('+p.INRDate+')' : ''}`);
+            }
+            if (p.boneScore) labsParts.push(p.boneScore);
+            const c4 = labsParts.join('\n');
+
+            // c5: pastHistory + visit.examEducation
+            const c5parts = [];
+            if (p.pastHistory) c5parts.push(p.pastHistory);
+            else if (p.extra) c5parts.push(p.extra);
+            if (v.examEducation) c5parts.push(v.examEducation);
+            const c5 = c5parts.join('\n');
+
+            // c8: 確 (v if confirmed)
+            const c8 = v.status === 'confirmed' ? 'v' : '';
+            // c9: f/u (v if has f/u tag)
+            const tags = (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t);
+            const c9 = tags.includes('f/u') ? 'v' : '';
+            // c7: NB (v if has 鬆 tag — bone case)
+            const c7 = tags.includes('鬆') ? 'v' : '';
+
+            const cells = [
+                String(v.orderInClinic || ''),
+                recordWithSurname,
+                ageSex,
+                p.eGFR || '',
+                c4,
+                c5,
+                v.plan || '',
+                c7,
+                c8,
+                c9
+            ];
+            const shading = v.noShow ? 'F0F0F0' : undefined;
+            return new TableRow({
+                children: cells.map((t, i) => cell(t, i, { shading }))
+            });
+        });
+
+        const table = new Table({
+            width: { size: TABLE_W, type: WidthType.DXA },
+            columnWidths: COL_WIDTHS,
+            rows: [headerRow, ...rows]
+        });
+
+        // 標頭：預約專線 + 人數 + headerNotes
+        const meta = state.clinicMetaByDate?.[date] || {};
+        const headerNotes = meta.headerNotes || '';
+        const titleParas = [
+            new Paragraph({ children: [new TextRun({ text: '預約專線 (02)-77282216', size: 20 })] }),
+            new Paragraph({ children: [new TextRun({ text: String(total), size: 20 })] })
+        ];
+        if (headerNotes) {
+            headerNotes.split(/\r?\n/).forEach(line => {
+                titleParas.push(new Paragraph({ children: [new TextRun({ text: line, size: 20 })] }));
+            });
+        }
+
+        const doc = new Document({
+            styles: {
+                default: { document: { run: { font: 'Arial Unicode MS', size: 18 } } }
+            },
+            sections: [{
+                properties: {
+                    page: {
+                        size: { width: 16838, height: 11906, orientation: PageOrientation.LANDSCAPE },
+                        margin: { top: 720, right: 720, bottom: 720, left: 720 }
+                    }
+                },
+                children: [...titleParas, table]
+            }]
+        });
+
+        Packer.toBlob(doc).then(blob => {
+            const [yyyy, mm, dd] = date.split('-');
+            const filename = `${yyyy.slice(2)}_${mm}_${dd} OPD ${total}.docx`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            setStatus('connected', `✓ 已匯出 ${filename}`);
+        }).catch(err => {
+            console.error('匯出失敗', err);
+            alert('匯出失敗：' + err.message);
+        });
     }
 
     async function togglePrepared(recordNumber) {
@@ -2498,8 +2784,18 @@
         // 新增病人按鈕
         document.getElementById('add-visit-btn').addEventListener('click', () => openVisitModal());
 
+        // 匯出 docx
+        document.getElementById('export-opd-btn').addEventListener('click', exportOpdDocx);
+
         // 表格內按鈕
         document.getElementById('visit-list').addEventListener('click', (e) => {
+            const statTag = e.target.closest('[data-stat-tag]');
+            if (statTag) {
+                const t = statTag.dataset.statTag;
+                state.statTagExpanded = (state.statTagExpanded === t) ? null : t;
+                renderVisitList();
+                return;
+            }
             const btn = e.target.closest('button[data-action]');
             const more = e.target.closest('.more-toggle');
             if (more) {
