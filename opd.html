@@ -2569,7 +2569,7 @@
         const border = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
         const cellBorders = { top: border, bottom: border, left: border, right: border };
 
-        const COL_WIDTHS = [315, 1110, 465, 705, 2940, 3330, 5430, 915]; // 9 欄；最後一欄 = Tags
+        const COL_WIDTHS = [315, 850, 465, 705, 2940, 3330, 5690, 915]; // # / 病歷號姓 / age / eGFR / labs / exam / plan / tags
         const TABLE_W = COL_WIDTHS.reduce((a,b)=>a+b,0);
 
         const para = (text, opts = {}) => {
@@ -2701,7 +2701,7 @@
             sections: [{
                 properties: {
                     page: {
-                        size: { width: 16838, height: 11906, orientation: PageOrientation.LANDSCAPE },
+                        size: { width: 11906, height: 16838, orientation: PageOrientation.LANDSCAPE },
                         margin: { top: 720, right: 720, bottom: 720, left: 720 }
                     }
                 },
