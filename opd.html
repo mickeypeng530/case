@@ -2493,22 +2493,42 @@
             setStatus('connected', '✓ 確認（plan 無 RTC 日期）');
             return;
         }
-        let nextRTC = summary.rtcDates[0];
-        if (summary.rtcDates.length > 1) {
-            const choice = prompt(
-                `本次 plan 有 ${summary.rtcDates.length} 個未來 RTC：\n${summary.rtcDates.join('\n')}\n\n` +
-                `請輸入要傳遞的日期（YYYY-MM-DD）；留空取消傳遞：`,
-                summary.rtcDates[0]
-            );
-            if (!choice) {
-                setStatus('connected', '✓ 確認（已取消 RTC 傳遞）');
-                return;
+        // 找 plan 中標記「回診」的那行 → 它的未來日期是傳遞目標
+        let nextRTC = null;
+        const planLines = (visit.plan || '').split(/\r?\n/);
+        for (const line of planLines) {
+            if (!/回診/.test(line)) continue;
+            const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
+            if (!m) continue;
+            const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
+            const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+            if (cand > date && summary.rtcDates.includes(cand)) {
+                nextRTC = cand;
+                break;
             }
-            if (!summary.rtcDates.includes(choice)) {
-                alert(`「${choice}」不在 RTC 候選日期，取消傳遞`);
-                return;
+        }
+
+        // 沒「回診」標記 → 用原本 fallback：單一 RTC 直接用、多 RTC 跳 prompt
+        if (!nextRTC) {
+            if (summary.rtcDates.length === 1) {
+                nextRTC = summary.rtcDates[0];
+            } else {
+                const choice = prompt(
+                    `本次 plan 有 ${summary.rtcDates.length} 個未來 RTC：\n${summary.rtcDates.join('\n')}\n\n` +
+                    `（提示：在 plan 該日期那行加「回診」可自動選定）\n\n` +
+                    `請輸入要傳遞的日期（YYYY-MM-DD）；留空取消傳遞：`,
+                    summary.rtcDates[0]
+                );
+                if (!choice) {
+                    setStatus('connected', '✓ 確認（已取消 RTC 傳遞）');
+                    return;
+                }
+                if (!summary.rtcDates.includes(choice)) {
+                    alert(`「${choice}」不在 RTC 候選日期，取消傳遞`);
+                    return;
+                }
+                nextRTC = choice;
             }
-            nextRTC = choice;
         }
 
         // 查重
@@ -2527,7 +2547,7 @@
             status: 'draft',
             plan: visit.plan || '',
             examEducation: '',
-            tags: ['回診'],
+            tags: [],
             anticoagState: 'unknown',
             anticoagulants: [],
             bonePlanSummary: visit.bonePlanSummary || '',
