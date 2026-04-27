@@ -2569,7 +2569,7 @@
         const border = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
         const cellBorders = { top: border, bottom: border, left: border, right: border };
 
-        const COL_WIDTHS = [315, 1110, 465, 705, 2940, 3330, 5430, 285, 315, 315]; // 同範本
+        const COL_WIDTHS = [315, 1110, 465, 705, 2940, 3330, 5430, 915]; // 9 欄；最後一欄 = Tags
         const TABLE_W = COL_WIDTHS.reduce((a,b)=>a+b,0);
 
         const para = (text, opts = {}) => {
@@ -2588,8 +2588,49 @@
             children: para(text, opts)
         });
 
+        // Tag → { bg, fg } 對應網頁配色
+        const TAG_COLOR = {
+            '鬆':    { bg: 'A855F7', fg: 'FFFFFF' },
+            'CT NB': { bg: 'F59E0B', fg: '1A1A2E' },
+            'SONO':  { bg: '22C55E', fg: 'FFFFFF' },
+            'TAME':  { bg: '3B82F6', fg: 'FFFFFF' },
+            'MRI':   { bg: 'C4B5FD', fg: '1A1A2E' },
+            'PRP':   { bg: 'EC4899', fg: 'FFFFFF' },
+            'f/u':   { bg: '64748B', fg: 'FFFFFF' },
+            'med':   { bg: 'F97316', fg: 'FFFFFF' },
+            'other': { bg: '94A3B8', fg: 'FFFFFF' },
+            '確':    { bg: '16A34A', fg: 'FFFFFF' }
+        };
+
+        const tagCell = (tags, confirmed, opts = {}) => {
+            const list = [];
+            if (confirmed) list.push('確');
+            tags.forEach(t => list.push(t));
+            const runs = [];
+            list.forEach((t, i) => {
+                const c = TAG_COLOR[t] || { bg: 'CBD5E1', fg: '1A1A2E' };
+                runs.push(new TextRun({
+                    text: ` ${t} `,
+                    size: 18,
+                    color: c.fg,
+                    shading: { fill: c.bg, type: ShadingType.CLEAR, color: 'auto' }
+                }));
+                if (i < list.length - 1) runs.push(new TextRun({ text: ' ', size: 18 }));
+            });
+            return new TableCell({
+                borders: cellBorders,
+                width: { size: COL_WIDTHS[7], type: WidthType.DXA },
+                margins: { top: 60, bottom: 60, left: 80, right: 80 },
+                shading: opts.shading ? { fill: opts.shading, type: ShadingType.CLEAR } : undefined,
+                children: [new Paragraph({
+                    spacing: { line: 240, lineRule: 'auto' },
+                    children: runs.length ? runs : [new TextRun({ text: '', size: 18 })]
+                })]
+            });
+        };
+
         const headerRow = new TableRow({
-            children: ['', '', '', 'eGFR', '', 'Exam & education', 'Plan', 'NB', '確', 'f/u']
+            children: ['', '', '', 'eGFR', '', 'Exam & education', 'Plan', 'Tags']
                 .map((t, i) => cell(t, i))
         });
 
@@ -2616,29 +2657,21 @@
             if (v.examEducation) c5parts.push(v.examEducation);
             const c5 = c5parts.join('\n');
 
-            // c8: 確 (v if confirmed)
-            const c8 = v.status === 'confirmed' ? 'v' : '';
-            // c9: f/u (v if has f/u tag)
-            const tags = (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t);
-            const c9 = tags.includes('f/u') ? 'v' : '';
-            // c7: NB (v if has 鬆 tag — bone case)
-            const c7 = tags.includes('鬆') ? 'v' : '';
+            const tags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            const shading = v.noShow ? 'F0F0F0' : undefined;
 
-            const cells = [
+            const baseCells = [
                 String(v.orderInClinic || ''),
                 recordWithSurname,
                 ageSex,
                 p.eGFR || '',
                 c4,
                 c5,
-                v.plan || '',
-                c7,
-                c8,
-                c9
-            ];
-            const shading = v.noShow ? 'F0F0F0' : undefined;
+                v.plan || ''
+            ].map((t, i) => cell(t, i, { shading }));
+
             return new TableRow({
-                children: cells.map((t, i) => cell(t, i, { shading }))
+                children: [...baseCells, tagCell(tags, v.status === 'confirmed', { shading })]
             });
         });
 
