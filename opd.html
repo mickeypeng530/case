@@ -684,6 +684,12 @@
         .status-badge.propagated-from { background: rgba(139,92,246,0.25); color: #ddd6fe; }
         .status-badge.clickable { cursor: pointer; }
         .status-badge.clickable:hover { filter: brightness(1.4); }
+        .visit-tags .jump-chip {
+            background: rgba(99,102,241,0.3);
+            color: #c7d2fe;
+            border: 1px dashed rgba(99,102,241,0.6);
+        }
+        .visit-tags .jump-chip:hover { filter: brightness(1.4); }
 
         /* Row actions */
         .row-actions {
@@ -2238,9 +2244,11 @@
                 v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
                 p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
                 summary.isSelfRTC ? '<span class="status-badge self-rtc">自約</span>' : '',
-                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : '',
-                v.propagatedTo ? `<span class="status-badge propagated clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
-                v.propagatedFrom ? `<span class="status-badge propagated-from clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
+                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
+            ].filter(Boolean).join('');
+            const jumpChips = [
+                v.propagatedTo ? `<span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
+                v.propagatedFrom ? `<span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
             ].filter(Boolean).join('');
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
@@ -2323,7 +2331,7 @@
                 <td class="col-plan">
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
-                <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
+                <td class="col-tags"><div class="visit-tags">${tagChips}${jumpChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
                         <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">✏️ 編輯</button>
