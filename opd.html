@@ -2567,17 +2567,29 @@
             return;
         }
 
-        // 建立 next visit — 把目標日期那行的「回診」改成 [本次] anchor
+        // 建立 next visit
+        // - 把所有舊的 [本次] anchor 移除（[本次] 隨著傳遞往前）
+        // - 目標日期那行的「回診」改成 [本次]（變成新 visit 的 anchor）
         const now = Date.now();
         const cleanedPlan = (visit.plan || '').split(/\r?\n/).map(line => {
-            if (!/回診/.test(line)) return line;
-            const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
-            if (!m) return line;
-            const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
-            const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-            if (cand !== nextRTC) return line;
-            return line.replace(/回診/g, '[本次]').replace(/\s+/g, ' ').trimEnd();
+            let newLine = line.replace(/\[本次\]/g, '').replace(/\s+/g, ' ').trimEnd();
+            if (/回診/.test(newLine)) {
+                const m = newLine.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
+                if (m) {
+                    const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
+                    const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+                    if (cand === nextRTC) {
+                        newLine = newLine.replace(/回診/g, '[本次]').replace(/\s+/g, ' ').trimEnd();
+                    }
+                }
+            }
+            return newLine;
         }).join('\n');
+
+        // 同步把當前 visit plan 內的 [本次] 移除（已傳遞，不再是「本次」）
+        const currentPlanStripped = (visit.plan || '').split(/\r?\n/)
+            .map(l => l.replace(/\[本次\]/g, '').replace(/\s+/g, ' ').trimEnd())
+            .join('\n');
 
         const newVisit = {
             recordNumber,
@@ -2599,6 +2611,7 @@
         multiUpdates[`opd/visits/${nextRTC}/${recordNumber}`] = newVisit;
         multiUpdates[`opd/patientVisitIndex/${recordNumber}/${nextRTC}`] = true;
         multiUpdates[`opd/visits/${date}/${recordNumber}/propagatedTo`] = nextRTC;
+        multiUpdates[`opd/visits/${date}/${recordNumber}/plan`] = currentPlanStripped;
         // 若 nextRTC 不是常規門診日（雙週三），自動建立加診日
         const dow = new Date(nextRTC + 'T00:00').getDay();
         if (dow !== 3 && !state.adHocClinicDates?.[nextRTC]) {
