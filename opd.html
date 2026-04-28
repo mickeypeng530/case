@@ -2806,7 +2806,6 @@
         multiUpdates[`opd/visits/${nextRTC}/${recordNumber}`] = newVisit;
         multiUpdates[`opd/patientVisitIndex/${recordNumber}/${nextRTC}`] = true;
         multiUpdates[`opd/visits/${date}/${recordNumber}/propagatedTo`] = nextRTC;
-        multiUpdates[`opd/visits/${date}/${recordNumber}/plan`] = currentPlanStripped;
         // 若 nextRTC 不是常規門診日（雙週三），自動建立加診日
         const dow = new Date(nextRTC + 'T00:00').getDay();
         if (dow !== 3 && !state.adHocClinicDates?.[nextRTC]) {
