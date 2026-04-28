@@ -2500,11 +2500,9 @@
             setStatus('connected', '✓ 確認（self RTC，不傳遞）');
             return;
         }
-        if (!summary.rtcDates || summary.rtcDates.length === 0) {
-            setStatus('connected', '✓ 確認（plan 無 RTC 日期）');
-            return;
-        }
+
         // 找 plan 中標記「回診」的那行 → 它的未來日期是傳遞目標
+        // （不要求 RTC 字樣；任何 plan 行有「回診」+ 未來日期就算）
         let nextRTC = null;
         const planLines = (visit.plan || '').split(/\r?\n/);
         for (const line of planLines) {
@@ -2513,14 +2511,18 @@
             if (!m) continue;
             const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
             const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-            if (cand > date && summary.rtcDates.includes(cand)) {
+            if (cand > date) {
                 nextRTC = cand;
                 break;
             }
         }
 
-        // 沒「回診」標記 → 用原本 fallback：單一 RTC 直接用、多 RTC 跳 prompt
+        // 沒「回診」標記 → fallback 用 RTC_PATTERN 抓的：單一 RTC 直接用、多 RTC 跳 prompt
         if (!nextRTC) {
+            if (!summary.rtcDates || summary.rtcDates.length === 0) {
+                setStatus('connected', '✓ 確認（plan 無 RTC 日期 / 無「回診」標記）');
+                return;
+            }
             if (summary.rtcDates.length === 1) {
                 nextRTC = summary.rtcDates[0];
             } else {
