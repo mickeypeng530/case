@@ -700,6 +700,11 @@
             white-space: nowrap;
         }
         .jump-chip:hover { filter: brightness(1.4); }
+        @keyframes jumpFlash {
+            0%   { background: rgba(99,102,241,0.45); }
+            100% { background: transparent; }
+        }
+        tr.jump-flash td { animation: jumpFlash 1.6s ease-out; }
         .num-edit {
             display: inline-block;
             min-width: 1.5em;
@@ -2604,6 +2609,19 @@
             </table>
           </div>
         `;
+        // 跳轉後 scroll 到目標 row
+        if (state.scrollToRecord) {
+            const tgt = state.scrollToRecord;
+            state.scrollToRecord = null;
+            requestAnimationFrame(() => {
+                const row = wrap.querySelector(`tr[data-record="${CSS.escape(tgt)}"]`);
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('jump-flash');
+                    setTimeout(() => row.classList.remove('jump-flash'), 1800);
+                }
+            });
+        }
     }
 
     function renderHeaderNotes() {
@@ -3178,6 +3196,9 @@
             const jump = e.target.closest('[data-jump-date]');
             if (jump) {
                 const target = jump.dataset.jumpDate;
+                // 記住來源病人，跳到目標日期後自動 scroll 到同一個 row
+                const sourceRow = jump.closest('tr[data-record]');
+                if (sourceRow) state.scrollToRecord = sourceRow.dataset.record;
                 onClinicDateChanged(target);
                 localStorage.setItem('opd:currentClinicDate', target);
                 state.currentClinicDate = target;
