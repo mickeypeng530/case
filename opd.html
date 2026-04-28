@@ -1167,6 +1167,7 @@
             <button class="search-toggle" id="visit-search-toggle-btn">🔍</button>
             <input type="text" id="visit-search-input" placeholder="病歷號 / 姓">
             <button id="add-clinic-date-btn" title="新增加診日">+ 加診日</button>
+            <button id="remove-clinic-date-btn" title="刪除此加診日（需先把 visit 全部刪掉）" style="display:none;">🗑 刪此加診日</button>
             <button id="export-opd-btn" title="匯出本次門診名單為 docx">📤 匯出</button>
         </div>
         <div class="header-notes" id="header-notes"></div>
@@ -1633,12 +1634,18 @@
         const table = doc.querySelector('table');
         if (!table) return { ok: false, error: '檔案內找不到表格' };
 
-        const rows = [...table.querySelectorAll('tr')];
-        if (rows.length < 2) return { ok: false, error: '表格資料過少' };
+        const allRows = [...table.querySelectorAll('tr')];
+        if (allRows.length === 0) return { ok: false, error: '表格內無任何 row' };
+
+        // 偵測首行是 header 還是資料：含「eGFR / Exam / Plan」label 視為 header
+        const firstRowText = [...allRows[0].querySelectorAll('td, th')].map(td => td.textContent.trim()).join(' | ');
+        const hasHeader = /\beGFR\b|Exam\s*&?\s*education|^Plan$|\|\s*Plan\s*\|/i.test(firstRowText);
+        const rows = hasHeader ? allRows.slice(1) : allRows;
+        if (rows.length === 0) return { ok: false, error: '表格無資料 row' };
 
         const parsed = [];
         let isAfterDC = false;
-        rows.slice(1).forEach((tr, idx) => {
+        rows.forEach((tr, idx) => {
             const cells = [...tr.querySelectorAll('td, th')].map(td => {
                 // 保留 cell 內的換行，把 <br> 與多個 <p> 都轉成 \n
                 let txt = '';
@@ -2136,6 +2143,12 @@
         if (!date) { meta.textContent = ''; return; }
         const visits = state.visitsByDate?.[date] || {};
         const count = Object.keys(visits).length;
+        // 刪此加診日按鈕：當前是加診日 + 沒有 visit 才顯示
+        const removeBtn = document.getElementById('remove-clinic-date-btn');
+        if (removeBtn) {
+            const isAdHoc = !!state.adHocClinicDates?.[date];
+            removeBtn.style.display = (isAdHoc && count === 0) ? '' : 'none';
+        }
         meta.textContent = `${count} 位病人`;
     }
 
@@ -3090,6 +3103,30 @@
         // 上一個 / 下一個
         document.getElementById('prev-clinic-btn').addEventListener('click', () => navigateClinicDate(1));
         document.getElementById('next-clinic-btn').addEventListener('click', () => navigateClinicDate(-1));
+
+        // 刪此加診日
+        document.getElementById('remove-clinic-date-btn').addEventListener('click', async () => {
+            const date = state.currentClinicDate;
+            if (!date) return;
+            const visits = state.visitsByDate?.[date] || {};
+            if (Object.keys(visits).length > 0) {
+                alert('此加診日仍有 visit，請先刪除所有 visit 再刪加診日');
+                return;
+            }
+            if (!confirm(`確定刪除加診日 ${date}？\n\n（此日無任何 visit；其他病人的「→ ${date}」傳遞 badge 可能會殘留）`)) return;
+            try {
+                await removeAdHocClinicDate(date);
+                // 切換到最近的常規門診日
+                const today = formatDate(new Date());
+                state.currentClinicDate = today;
+                localStorage.setItem('opd:currentClinicDate', today);
+                renderClinicDateSelector();
+                onClinicDateChanged(today);
+                setStatus('connected', `✓ 已刪除加診日 ${date}`);
+            } catch (err) {
+                alert('刪除失敗：' + err.message);
+            }
+        });
 
         // 加診日
         document.getElementById('add-clinic-date-btn').addEventListener('click', async () => {
