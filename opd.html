@@ -1270,6 +1270,15 @@
                 <input type="date" id="import-clinic-date" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
                 <span id="import-date-hint" style="font-size: 0.78rem; color: var(--text-muted);">會從檔名自動偵測</span>
             </div>
+            <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 0.85rem; color: var(--text-secondary);">
+                <span>覆蓋模式：</span>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="radio" name="import-mode" value="skip" checked> 只加入新的（已存在的 visit 跳過，patient 主表仍合併）
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="radio" name="import-mode" value="overwrite"> 覆蓋既有
+                </label>
+            </div>
             <div id="import-status" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
         </div>
         <div id="import-preview"></div>
@@ -1822,7 +1831,9 @@
         const status = document.getElementById('import-status');
         const files = [...(fileInput.files || [])];
         if (files.length === 0) { alert('請先選擇 .docx 檔（可多選）'); return; }
-        if (!confirm(`要批次匯入 ${files.length} 個 docx？\n\n規則：\n- 從檔名自動抓日期（無法判讀者跳過）\n- 全部勾選的 row 都寫入\n- 同病歷號合併、同日 visit 覆蓋`)) return;
+        const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'skip';
+        const modeLabel = mode === 'skip' ? '只加入新的（既有 visit 跳過）' : '覆蓋既有';
+        if (!confirm(`要批次匯入 ${files.length} 個 docx？\n\n模式：${modeLabel}\n- 從檔名自動抓日期（無法判讀者跳過）\n- patient 主表合併既有資料`)) return;
 
         let total = 0, ok = 0, skipped = 0;
         const summary = [];
@@ -1849,9 +1860,18 @@
                     summary.push(`⏭️ ${f.name}（無有效 row）`);
                     continue;
                 }
+                // 跳過模式：先抓該日已存在的 visit recordNumber set
+                let existingVisits = {};
+                if (mode === 'skip') {
+                    const snap = await get(ref(fbDb, `opd/visits/${date}`));
+                    existingVisits = snap.val() || {};
+                }
                 const updates = {};
                 const now = Date.now();
+                let writtenVisits = 0, skippedVisits = 0;
                 rows.forEach(r => {
+                    const visitExists = !!existingVisits[r.recordNumber];
+                    const skipVisit = (mode === 'skip' && visitExists);
                     const labStuff = extractLabs(r.extra || '');
                     const boneStuff = extractBoneScore(labStuff.remaining);
                     const labLines = [];
@@ -1886,23 +1906,28 @@
                         createdAt: existingPatient.createdAt || now,
                         updatedAt: now
                     };
-                    updates[`opd/visits/${date}/${r.recordNumber}`] = {
-                        recordNumber: r.recordNumber,
-                        date,
-                        orderInClinic: r.order || null,
-                        examEducation: r.exam || '',
-                        plan: r.plan || '',
-                        tags: r.tags || [],
-                        procedureStatuses: {},
-                        status: 'confirmed',
-                        noShow: r.noShow || false,
-                        createdAt: now,
-                        updatedAt: now,
-                        confirmedAt: now
-                    };
-                    updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+                    if (skipVisit) {
+                        skippedVisits++;
+                    } else {
+                        updates[`opd/visits/${date}/${r.recordNumber}`] = {
+                            recordNumber: r.recordNumber,
+                            date,
+                            orderInClinic: r.order || null,
+                            examEducation: r.exam || '',
+                            plan: r.plan || '',
+                            tags: r.tags || [],
+                            procedureStatuses: {},
+                            status: 'confirmed',
+                            noShow: r.noShow || false,
+                            createdAt: now,
+                            updatedAt: now,
+                            confirmedAt: now
+                        };
+                        updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+                        writtenVisits++;
+                    }
                 });
-                if (result.headerNotes) {
+                if (result.headerNotes && (mode === 'overwrite' || !Object.keys(existingVisits).length)) {
                     updates[`opd/clinicMeta/${date}/headerNotes`] = result.headerNotes;
                 }
                 const dow = new Date(date + 'T00:00').getDay();
@@ -1911,8 +1936,9 @@
                 }
                 await update(ref(fbDb), updates);
                 ok++;
-                total += rows.length;
-                summary.push(`✅ ${date}：${rows.length} 筆 (${f.name})`);
+                total += writtenVisits;
+                const skipNote = skippedVisits ? `（跳過 ${skippedVisits} 已存在）` : '';
+                summary.push(`✅ ${date}：寫入 ${writtenVisits} 筆${skipNote} (${f.name})`);
             } catch (err) {
                 skipped++;
                 summary.push(`❌ ${f.name}：${err.message}`);
@@ -1930,16 +1956,28 @@
             .map(c => importedRows[parseInt(c.dataset.idx)]).filter(r => r && r.ok);
         if (!checked.length) { alert('請勾選至少 1 筆'); return; }
 
-        if (!confirm(`確定匯入 ${checked.length} 筆病人到 ${date}？\n\n（已存在的病歷號會被合併更新；既有同日 visit 會被覆蓋。）`)) return;
+        const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'skip';
+        const modeLabel = mode === 'skip' ? '只加入新的（已存在 visit 跳過）' : '覆蓋既有';
+        if (!confirm(`確定匯入 ${checked.length} 筆病人到 ${date}？\n\n模式：${modeLabel}\npatient 主表合併既有資料`)) return;
 
         const status = document.getElementById('import-status');
         status.textContent = `匯入中... 0 / ${checked.length}`;
         status.style.color = 'var(--text-secondary)';
 
+        // skip 模式：先抓該日已存在的 visit
+        let existingVisits = {};
+        if (mode === 'skip') {
+            const snap = await get(ref(fbDb, `opd/visits/${date}`));
+            existingVisits = snap.val() || {};
+        }
+
         const updates = {};
         const now = Date.now();
+        let writtenVisits = 0, skippedVisits = 0;
 
         checked.forEach((r, i) => {
+            const visitExists = !!existingVisits[r.recordNumber];
+            const skipVisit = (mode === 'skip' && visitExists);
             const labStuff = extractLabs(r.extra || '');
             const boneStuff = extractBoneScore(labStuff.remaining);
             const labLines = [];
@@ -1976,24 +2014,29 @@
                 createdAt: existingPatient.createdAt || now,
                 updatedAt: now
             };
-            updates[`opd/visits/${date}/${r.recordNumber}`] = {
-                recordNumber: r.recordNumber,
-                date,
-                orderInClinic: r.order || null,
-                examEducation: r.exam || '',
-                plan: r.plan || '',
-                tags: r.tags || [],
-                procedureStatuses: {},
-                status: 'confirmed',
-                noShow: r.noShow || false,
-                createdAt: now,
-                updatedAt: now,
-                confirmedAt: now
-            };
-            updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+            if (skipVisit) {
+                skippedVisits++;
+            } else {
+                updates[`opd/visits/${date}/${r.recordNumber}`] = {
+                    recordNumber: r.recordNumber,
+                    date,
+                    orderInClinic: r.order || null,
+                    examEducation: r.exam || '',
+                    plan: r.plan || '',
+                    tags: r.tags || [],
+                    procedureStatuses: {},
+                    status: 'confirmed',
+                    noShow: r.noShow || false,
+                    createdAt: now,
+                    updatedAt: now,
+                    confirmedAt: now
+                };
+                updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+                writtenVisits++;
+            }
         });
 
-        if (importedHeaderNotes) {
+        if (importedHeaderNotes && (mode === 'overwrite' || !Object.keys(existingVisits).length)) {
             updates[`opd/clinicMeta/${date}/headerNotes`] = importedHeaderNotes;
         }
         const dayOfWeek = new Date(date + 'T00:00').getDay();
@@ -2003,7 +2046,8 @@
 
         try {
             await update(ref(fbDb), updates);
-            status.textContent = `✅ 匯入完成：${checked.length} 筆`;
+            const skipNote = skippedVisits ? `（跳過 ${skippedVisits} 已存在）` : '';
+            status.textContent = `✅ 匯入完成：寫入 ${writtenVisits} 筆${skipNote}`;
             status.style.color = 'var(--color-confirmed)';
             setTimeout(() => {
                 state.currentClinicDate = date;
