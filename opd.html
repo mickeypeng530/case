@@ -4158,15 +4158,21 @@
             if (m) { order = parseInt(m[1]); break; }
         }
 
-        // 偵測 eGFR 欄位 shift：若 parts[recIdx+2] 不像 eGFR（沒有 >60 / 60 等格式），
-        // 表示原 docx eGFR 欄為空被 Word 省略，後續欄位整體前移 1
+        // 偵測 eGFR 欄位 shift：只有 row 欄數明顯偏少時（< 7 cells from recIdx）才 shift。
+        // 若有完整欄數（10-col 標準），即使 c3 不像 eGFR 格式（例如填了 INR）也不 shift，
+        // 直接信任位置：c3=eGFR slot, c4=extra/PH, c5=exam, c6=plan
         const c2 = (parts[recIdx + 2] || '').trim();
+        const fullCols = parts.length - recIdx >= 7;
         let eGFRVal, extraIdx, examIdx, planIdx;
-        if (isValidEGFR(c2) || !c2) {
-            eGFRVal = c2;
+        if (fullCols || isValidEGFR(c2) || !c2) {
+            eGFRVal = isValidEGFR(c2) ? c2 : '';
             extraIdx = recIdx + 3;
             examIdx = recIdx + 4;
             planIdx = recIdx + 5;
+            // 若 c3 不是 eGFR 格式（例如 "INR 0.93"），把它合併到 extra
+            if (c2 && !isValidEGFR(c2)) {
+                parts[extraIdx] = (c2 + (parts[extraIdx] ? '\n' + parts[extraIdx] : '')).trim();
+            }
         } else {
             eGFRVal = '';
             extraIdx = recIdx + 2;
