@@ -150,24 +150,34 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            margin: 18px 0;
+            margin: 14px 0;
             color: var(--text-muted);
-            font-size: 0.8rem;
+            font-size: 0.72rem;
         }
         #login-screen .divider .line { flex: 1; height: 1px; background: var(--border); }
         #login-screen #google-login-btn {
-            padding: 10px 18px;
-            background: white;
-            color: #3c4043;
-            border: 1px solid #dadce0;
+            padding: 8px 14px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
             border-radius: 6px;
-            font-size: 0.9rem;
-            font-weight: 500;
+            font-size: 0.85rem;
+            font-weight: 400;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             font-family: inherit;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        #login-screen #google-login-btn:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+        #login-screen #google-login-btn svg {
+            width: 14px;
+            height: 14px;
+            filter: saturate(0.7) opacity(0.9);
         }
         #login-error { color: var(--color-danger); margin-top: 15px; display: none; }
         #login-info { color: var(--text-muted); margin-top: 15px; display: none; font-size: 0.85rem; }
@@ -209,6 +219,43 @@
             width: 200px;
         }
         .toolbar #search-input.show { display: inline-block; }
+
+        /* toolbar 三群組：nav | primary action | tools */
+        .toolbar-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .toolbar-group + .toolbar-group {
+            border-left: 1px solid var(--border);
+            padding-left: 8px;
+            margin-left: 4px;
+        }
+        .toolbar-group.action-group { border-left: none; padding-left: 0; margin-left: 0; }
+        .toolbar button.primary-action {
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+        /* icon button：方形、淡邊、hover 才實底 */
+        .toolbar button.icon-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            padding: 6px 8px;
+            min-width: 34px;
+            font-size: 0.95rem;
+        }
+        .toolbar button.icon-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--text-secondary);
+        }
+        /* 手機：tools-group 維持文字 label（避免 icon-only 認不出）*/
+        @media (max-width: 768px) {
+            .toolbar-group + .toolbar-group {
+                border-left: none;
+                padding-left: 0;
+                margin-left: 0;
+            }
+        }
 
         /* Tag chips */
         .tag-filter-bar {
@@ -1181,7 +1228,7 @@
         </div>
 
         <button id="google-login-btn">
-            <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+            <svg viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
             使用 Google 登入
         </button>
         <p style="margin-top: 6px; color: var(--text-muted); font-size: 0.75rem;">（家裡或自己電腦使用，可持續登入）</p>
@@ -1203,9 +1250,17 @@
                 <span id="status-text">連線中</span>
             </span>
             <span id="user-info"></span>
-            <button id="font-down-btn" class="header-btn" title="縮小字體">A−</button>
-            <span id="font-size-label" style="font-size: 0.75rem; color: var(--text-muted); min-width: 36px; text-align: center;">100%</span>
-            <button id="font-up-btn" class="header-btn" title="放大字體">A+</button>
+            <div class="settings-wrap" style="position: relative;">
+                <button id="settings-btn" class="header-btn" title="設定">⚙️</button>
+                <div id="settings-menu" style="display:none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 220px; box-shadow: 0 6px 18px rgba(0,0,0,0.3); z-index: 100;">
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">字體大小</div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <button id="font-down-btn" class="header-btn" title="縮小字體">A−</button>
+                        <span id="font-size-label" style="font-size: 0.85rem; color: var(--text-primary); min-width: 48px; text-align: center;">100%</span>
+                        <button id="font-up-btn" class="header-btn" title="放大字體">A+</button>
+                    </div>
+                </div>
+            </div>
             <button id="logout-btn" class="header-btn" title="登出">🚪<span class="btn-text"> 登出</span></button>
         </div>
     </header>
@@ -1219,18 +1274,24 @@
     <!-- 門診日 -->
     <div class="panel active" id="panel-clinic">
         <div class="toolbar">
-            <select id="clinic-year-select" style="min-width: 80px;"></select>
-            <select id="clinic-md-select" style="min-width: 140px;"></select>
-            <button id="prev-clinic-btn" title="上一個門診日">◀</button>
-            <button id="next-clinic-btn" title="下一個門診日">▶</button>
-            <span id="clinic-date-meta" style="color: var(--text-muted); font-size: 0.8rem;"></span>
+            <div class="toolbar-group nav-group">
+                <select id="clinic-year-select" style="min-width: 80px;"></select>
+                <select id="clinic-md-select" style="min-width: 140px;"></select>
+                <button id="prev-clinic-btn" title="上一個門診日">◀</button>
+                <button id="next-clinic-btn" title="下一個門診日">▶</button>
+                <span id="clinic-date-meta" style="color: var(--text-muted); font-size: 0.8rem;"></span>
+            </div>
+            <div class="toolbar-group action-group">
+                <button class="primary primary-action" id="add-visit-btn">+ 新增病人</button>
+            </div>
             <span style="flex:1"></span>
-            <button class="primary" id="add-visit-btn">+ 新增病人</button>
-            <button class="search-toggle" id="visit-search-toggle-btn">🔍</button>
-            <input type="text" id="visit-search-input" placeholder="病歷號 / 姓">
-            <button id="add-clinic-date-btn" title="新增加診日">+ 加診日</button>
-            <button id="remove-clinic-date-btn" title="刪除此加診日（需先把 visit 全部刪掉）" style="display:none;">🗑 刪此加診日</button>
-            <button id="export-opd-btn" title="匯出本次門診名單為 docx">📤 匯出</button>
+            <div class="toolbar-group tools-group">
+                <button class="icon-btn search-toggle" id="visit-search-toggle-btn" title="搜尋病歷號 / 姓">🔍</button>
+                <input type="text" id="visit-search-input" placeholder="病歷號 / 姓">
+                <button class="icon-btn" id="add-clinic-date-btn" title="新增加診日">+</button>
+                <button class="icon-btn" id="remove-clinic-date-btn" title="刪除此加診日（需先把 visit 全部刪掉）" style="display:none;">🗑</button>
+                <button class="icon-btn" id="export-opd-btn" title="匯出本次門診名單為 docx">📤</button>
+            </div>
         </div>
         <div class="header-notes" id="header-notes"></div>
         <div class="tag-filter-bar" id="tag-filter-bar">
@@ -1671,6 +1732,18 @@
         });
         document.getElementById('font-up-btn')?.addEventListener('click', () => adjustFontSize(1));
         document.getElementById('font-down-btn')?.addEventListener('click', () => adjustFontSize(-1));
+        // 設定下拉選單
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsMenu = document.getElementById('settings-menu');
+        settingsBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+            if (settingsMenu && !settingsMenu.contains(e.target) && e.target !== settingsBtn) {
+                settingsMenu.style.display = 'none';
+            }
+        });
         const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
         document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
         document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
