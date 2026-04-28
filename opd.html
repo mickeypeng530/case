@@ -1790,6 +1790,7 @@
                     let phRemaining = boneStuff.remaining;
                     if (refDetected) phRemaining = phRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
                     phRemaining = phRemaining.replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
+                    const ac = extractAnticoagulants(r.extra || '');
                     const existingPatient = state.patients[r.recordNumber] || {};
                     updates[`opd/patients/${r.recordNumber}`] = {
                         ...existingPatient,
@@ -1802,8 +1803,8 @@
                         labs: labLines.join('\n') || existingPatient.labs || '',
                         pastHistory: existingPatient.pastHistory || phRemaining || '',
                         boneScore: existingPatient.boneScore || boneStuff.boneScore || '',
-                        anticoagState: existingPatient.anticoagState || 'unknown',
-                        anticoagulants: existingPatient.anticoagulants || [],
+                        anticoagState: ac.state || existingPatient.anticoagState || 'unknown',
+                        anticoagulants: ac.drugs.length ? ac.drugs : (existingPatient.anticoagulants || []),
                         bonePlanSummary: existingPatient.bonePlanSummary || '',
                         painPlanSummary: existingPatient.painPlanSummary || '',
                         firstVisitDate: existingPatient.firstVisitDate || date,
@@ -1878,6 +1879,7 @@
             let phRemaining = boneStuff.remaining;
             if (refDetected) phRemaining = phRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
             phRemaining = phRemaining.replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
+            const ac = extractAnticoagulants(r.extra || '');
 
             const existingPatient = state.patients[r.recordNumber] || {};
             updates[`opd/patients/${r.recordNumber}`] = {
@@ -1891,8 +1893,8 @@
                 labs: labLines.join('\n') || existingPatient.labs || '',
                 pastHistory: existingPatient.pastHistory || phRemaining || '',
                 boneScore: existingPatient.boneScore || boneStuff.boneScore || '',
-                anticoagState: existingPatient.anticoagState || 'unknown',
-                anticoagulants: existingPatient.anticoagulants || [],
+                anticoagState: ac.state || existingPatient.anticoagState || 'unknown',
+                anticoagulants: ac.drugs.length ? ac.drugs : (existingPatient.anticoagulants || []),
                 bonePlanSummary: existingPatient.bonePlanSummary || '',
                 painPlanSummary: existingPatient.painPlanSummary || '',
                 firstVisitDate: existingPatient.firstVisitDate || date,
@@ -3567,6 +3569,14 @@
             // 預設放到 pastHistory（慢性病史）；若已有 v-past-history 則不覆蓋（保留 user 已有內容）
             const phEl = document.getElementById('v-past-history');
             if (!phEl.value.trim()) phEl.value = extraRemaining;
+            // 抗凝劑偵測
+            const ac = extractAnticoagulants(result.extra || '');
+            if (ac.state === 'yes') {
+                document.getElementById('v-anticoag-state').value = 'yes';
+                const acInp = document.getElementById('v-anticoag-list');
+                acInp.value = ac.drugs.join(', ');
+                acInp.style.display = 'inline-block';
+            }
             // v-extra legacy field 已移除，不需要清空
             document.getElementById('v-exam').value = result.exam;
             document.getElementById('v-plan').value = result.plan;
@@ -3807,6 +3817,21 @@
     function extractBoneScore(text) {
         const r = extractByPatterns(text, BONE_PATTERNS);
         return { boneScore: r.found, remaining: r.remaining };
+    }
+    // 偵測抗凝劑：找已知藥名 → 回傳 { state: 'yes'|null, drugs: [] }
+    // Bokey 是 Aspirin 商品名 → 正規化為 Aspirin
+    function extractAnticoagulants(text) {
+        if (!text) return { state: null, drugs: [] };
+        const knownDrugs = ['Aspirin', 'Plavix', 'Lixiana', 'Eliquis', 'Xarelto', 'Pradaxa', 'Warfarin', 'Bokey'];
+        const found = [];
+        knownDrugs.forEach(drug => {
+            const re = new RegExp('\\b' + drug + '\\b', 'i');
+            if (re.test(text)) {
+                const canonical = drug === 'Bokey' ? 'Aspirin' : drug;
+                if (!found.includes(canonical)) found.push(canonical);
+            }
+        });
+        return found.length > 0 ? { state: 'yes', drugs: found } : { state: null, drugs: [] };
     }
 
     // Tab 分隔解析（單列、cell 內可能含換行）
