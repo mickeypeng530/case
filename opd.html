@@ -698,6 +698,25 @@
             white-space: nowrap;
         }
         .jump-chip:hover { filter: brightness(1.4); }
+        .num-edit {
+            display: inline-block;
+            min-width: 1.5em;
+            padding: 1px 4px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .num-edit:hover { background: rgba(99,102,241,0.25); }
+        .num-edit-input {
+            width: 3em;
+            font-size: inherit;
+            font-family: inherit;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--accent);
+            border-radius: 3px;
+            padding: 1px 3px;
+            text-align: center;
+        }
 
         /* Row actions */
         .row-actions {
@@ -837,6 +856,64 @@
             #user-info { display: none; }
             #logout-btn .btn-text { display: none; }
             .toolbar { gap: 6px; }
+
+            /* Phase 1：visit table 水平捲動 + sticky # / 病歷號 */
+            .visit-table-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                border-radius: 8px;
+            }
+            .visit-table {
+                min-width: 1180px;
+                table-layout: fixed;
+                font-size: 0.78rem;
+            }
+            .visit-table thead th {
+                font-size: 0.75rem;
+                padding: 8px 6px;
+            }
+            .visit-table tbody td { padding: 5px 6px; }
+
+            /* sticky 左側兩欄 */
+            .visit-table thead th.col-num,
+            .visit-table tbody td.col-num {
+                position: sticky;
+                left: 0;
+                z-index: 6;
+                background: var(--bg-secondary);
+                box-shadow: 1px 0 0 var(--border);
+            }
+            .visit-table thead th.col-num { background: var(--bg-tertiary); z-index: 11; }
+            .visit-table thead th.col-record,
+            .visit-table tbody td.col-record {
+                position: sticky;
+                left: 36px;
+                z-index: 5;
+                background: var(--bg-secondary);
+                box-shadow: 1px 0 0 var(--border);
+            }
+            .visit-table thead th.col-record { background: var(--bg-tertiary); z-index: 11; }
+            .visit-table tbody tr.no-show td.col-num,
+            .visit-table tbody tr.no-show td.col-record {
+                background: #2a2632;
+            }
+            .visit-table tbody tr.prepared td.col-num,
+            .visit-table tbody tr.prepared td.col-record {
+                background: var(--bg-secondary);
+            }
+
+            /* 各欄最小寬度（避免 fixed layout 擠太緊）*/
+            .col-num    { width: 36px; }
+            .col-record { width: 110px; }
+            .col-labs   { width: 130px; }
+            .col-extra  { width: 130px; }
+            .col-exam   { width: 220px; }
+            .col-plan   { width: 280px; }
+            .col-tags   { width: 130px; }
+            .col-actions { width: 100px; }
+
+            /* row-actions 在手機改成直排省空間 */
+            .row-actions { flex-direction: column; gap: 3px; }
         }
 
         /* 病人卡片（主表用） */
@@ -2274,7 +2351,7 @@
             const referrerDisplay = p.referrer || (p.eGFR && !isValidEGFR(p.eGFR) ? p.eGFR : '');
             return `
               <tr class="${v.noShow ? 'no-show' : ''} ${v.prepared && v.status !== 'confirmed' ? 'prepared' : ''}" data-record="${escapeAttr(v.recordNumber)}">
-                <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
+                <td class="col-num"><span class="num-edit" data-record="${escapeAttr(v.recordNumber)}" title="點擊編輯順序">${escapeHtml(String(v.orderInClinic || '—'))}</span></td>
                 <td class="col-record">
                     <span class="record-line">${escapeHtml(v.recordNumber)}</span>
                     <div class="age-line">${p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}${ageDisplay ? ` ${escapeHtml(ageDisplay)}` : ''}</div>
@@ -2459,11 +2536,13 @@
             updates['opd/patients/' + patientPartial.recordNumber] = merged;
         }
 
-        // visit
+        // visit — 保留既有狀態欄位（propagatedTo/From, status, prepared 等）
+        const existingVisit = (state.visitsByDate?.[visit.date] || {})[visit.recordNumber] || {};
         const visitData = {
+            ...existingVisit,
             ...visit,
             updatedAt: now,
-            createdAt: ((state.visitsByDate?.[visit.date] || {})[visit.recordNumber]?.createdAt) || now
+            createdAt: existingVisit.createdAt || now
         };
         updates[`opd/visits/${visit.date}/${visit.recordNumber}`] = visitData;
 
@@ -2806,6 +2885,41 @@
         });
     }
 
+    function startNumEdit(spanEl) {
+        const recordNumber = spanEl.dataset.record;
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        if (!visit) return;
+        const current = visit.orderInClinic || '';
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'num-edit-input';
+        input.value = current;
+        input.min = '0';
+        spanEl.replaceWith(input);
+        input.focus();
+        input.select();
+        let done = false;
+        const finish = async (commit) => {
+            if (done) return;
+            done = true;
+            if (commit) {
+                const raw = input.value.trim();
+                const newVal = raw === '' ? null : parseInt(raw, 10);
+                if (newVal !== current && !Number.isNaN(newVal)) {
+                    await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { orderInClinic: newVal });
+                    return; // listener 會 re-render
+                }
+            }
+            renderVisitList(); // 還原顯示
+        };
+        input.addEventListener('blur', () => finish(true));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+        });
+    }
+
     async function togglePrepared(recordNumber) {
         const date = state.currentClinicDate;
         const visit = (state.visitsByDate?.[date] || {})[recordNumber];
@@ -2917,6 +3031,11 @@
                 localStorage.setItem('opd:currentClinicDate', target);
                 state.currentClinicDate = target;
                 renderClinicDateSelector();
+                return;
+            }
+            const numEdit = e.target.closest('.num-edit');
+            if (numEdit && !numEdit.querySelector('input')) {
+                startNumEdit(numEdit);
                 return;
             }
             const btn = e.target.closest('button[data-action]');
