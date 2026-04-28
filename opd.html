@@ -1196,8 +1196,9 @@
         <h3 style="margin-bottom: 12px;">📥 從 Word 匯入</h3>
         <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
-                <input type="file" id="import-file-input" accept=".docx" style="color: var(--text-primary); font-family: inherit;">
-                <button class="primary" id="import-parse-btn">解析</button>
+                <input type="file" id="import-file-input" accept=".docx" multiple style="color: var(--text-primary); font-family: inherit;">
+                <button class="primary" id="import-parse-btn">解析（單檔預覽）</button>
+                <button id="import-batch-btn" title="從檔名自動偵測日期，全部直接寫入">🚀 批次匯入全部</button>
                 <span style="flex: 1;"></span>
                 <span style="font-size: 0.78rem; color: var(--text-muted);">支援 26_04_22 OPD.docx 格式</span>
             </div>
@@ -1734,6 +1735,110 @@
         document.getElementById('import-confirm-btn').onclick = handleImportConfirm;
     }
 
+    async function handleBatchImport() {
+        const fileInput = document.getElementById('import-file-input');
+        const status = document.getElementById('import-status');
+        const files = [...(fileInput.files || [])];
+        if (files.length === 0) { alert('請先選擇 .docx 檔（可多選）'); return; }
+        if (!confirm(`要批次匯入 ${files.length} 個 docx？\n\n規則：\n- 從檔名自動抓日期（無法判讀者跳過）\n- 全部勾選的 row 都寫入\n- 同病歷號合併、同日 visit 覆蓋`)) return;
+
+        let total = 0, ok = 0, skipped = 0;
+        const summary = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const date = detectDateFromFilename(f.name);
+            status.textContent = `[${i+1}/${files.length}] 處理 ${f.name}...`;
+            if (!date) {
+                skipped++;
+                summary.push(`⏭️ ${f.name}（檔名無法判讀日期）`);
+                continue;
+            }
+            try {
+                const result = await parseDocxFile(f);
+                if (!result.ok) {
+                    skipped++;
+                    summary.push(`❌ ${f.name}：${result.error}`);
+                    continue;
+                }
+                const rows = (result.rows || []).filter(r => r.ok);
+                if (rows.length === 0) {
+                    skipped++;
+                    summary.push(`⏭️ ${f.name}（無有效 row）`);
+                    continue;
+                }
+                const updates = {};
+                const now = Date.now();
+                rows.forEach(r => {
+                    const labStuff = extractLabs(r.extra || '');
+                    const boneStuff = extractBoneScore(labStuff.remaining);
+                    const labLines = [];
+                    if (r.eGFR) labLines.push(`eGFR ${r.eGFR}`);
+                    if (labStuff.labs) labLines.push(labStuff.labs);
+                    if (r.INR && !/INR/i.test(labStuff.labs || '')) {
+                        labLines.push(`INR ${r.INR}${r.INRDate ? ` (${r.INRDate})` : ''}`);
+                    }
+                    const refDetected = extractReferrer(r.extra || '');
+                    const parsedAge = parseAgeSex(r.ageSex, date);
+                    let phRemaining = boneStuff.remaining;
+                    if (refDetected) phRemaining = phRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
+                    phRemaining = phRemaining.replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
+                    const existingPatient = state.patients[r.recordNumber] || {};
+                    updates[`opd/patients/${r.recordNumber}`] = {
+                        ...existingPatient,
+                        recordNumber: r.recordNumber,
+                        surname: r.surname || existingPatient.surname || '',
+                        ageSex: r.ageSex || existingPatient.ageSex || '',
+                        birthYear: parsedAge?.birthYear || existingPatient.birthYear || null,
+                        sex: parsedAge?.sex || existingPatient.sex || '',
+                        referrer: refDetected || existingPatient.referrer || '',
+                        labs: labLines.join('\n') || existingPatient.labs || '',
+                        pastHistory: existingPatient.pastHistory || phRemaining || '',
+                        boneScore: existingPatient.boneScore || boneStuff.boneScore || '',
+                        anticoagState: existingPatient.anticoagState || 'unknown',
+                        anticoagulants: existingPatient.anticoagulants || [],
+                        bonePlanSummary: existingPatient.bonePlanSummary || '',
+                        painPlanSummary: existingPatient.painPlanSummary || '',
+                        firstVisitDate: existingPatient.firstVisitDate || date,
+                        createdAt: existingPatient.createdAt || now,
+                        updatedAt: now
+                    };
+                    updates[`opd/visits/${date}/${r.recordNumber}`] = {
+                        recordNumber: r.recordNumber,
+                        date,
+                        orderInClinic: r.order || null,
+                        examEducation: r.exam || '',
+                        plan: r.plan || '',
+                        tags: r.tags || [],
+                        procedureStatuses: {},
+                        status: 'confirmed',
+                        noShow: r.noShow || false,
+                        createdAt: now,
+                        updatedAt: now,
+                        confirmedAt: now
+                    };
+                    updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
+                });
+                if (result.headerNotes) {
+                    updates[`opd/clinicMeta/${date}/headerNotes`] = result.headerNotes;
+                }
+                const dow = new Date(date + 'T00:00').getDay();
+                if (dow !== 3) {
+                    updates[`opd/clinicDates/${date}`] = { date, type: 'ad-hoc', note: '從批次匯入', createdAt: now };
+                }
+                await update(ref(fbDb), updates);
+                ok++;
+                total += rows.length;
+                summary.push(`✅ ${date}：${rows.length} 筆 (${f.name})`);
+            } catch (err) {
+                skipped++;
+                summary.push(`❌ ${f.name}：${err.message}`);
+                console.error(f.name, err);
+            }
+        }
+        status.innerHTML = `批次完成：${ok} 個檔成功 / ${skipped} 個跳過 / 共 ${total} 筆 visit<br><pre style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);max-height:300px;overflow:auto;">${summary.map(s => escapeHtml(s)).join('\n')}</pre>`;
+    }
+
     async function handleImportConfirm() {
         const date = document.getElementById('import-clinic-date').value;
         if (!date) { alert('請選擇門診日期'); return; }
@@ -1832,6 +1937,7 @@
     function bindImportUI() {
         const fileInput = document.getElementById('import-file-input');
         const parseBtn = document.getElementById('import-parse-btn');
+        const batchBtn = document.getElementById('import-batch-btn');
         const dateInput = document.getElementById('import-clinic-date');
         if (!fileInput) return;
 
@@ -1842,7 +1948,12 @@
                 if (auto) dateInput.value = auto;
                 document.getElementById('import-date-hint').textContent = auto ? `已從檔名偵測 → ${auto}` : '檔名未含日期，請手動選擇';
             }
+            if (fileInput.files.length > 1) {
+                document.getElementById('import-status').textContent = `已選 ${fileInput.files.length} 個檔，按「🚀 批次匯入全部」一次匯入`;
+            }
         });
+
+        batchBtn.addEventListener('click', handleBatchImport);
 
         parseBtn.addEventListener('click', async () => {
             const f = fileInput.files[0];
