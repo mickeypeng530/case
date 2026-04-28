@@ -2567,13 +2567,23 @@
             return;
         }
 
-        // 建立 next visit
+        // 建立 next visit — 把目標日期那行的「回診」改成 [本次] anchor
         const now = Date.now();
+        const cleanedPlan = (visit.plan || '').split(/\r?\n/).map(line => {
+            if (!/回診/.test(line)) return line;
+            const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
+            if (!m) return line;
+            const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
+            const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+            if (cand !== nextRTC) return line;
+            return line.replace(/回診/g, '[本次]').replace(/\s+/g, ' ').trimEnd();
+        }).join('\n');
+
         const newVisit = {
             recordNumber,
             date: nextRTC,
             status: 'draft',
-            plan: visit.plan || '',
+            plan: cleanedPlan,
             examEducation: '',
             tags: [],
             anticoagState: 'unknown',
