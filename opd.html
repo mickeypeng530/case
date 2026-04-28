@@ -2741,17 +2741,14 @@
 
     async function propagateRTC(date, recordNumber, visit) {
         const summary = summarizePlan(visit.plan, date);
-        if (summary.isSelfRTC) {
-            setStatus('connected', '✓ 確認（self RTC，不傳遞）');
-            return;
-        }
 
-        // 找 plan 中標記「回診」的那行 → 它的未來日期是傳遞目標
-        // （不要求 RTC 字樣；任何 plan 行有「回診」+ 未來日期就算）
+        // 找 plan 中標記「回診」的那行 → 它的未來日期是傳遞目標（優先於 self RTC 全域旗標）
         let nextRTC = null;
         const planLines = (visit.plan || '').split(/\r?\n/);
         for (const line of planLines) {
             if (!/回診/.test(line)) continue;
+            // 該行本身若是 self RTC 才略過
+            if (/\bself\s*RTC\b/i.test(line)) continue;
             const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
             if (!m) continue;
             const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
@@ -2760,6 +2757,12 @@
                 nextRTC = cand;
                 break;
             }
+        }
+
+        // 沒「回診」標記 → 才檢查 plan 全域 self RTC 旗標
+        if (!nextRTC && summary.isSelfRTC) {
+            setStatus('connected', '✓ 確認（self RTC，不傳遞）');
+            return;
         }
 
         // 沒「回診」標記 → fallback 用 RTC_PATTERN 抓的：單一 RTC 直接用、多 RTC 跳 prompt
