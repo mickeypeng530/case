@@ -705,6 +705,52 @@
             100% { background: transparent; }
         }
         tr.jump-flash td { animation: jumpFlash 1.6s ease-out; }
+
+        .record-line.clickable { cursor: pointer; text-decoration: underline dashed rgba(255,255,255,0.25); }
+        .record-line.clickable:hover { color: #c7d2fe; }
+
+        .history-row {
+            border-left: 3px solid var(--border);
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: var(--bg-primary);
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+        }
+        .history-row:hover { border-left-color: var(--accent); background: rgba(99,102,241,0.08); }
+        .history-row.confirmed { border-left-color: #22c55e; }
+        .history-row.draft { border-left-color: #94a3b8; }
+        .history-row.current {
+            background: rgba(99,102,241,0.15);
+            border-left-color: var(--accent);
+        }
+        .history-row .h-date {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+        .history-row .h-meta {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+        .history-row .h-tags {
+            display: inline-flex;
+            gap: 3px;
+            margin-left: 8px;
+            flex-wrap: wrap;
+        }
+        .history-row .h-plan {
+            margin-top: 4px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            font-family: 'Noto Sans TC', monospace;
+            line-height: 1.4;
+            max-height: 4.2em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .num-edit {
             display: inline-block;
             min-width: 1.5em;
@@ -900,9 +946,18 @@
                 box-shadow: 1px 0 0 var(--border);
             }
             .visit-table thead th.col-record { background: var(--bg-tertiary); z-index: 11; }
+            /* DC row 整列半透明，但 sticky 欄位要不透明（避免後面欄位透出來疊加）*/
+            .visit-table tbody tr.no-show {
+                opacity: 1;
+            }
+            .visit-table tbody tr.no-show td {
+                opacity: 0.55;
+            }
             .visit-table tbody tr.no-show td.col-num,
             .visit-table tbody tr.no-show td.col-record {
+                opacity: 1;
                 background: #2a2632;
+                color: rgba(255,255,255,0.55);
             }
             .visit-table tbody tr.prepared td.col-num,
             .visit-table tbody tr.prepared td.col-record {
@@ -1223,6 +1278,19 @@
         <div style="color: var(--text-muted); font-size: 0.9rem;">下個 commit 實作。</div>
     </div>
 
+</div>
+
+<!-- 病人歷次門診 Timeline Modal -->
+<div class="modal-overlay" id="history-modal">
+    <div class="modal" style="max-width: 700px;">
+        <h3 id="history-modal-title">歷次門診</h3>
+        <div id="history-modal-body" style="max-height: 70vh; overflow-y: auto;">
+            <div class="empty-hint">載入中...</div>
+        </div>
+        <div class="modal-actions" style="margin-top: 14px;">
+            <button id="history-modal-close">關閉</button>
+        </div>
+    </div>
 </div>
 
 <!-- 病人新增/編輯 Modal -->
@@ -2486,7 +2554,7 @@
               <tr class="${v.noShow ? 'no-show' : ''} ${v.prepared && v.status !== 'confirmed' ? 'prepared' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num"><span class="num-edit" data-record="${escapeAttr(v.recordNumber)}" title="點擊編輯順序">${escapeHtml(String(v.orderInClinic || '—'))}</span></td>
                 <td class="col-record">
-                    <span class="record-line">${escapeHtml(v.recordNumber)}</span>
+                    <span class="record-line clickable" data-history="${escapeAttr(v.recordNumber)}" title="點擊看歷次門診">${escapeHtml(v.recordNumber)}</span>
                     <div class="age-line">${p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}${ageDisplay ? ` ${escapeHtml(ageDisplay)}` : ''}</div>
                     ${referrerDisplay ? `<div class="ref-line">${escapeHtml(referrerDisplay)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
@@ -3213,6 +3281,11 @@
                 startNumEdit(numEdit);
                 return;
             }
+            const histTrigger = e.target.closest('[data-history]');
+            if (histTrigger) {
+                openPatientHistory(histTrigger.dataset.history);
+                return;
+            }
             const btn = e.target.closest('button[data-action]');
             const more = e.target.closest('.more-toggle');
             if (more) {
@@ -3282,6 +3355,66 @@
             const styleOff = `cursor:pointer; background:transparent !important; color:var(--text-secondary) !important; border:1px dashed var(--border);`;
             return `<span class="tag-chip" data-tag="${escapeAttr(t)}" style="${isOn ? styleOn : styleOff}">${escapeHtml(t)}</span>`;
         }).join('');
+    }
+
+    async function openPatientHistory(recordNumber) {
+        const modal = document.getElementById('history-modal');
+        const title = document.getElementById('history-modal-title');
+        const body = document.getElementById('history-modal-body');
+        const p = state.patients[recordNumber] || {};
+        const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+        const ageDisplay = displayAgeSex(p, state.currentClinicDate) || p.ageSex || '';
+        title.textContent = `📅 ${recordNumber}${surname ? ' ('+surname+')' : ''}${ageDisplay ? ' ' + ageDisplay : ''} 歷次門診`;
+        body.innerHTML = '<div class="empty-hint">載入中...</div>';
+        modal.classList.add('show');
+
+        // 從 patientVisitIndex 抓所有日期，再 batch 抓 visit
+        try {
+            const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${recordNumber}`));
+            const dates = Object.keys(idxSnap.val() || {}).sort((a, b) => b.localeCompare(a));
+            if (dates.length === 0) {
+                body.innerHTML = '<div class="empty-hint">尚無歷史紀錄</div>';
+                return;
+            }
+            const visits = await Promise.all(dates.map(async d => {
+                const s = await get(ref(fbDb, `opd/visits/${d}/${recordNumber}`));
+                return s.val();
+            }));
+            const rows = visits.map((v, i) => {
+                if (!v) return '';
+                const d = dates[i];
+                const isCurrent = d === state.currentClinicDate;
+                const cls = ['history-row'];
+                if (isCurrent) cls.push('current');
+                else if (v.status === 'confirmed') cls.push('confirmed');
+                else cls.push('draft');
+                const tags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+                const tagChips = tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+                const meta = [
+                    v.status === 'confirmed' ? '✓ 確認' : '草稿',
+                    v.noShow ? 'DC' : '',
+                    v.propagatedFrom ? `← ${v.propagatedFrom.slice(5)}` : '',
+                    v.propagatedTo ? `→ ${v.propagatedTo.slice(5)}` : ''
+                ].filter(Boolean).join(' · ');
+                const planPreview = v.plan ? v.plan.split(/\r?\n/).slice(-3).join('\n') : '';
+                return `<div class="${cls.join(' ')}" data-jump-history="${escapeAttr(d)}">
+                    <div>
+                        <span class="h-date">${escapeHtml(formatDateLabel(d))}</span>
+                        <span class="h-meta">${escapeHtml(meta)}</span>
+                        <span class="h-tags visit-tags">${tagChips}</span>
+                    </div>
+                    ${planPreview ? `<div class="h-plan">${escapeHtml(planPreview)}</div>` : ''}
+                </div>`;
+            }).filter(Boolean).join('');
+            body.innerHTML = rows || '<div class="empty-hint">無資料</div>';
+        } catch (err) {
+            console.error(err);
+            body.innerHTML = `<div class="empty-hint">讀取失敗：${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    function closeHistoryModal() {
+        document.getElementById('history-modal').classList.remove('show');
     }
 
     function openVisitModal(recordNumber) {
@@ -3443,6 +3576,21 @@
     function bindVisitModal() {
         if (state.visitModalBound) return;
         state.visitModalBound = true;
+
+        // 病人歷次 modal
+        document.getElementById('history-modal-close').addEventListener('click', closeHistoryModal);
+        document.getElementById('history-modal-body').addEventListener('click', (e) => {
+            const row = e.target.closest('[data-jump-history]');
+            if (!row) return;
+            const target = row.dataset.jumpHistory;
+            const rec = document.getElementById('history-modal-title').textContent.match(/^📅\s+(\S+)/)?.[1];
+            if (rec) state.scrollToRecord = rec;
+            closeHistoryModal();
+            onClinicDateChanged(target);
+            localStorage.setItem('opd:currentClinicDate', target);
+            state.currentClinicDate = target;
+            renderClinicDateSelector();
+        });
 
         document.getElementById('v-modal-cancel').addEventListener('click', closeVisitModal);
         document.getElementById('v-modal-save').addEventListener('click', handleVisitSave);
