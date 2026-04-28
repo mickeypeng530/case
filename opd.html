@@ -712,8 +712,10 @@
         .row-actions button:hover { background: var(--bg-secondary); }
         .row-actions button.confirmed { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
         .row-actions button.prepared { background: rgba(34,197,94,0.4); border-color: rgba(34,197,94,0.6); color: #f0fdf4; }
-        /* 已備的 row：lab 欄背景變綠 */
-        tr.prepared td.col-labs { background: rgba(34,197,94,0.12); }
+        /* 已備的 row：plan 欄左側加一條綠線（類似簡報重點標示） */
+        tr.prepared td.col-plan {
+            box-shadow: inset 5px 0 0 0 #22c55e;
+        }
 
         /* Header notes 區塊 */
         .header-notes {
@@ -2247,8 +2249,8 @@
                 summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
             ].filter(Boolean).join('');
             const jumpChips = [
-                v.propagatedTo ? `<span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
-                v.propagatedFrom ? `<span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
+                v.propagatedTo ? `<span class="tag-chip" data-tag="回診">回診</span><span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` : '',
+                v.propagatedFrom ? `<span class="tag-chip" data-tag="回診">回診</span><span class="tag-chip jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← ${escapeHtml(v.propagatedFrom.slice(5))}</span>` : ''
             ].filter(Boolean).join('');
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
