@@ -3440,22 +3440,26 @@
             summary.items.filter(it => procFilter.includes(it.name)).forEach(it => {
                 const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
                 const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
+                // 格式：[NHI] Name×N (日期, 日期, ...)
                 const formatGroup = (events) => {
-                    if (!events.length) return '';
+                    if (!events.length) return { prefix: '', body: '' };
                     const payments = events.map(e => e.payment).filter(Boolean);
                     const samePayment = payments.length && payments.length === events.length && payments.every(p => p === payments[0]);
+                    const dates = events.map(e => e.date).filter(Boolean).join(', ');
                     if (samePayment) {
-                        const dates = events.map(e => e.date).filter(Boolean).join(', ');
-                        return `×${events.length} ${payments[0]}${dates ? ` (${dates})` : ''}`;
-                    } else {
-                        const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
-                        return `×${events.length} (${parts.join(', ')})`;
+                        return { prefix: payments[0] + ' ', body: `×${events.length}${dates ? ` (${dates})` : ''}` };
                     }
+                    const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
+                    return { prefix: '', body: `×${events.length} (${parts.join(', ')})` };
                 };
-                const doneStr = formatGroup(doneEvts);
-                const planStr = planEvts.length ? `, 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : '') : '';
-                if (doneEvts.length) lines.push(`${it.name}${doneStr}${planStr}`);
-                else if (planEvts.length) lines.push(`${it.name} 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : ''));
+                const doneFmt = formatGroup(doneEvts);
+                const planFmt = formatGroup(planEvts);
+                const planTail = planEvts.length ? `, ${planFmt.prefix}計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}` : '';
+                if (doneEvts.length) {
+                    lines.push(`${doneFmt.prefix}${it.name}${doneFmt.body}${planTail}`);
+                } else if (planEvts.length) {
+                    lines.push(`${planFmt.prefix}${it.name} 計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}`);
+                }
             });
             return lines.join('\n');
         }
