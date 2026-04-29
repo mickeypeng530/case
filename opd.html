@@ -1526,6 +1526,7 @@
         <div class="field">
             <label>Plan（本次 visit）</label>
             <textarea id="v-plan" style="min-height: 140px; font-family: 'Noto Sans TC', monospace;"></textarea>
+            <div id="v-future-dates-row" style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 0.74rem;"></div>
             <div style="margin-top: 4px; font-size: 0.74rem; color: var(--text-muted);">點插入到游標位置：</div>
             <div style="margin-top: 2px; display: flex; gap: 3px; flex-wrap: wrap; align-items: center;" id="v-plan-insert-row">
                 <button type="button" data-insert="[本次]" class="plan-insert-btn" style="background: rgba(99,102,241,0.4); color: white; border: 1px solid #6366f1; padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer; font-weight: 600;">[本次]</button>
@@ -1982,6 +1983,7 @@
                     if (skipVisit) {
                         skippedVisits++;
                     } else {
+                        const isPast = date < formatDate(new Date());
                         updates[`opd/visits/${date}/${r.recordNumber}`] = {
                             recordNumber: r.recordNumber,
                             date,
@@ -1990,11 +1992,11 @@
                             plan: r.plan || '',
                             tags: r.tags || [],
                             procedureStatuses: {},
-                            status: 'confirmed',
+                            status: isPast ? 'confirmed' : 'draft',
                             noShow: r.noShow || false,
                             createdAt: now,
                             updatedAt: now,
-                            confirmedAt: now
+                            confirmedAt: isPast ? now : null
                         };
                         updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
                         writtenVisits++;
@@ -2090,6 +2092,7 @@
             if (skipVisit) {
                 skippedVisits++;
             } else {
+                const isPast = date < formatDate(new Date());
                 updates[`opd/visits/${date}/${r.recordNumber}`] = {
                     recordNumber: r.recordNumber,
                     date,
@@ -2098,11 +2101,11 @@
                     plan: r.plan || '',
                     tags: r.tags || [],
                     procedureStatuses: {},
-                    status: 'confirmed',
+                    status: isPast ? 'confirmed' : 'draft',
                     noShow: r.noShow || false,
                     createdAt: now,
                     updatedAt: now,
-                    confirmedAt: now
+                    confirmedAt: isPast ? now : null
                 };
                 updates[`opd/patientVisitIndex/${r.recordNumber}/${date}`] = true;
                 writtenVisits++;
@@ -2681,8 +2684,11 @@
                     const bs = p.boneScore || '';
                     // pastHistory 用 ?? 避免「空字串」還 fallback 到 extra（user 主動清空時尊重）
                     const ph = (p.pastHistory ?? p.extra) || '';
+                    const acDrugs = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
+                        ? p.anticoagulants.join(' / ') : '';
                     const parts = [];
                     if (bs) parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`);
+                    if (acDrugs) parts.push(`<span style="color:#f87171;font-weight:600;font-size:0.72rem">🩸 抗凝:</span> ${escapeHtml(acDrugs)}`);
                     if (ph) parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`);
                     return parts.join('<br>');
                 })()}</td>
@@ -3259,8 +3265,17 @@
         if (!visit) return;
         const newPrepared = !visit.prepared;
         const updates = { prepared: newPrepared };
-        if (newPrepared) updates.preparedAt = Date.now();
-        else updates.preparedAt = null;
+        if (newPrepared) {
+            updates.preparedAt = Date.now();
+            // 備 / 確 互斥：標備 → 退回草稿
+            if (visit.status === 'confirmed') {
+                updates.status = 'draft';
+                updates.confirmedAt = null;
+                updates.propagatedTo = null;
+            }
+        } else {
+            updates.preparedAt = null;
+        }
         await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
     }
 
@@ -3534,6 +3549,37 @@
         document.getElementById('history-modal').classList.remove('show');
     }
 
+    function renderFutureDatesRow(currentDate) {
+        const row = document.getElementById('v-future-dates-row');
+        if (!row) return;
+        // 蒐集：常規門診日（雙週三）+ 加診日，過濾 > currentDate
+        const reg = generateRegularClinicDates(0, 12).map(d => d.date);
+        const adHoc = Object.keys(state.adHocClinicDates || {});
+        const all = [...new Set([...reg, ...adHoc])].filter(d => d > currentDate).sort();
+        if (all.length === 0) { row.innerHTML = ''; return; }
+        const next6 = all.slice(0, 6);
+        // 26 週後最近的門診日
+        const target26w = new Date(currentDate + 'T00:00');
+        target26w.setDate(target26w.getDate() + 26 * 7);
+        const target26wStr = formatDate(target26w);
+        const longTerm = all.find(d => d >= target26wStr);
+        const final = [...next6];
+        if (longTerm && !final.includes(longTerm)) final.push(longTerm);
+
+        const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        row.innerHTML = '<span style="color:var(--text-muted);">📅 未來門診：</span>' + final.map((d, i) => {
+            const dt = new Date(d + 'T00:00');
+            const md = d.slice(5).replace('-', '/');
+            const wd = dayNames[dt.getDay()];
+            const isLong = (i === final.length - 1 && longTerm && i >= 6);
+            const yy = d.slice(2, 4);
+            const insert = `${yy}/${d.slice(5, 7)}/${d.slice(8, 10)} RTC 回診 `;
+            const bg = isLong ? 'rgba(168,85,247,0.5)' : 'rgba(99,102,241,0.4)';
+            const label = `${md}(${wd})${isLong ? ' ⏳26週' : ''}`;
+            return `<button type="button" class="future-date-btn plan-insert-btn" data-insert="${escapeAttr(insert)}" title="插入 ${escapeAttr(d)} RTC 到 plan" style="background: ${bg}; color: white; border: 1px solid #6366f1; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">${escapeHtml(label)}</button>`;
+        }).join('');
+    }
+
     function openVisitModal(recordNumber) {
         const date = state.currentClinicDate;
         if (!date) { alert('請先選擇門診日期'); return; }
@@ -3547,6 +3593,7 @@
         state.procStatusesTemp = { ...(visit.procedureStatuses || {}) };
 
         document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
+        renderFutureDatesRow(date);
         document.getElementById('v-order').value = visit.orderInClinic || '';
         document.getElementById('v-record-number').value = visit.recordNumber || '';
         document.getElementById('v-record-number').disabled = false;
@@ -3777,32 +3824,33 @@
         });
 
         // 插入 status tag 到 plan textarea 游標位置；同時自動連動 visit tag
-        document.querySelectorAll('.plan-insert-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const ta = document.getElementById('v-plan');
-                const text = btn.dataset.insert;
-                const start = ta.selectionStart;
-                const end = ta.selectionEnd;
-                const before = ta.value.substring(0, start);
-                const after = ta.value.substring(end);
-                const needSpace = before.length > 0 && !/[\s\n]$/.test(before);
-                const insertText = (needSpace ? ' ' : '') + text;
-                ta.value = before + insertText + after;
-                const cursorPos = start + insertText.length;
-                ta.selectionStart = ta.selectionEnd = cursorPos;
-                ta.focus();
+        // 用 event delegation，未來動態加的 chip（如未來門診日期）也吃同一邏輯
+        document.getElementById('visit-modal').addEventListener('click', (e) => {
+            const btn = e.target.closest('.plan-insert-btn');
+            if (!btn) return;
+            const ta = document.getElementById('v-plan');
+            const text = btn.dataset.insert;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const before = ta.value.substring(0, start);
+            const after = ta.value.substring(end);
+            const needSpace = before.length > 0 && !/[\s\n]$/.test(before);
+            const insertText = (needSpace ? ' ' : '') + text;
+            ta.value = before + insertText + after;
+            const cursorPos = start + insertText.length;
+            ta.selectionStart = ta.selectionEnd = cursorPos;
+            ta.focus();
 
-                // 自動連動主 tag：badge 內含 tag 名稱 → 自動勾選
-                const inner = text.replace(/^\[|\]$/g, '');
-                DEFAULT_TAGS.forEach(tag => {
-                    const safe = tag.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
-                    const re = new RegExp(`(^|\\s)${safe}(\\s|$)`, 'i');
-                    if (re.test(inner) && !state.visitTagsTemp.includes(tag)) {
-                        state.visitTagsTemp.push(tag);
-                    }
-                });
-                renderVisitTagPicker(state.visitTagsTemp);
+            // 自動連動主 tag：badge 內含 tag 名稱 → 自動勾選
+            const inner = text.replace(/^\[|\]$/g, '');
+            DEFAULT_TAGS.forEach(tag => {
+                const safe = tag.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+                const re = new RegExp(`(^|\\s)${safe}(\\s|$)`, 'i');
+                if (re.test(inner) && !state.visitTagsTemp.includes(tag)) {
+                    state.visitTagsTemp.push(tag);
+                }
             });
+            renderVisitTagPicker(state.visitTagsTemp);
         });
 
         // Tag picker（單純多選）
@@ -4074,8 +4122,14 @@
         /eGFR:?\s*[><=]*\s*[\d.]+/i,
         /Cr:?\s*[\d.]+/i,
         /WBC:?\s*[\d.]+/i,
-        /Plt:?\s*[\d.]+/i,
-        /Hb:?\s*[\d.]+/i
+        /Plt:?\s*[\d.]+\w*/i,            // 涵蓋 "Plt12.4W"
+        /HbA1[Cc]:?\s*[\d.]+%?/i,        // HbA1C 要先於 Hb
+        /Hb:?\s*[\d.]+/i,
+        /BUN:?\s*[\d.]+/i,
+        /AST:?\s*[\d.]+/i,
+        /ALT:?\s*[\d.]+/i,
+        /TSH:?\s*[\d.]+/i,
+        /(?:25[-\s]?OH[-\s]?(?:Vit\s*)?D|VitD|Vit\.?D):?\s*[\d.]+/i
     ];
     // 骨鬆評估類（T-score, TBS, FRAX 等）
     const BONE_PATTERNS = [
