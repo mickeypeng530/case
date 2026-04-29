@@ -3554,6 +3554,38 @@
         document.getElementById('history-modal').classList.remove('show');
     }
 
+    // 依 procedure 類別生成摘要文字（從 v-plan textarea 讀，給 modal 用）
+    function generateSummaryByCategory(procFilter) {
+        const date = state.currentClinicDate;
+        const planText = document.getElementById('v-plan').value;
+        const summary = summarizePlan(planText, date);
+        const lines = [];
+        summary.items.filter(it => procFilter.includes(it.name)).forEach(it => {
+            const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
+            const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
+            const formatGroup = (events) => {
+                if (!events.length) return { prefix: '', body: '' };
+                const payments = events.map(e => e.payment).filter(Boolean);
+                const samePayment = payments.length && payments.length === events.length && payments.every(p => p === payments[0]);
+                const dates = events.map(e => e.date).filter(Boolean).join(', ');
+                if (samePayment) {
+                    return { prefix: payments[0] + ' ', body: `×${events.length}${dates ? ` (${dates})` : ''}` };
+                }
+                const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
+                return { prefix: '', body: `×${events.length} (${parts.join(', ')})` };
+            };
+            const doneFmt = formatGroup(doneEvts);
+            const planFmt = formatGroup(planEvts);
+            const planTail = planEvts.length ? `, ${planFmt.prefix}計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}` : '';
+            if (doneEvts.length) {
+                lines.push(`${doneFmt.prefix}${it.name}${doneFmt.body}${planTail}`);
+            } else if (planEvts.length) {
+                lines.push(`${planFmt.prefix}${it.name} 計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}`);
+            }
+        });
+        return lines.join('\n');
+    }
+
     function renderFutureDatesRow(currentDate) {
         const row = document.getElementById('v-future-dates-row');
         if (!row) return;
@@ -3775,39 +3807,6 @@
             inp.style.display = (e.target.value === 'yes') ? 'inline-block' : 'none';
             if (e.target.value !== 'yes') inp.value = '';
         });
-
-        // 共用：依 procedure 類別生成摘要文字
-        function generateSummaryByCategory(procFilter) {
-            const date = state.currentClinicDate;
-            const planText = document.getElementById('v-plan').value;
-            const summary = summarizePlan(planText, date);
-            const lines = [];
-            summary.items.filter(it => procFilter.includes(it.name)).forEach(it => {
-                const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
-                const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
-                // 格式：[NHI] Name×N (日期, 日期, ...)
-                const formatGroup = (events) => {
-                    if (!events.length) return { prefix: '', body: '' };
-                    const payments = events.map(e => e.payment).filter(Boolean);
-                    const samePayment = payments.length && payments.length === events.length && payments.every(p => p === payments[0]);
-                    const dates = events.map(e => e.date).filter(Boolean).join(', ');
-                    if (samePayment) {
-                        return { prefix: payments[0] + ' ', body: `×${events.length}${dates ? ` (${dates})` : ''}` };
-                    }
-                    const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
-                    return { prefix: '', body: `×${events.length} (${parts.join(', ')})` };
-                };
-                const doneFmt = formatGroup(doneEvts);
-                const planFmt = formatGroup(planEvts);
-                const planTail = planEvts.length ? `, ${planFmt.prefix}計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}` : '';
-                if (doneEvts.length) {
-                    lines.push(`${doneFmt.prefix}${it.name}${doneFmt.body}${planTail}`);
-                } else if (planEvts.length) {
-                    lines.push(`${planFmt.prefix}${it.name} 計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}`);
-                }
-            });
-            return lines.join('\n');
-        }
 
         function fillSummaryField(targetId, generated) {
             if (!generated) { alert('plan 內未偵測到此類處置'); return; }
