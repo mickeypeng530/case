@@ -25,6 +25,23 @@
             --color-tag-default: #6366f1;
             --color-dc: #475569;
         }
+        :root[data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border: #cbd5e1;
+
+            --color-confirmed: #16a34a;
+            --color-draft: #64748b;
+            --color-warning: #d97706;
+            --color-danger: #dc2626;
+            --color-info: #2563eb;
+            --color-tag-default: #4f46e5;
+            --color-dc: #94a3b8;
+        }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1254,10 +1271,14 @@
                 <button id="settings-btn" class="header-btn" title="設定">⚙️</button>
                 <div id="settings-menu" style="display:none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 220px; box-shadow: 0 6px 18px rgba(0,0,0,0.3); z-index: 100;">
                     <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">字體大小</div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 12px;">
                         <button id="font-down-btn" class="header-btn" title="縮小字體">A−</button>
                         <span id="font-size-label" style="font-size: 0.85rem; color: var(--text-primary); min-width: 48px; text-align: center;">100%</span>
                         <button id="font-up-btn" class="header-btn" title="放大字體">A+</button>
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">主題</div>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="theme-toggle-btn" class="header-btn" style="flex:1;">💡 切換亮 / 暗</button>
                     </div>
                 </div>
             </div>
@@ -1744,6 +1765,20 @@
             if (settingsMenu && !settingsMenu.contains(e.target) && e.target !== settingsBtn) {
                 settingsMenu.style.display = 'none';
             }
+        });
+
+        // 主題切換（開關燈）
+        const applyTheme = (mode) => {
+            if (mode === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            else document.documentElement.removeAttribute('data-theme');
+        };
+        const savedTheme = localStorage.getItem('opd:theme') || 'dark';
+        applyTheme(savedTheme);
+        document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+            const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+            const next = cur === 'light' ? 'dark' : 'light';
+            applyTheme(next);
+            localStorage.setItem('opd:theme', next);
         });
         const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
         document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
@@ -2603,20 +2638,41 @@
         let statTagPanelHtml = '';
         if (activeStatTag) {
             const matched = came.filter(v => (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t).includes(activeStatTag));
-            const rows = matched.map(v => {
+            // SONO 子分組：本次 anchor 後的 plan 含 [SONO PM] / [SONO 約]
+            const detectSonoSub = (v) => {
+                if (activeStatTag !== 'SONO') return '';
+                const lines = (v.plan || '').split(/\r?\n/);
+                const anchorIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+                const scope = anchorIdx >= 0 ? lines.slice(anchorIdx).join('\n') : (v.plan || '');
+                if (/SONO\s*PM|\[SONO\s*PM\]/i.test(scope)) return 'PM';
+                if (/SONO\s*約|\[SONO\s*約\]/i.test(scope)) return '約';
+                return '其他';
+            };
+            const buildRow = (v, subLabel) => {
                 const p = state.patients[v.recordNumber] || {};
                 const tagChips = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))]
                     .map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
                 const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
                 const ageSex = displayAgeSex(p, date) || p.ageSex || '';
+                const subBadge = subLabel ? `<span class="tag-chip" data-tag="SONO ${subLabel}" style="background:${subLabel==='PM'?'rgba(96,165,250,0.85)':subLabel==='約'?'rgba(59,130,246,0.9)':'rgba(148,163,184,0.5)'};color:${subLabel==='PM'?'#1e3a8a':'#fff'};margin-right:4px;">SONO ${escapeHtml(subLabel)}</span>` : '';
                 return `<div class="stp-row">
                     <span class="stp-rec">${escapeHtml(v.recordNumber)}</span>
                     <span class="stp-name">${escapeHtml(surname)}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
-                    <span class="stp-tags visit-tags">${tagChips}</span>
+                    <span class="stp-tags visit-tags">${subBadge}${tagChips}</span>
                 </div>`;
-            }).join('');
+            };
+            let rows;
+            let subSummary = '';
+            if (activeStatTag === 'SONO') {
+                const groups = { 'PM': [], '約': [], '其他': [] };
+                matched.forEach(v => groups[detectSonoSub(v)].push(v));
+                subSummary = ` (PM ${groups.PM.length} / 約 ${groups['約'].length}${groups['其他'].length ? ' / 其他 ' + groups['其他'].length : ''})`;
+                rows = ['PM', '約', '其他'].flatMap(k => groups[k].map(v => buildRow(v, k))).join('');
+            } else {
+                rows = matched.map(v => buildRow(v, '')).join('');
+            }
             statTagPanelHtml = `<div class="stat-tag-panel">
-                <div class="stp-title">標籤「${escapeHtml(activeStatTag)}」共 ${matched.length} 位（再點一次收合）</div>
+                <div class="stp-title">標籤「${escapeHtml(activeStatTag)}」共 ${matched.length} 位${subSummary}（再點一次收合）</div>
                 ${rows}
             </div>`;
         }
