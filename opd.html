@@ -73,6 +73,28 @@
         :root[data-theme="light"] .plan-line.done { color: #166534; }
         :root[data-theme="light"] .plan-line.rtc-line { color: #1e40af; }
 
+        /* 回到最上按鈕 — 右下角、半透明、不擋文字 */
+        #scroll-top-btn {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: rgba(99,102,241,0.08);
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            font-family: inherit;
+            cursor: pointer;
+            z-index: 50;
+            display: none;
+            opacity: 0.35;
+            transition: opacity 0.2s, background 0.2s;
+            backdrop-filter: blur(2px);
+        }
+        #scroll-top-btn.visible { display: block; }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
@@ -1625,6 +1647,8 @@
     </div>
 </div>
 
+<button id="scroll-top-btn" title="回到最上" aria-label="回到最上">↑</button>
+
 <script type="module">
     // ========== Firebase ==========
     import { fbAuth, fbDb } from "./firebase-init.js";
@@ -1796,6 +1820,17 @@
                 settingsMenu.style.display = 'none';
             }
         });
+
+        // 回到最上按鈕
+        const scrollTopBtn = document.getElementById('scroll-top-btn');
+        if (scrollTopBtn) {
+            window.addEventListener('scroll', () => {
+                scrollTopBtn.classList.toggle('visible', window.scrollY > 400);
+            }, { passive: true });
+            scrollTopBtn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
 
         // 主題切換（開關燈）
         const applyTheme = (mode) => {
@@ -2381,12 +2416,40 @@
         // 該年的月日下拉
         const yearDates = allDates.filter(d => d.date.startsWith(currentYear));
         const days = ['日', '一', '二', '三', '四', '五', '六'];
-        mdSel.innerHTML = yearDates.map(d => {
-            const md = d.date.slice(5).replace('-', '/');
-            const wd = days[new Date(d.date).getDay()];
-            const label = (d.type === 'ad-hoc' ? '★ ' : '') + `${md} (${wd})` + (d.type === 'ad-hoc' ? ' 加診' : '');
-            return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''} style="${d.type === 'ad-hoc' ? 'color:#fca5a5;' : ''}">${label}</option>`;
-        }).join('');
+        const today = formatDate(new Date());
+        const counts = state.visitCountsByDate || (state.visitCountsByDate = {});
+        const renderOptions = () => {
+            mdSel.innerHTML = yearDates.map(d => {
+                const md = d.date.slice(5).replace('-', '/');
+                const wd = days[new Date(d.date).getDay()];
+                const c = counts[d.date]; // { came, dc } or undefined
+                // 過去 / 未來都只秀 came（非 DC 人數）
+                const countStr = (c && c.came > 0) ? ` · ${c.came}人` : '';
+                let textColor = '';
+                if (d.type === 'ad-hoc') textColor = '#fca5a5';
+                else if (d.date < today) textColor = '#94a3b8';     // 過去：灰
+                else textColor = '#86efac';                          // 今天 / 未來：綠
+                const label = (d.type === 'ad-hoc' ? '★ ' : '') + `${md} (${wd})` + (d.type === 'ad-hoc' ? ' 加診' : '') + countStr;
+                return `<option value="${d.date}" ${d.date === currentValue ? 'selected' : ''} style="color:${textColor};">${label}</option>`;
+            }).join('');
+        };
+        renderOptions();
+        // 非同步抓未快取的日期 visit 數，抓到再 re-render select
+        const missing = yearDates.map(d => d.date).filter(dt => !(dt in counts));
+        if (missing.length > 0) {
+            Promise.all(missing.map(async dt => {
+                try {
+                    const snap = await get(ref(fbDb, `opd/visits/${dt}`));
+                    const visits = Object.values(snap.val() || {});
+                    counts[dt] = {
+                        came: visits.filter(v => !v.noShow).length,
+                        dc: visits.filter(v => v.noShow).length
+                    };
+                } catch {
+                    counts[dt] = { came: 0, dc: 0 };
+                }
+            })).then(renderOptions);
+        }
 
         const isAdHoc = allDates.find(d => d.date === currentValue)?.type === 'ad-hoc';
         mdSel.style.color = isAdHoc ? '#fca5a5' : '';
@@ -2427,6 +2490,13 @@
         const unsub = onValue(r, (snap) => {
             state.visitsByDate = state.visitsByDate || {};
             state.visitsByDate[dateStr] = snap.val() || {};
+            // 同步更新人數快取（用於日期下拉）
+            const visits = Object.values(state.visitsByDate[dateStr]);
+            state.visitCountsByDate = state.visitCountsByDate || {};
+            state.visitCountsByDate[dateStr] = {
+                came: visits.filter(v => !v.noShow).length,
+                dc: visits.filter(v => v.noShow).length
+            };
             renderVisitList();
             updateClinicDateMeta();
         });
