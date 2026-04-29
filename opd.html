@@ -42,6 +42,33 @@
             --color-tag-default: #4f46e5;
             --color-dc: #94a3b8;
         }
+        /* Light mode 補色：原本用於暗底的淡色文字在白底會看不見 */
+        :root[data-theme="light"] .status-badge.draft       { color: #475569; background: #e2e8f0; }
+        :root[data-theme="light"] .status-badge.confirmed   { color: #166534; background: #dcfce7; }
+        :root[data-theme="light"] .status-badge.first-visit { color: #991b1b; background: #fee2e2; }
+        :root[data-theme="light"] .status-badge.self-rtc    { color: #92400e; background: #fef3c7; }
+        :root[data-theme="light"] .status-badge.warning     { color: #92400e; background: #fef3c7; }
+        :root[data-theme="light"] .status-badge.propagated      { color: #3730a3; background: #e0e7ff; }
+        :root[data-theme="light"] .status-badge.propagated-from { color: #5b21b6; background: #ede9fe; }
+
+        :root[data-theme="light"] .exam-summary .pill { color: #3730a3; background: rgba(99,102,241,0.12); }
+        :root[data-theme="light"] .plan-summary .pill { color: #3730a3; }
+        :root[data-theme="light"] .pill.expandable[style*="rgba(168,85,247"]  { color: #6b21a8 !important; background: #f3e8ff !important; }
+        :root[data-theme="light"] .pill.expandable[style*="rgba(236,72,153"]  { color: #9d174d !important; background: #fce7f3 !important; }
+
+        /* hover popover 在亮模式也用深底白字（保持紫色風格但對比夠）*/
+        :root[data-theme="light"] .pill.expandable:hover::after {
+            background: linear-gradient(135deg, #4c1d95 0%, #2e1065 100%);
+            color: #f3e8ff;
+        }
+        /* jump-chip 亮模式 */
+        :root[data-theme="light"] .jump-chip { color: #3730a3; background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.4); }
+        /* num-edit hover */
+        :root[data-theme="light"] .num-edit:hover { background: rgba(99,102,241,0.15); }
+        /* 抗凝劑 ac-icon */
+        :root[data-theme="light"] .ac-icon.ac-yes  { color: #991b1b; }
+        :root[data-theme="light"] .ac-icon.ac-none { color: #166534; }
+        :root[data-theme="light"] .ac-icon.ac-unknown { color: #92400e; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
