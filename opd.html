@@ -2801,8 +2801,9 @@
                     // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)；MRI 不秀於本次概況
                     const filteredItems = summary.items.filter(it => {
                         if (it.name === 'MRI') return false;
-                        if (p.bonePlanSummary && BONE_PROCS.includes(it.name)) return false;
-                        if (p.painPlanSummary && PAIN_PROCS.includes(it.name)) return false;
+                        // bone/pain summary：user 在 modal 編輯過（含清空）→ 視為已處理，不顯示 auto chip
+                        if ((p.boneSummaryEdited || p.bonePlanSummary) && BONE_PROCS.includes(it.name)) return false;
+                        if ((p.painSummaryEdited || p.painPlanSummary) && PAIN_PROCS.includes(it.name)) return false;
                         return true;
                     });
                     // 手動摘要 chip — hover popover 顯示完整原文（含換行）
@@ -3839,7 +3840,9 @@
             anticoagState: acState,
             anticoagulants,
             bonePlanSummary: document.getElementById('v-bone-summary').value.trim(),
-            painPlanSummary: document.getElementById('v-pain-summary').value.trim()
+            painPlanSummary: document.getElementById('v-pain-summary').value.trim(),
+            boneSummaryEdited: true,
+            painSummaryEdited: true
         };
 
         try {
