@@ -2685,7 +2685,9 @@
                 const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
                 const ageSex = displayAgeSex(p, date) || p.ageSex || '';
                 const subBadge = subLabel ? `<span class="tag-chip" data-tag="SONO ${subLabel}" style="background:${subLabel==='PM'?'rgba(96,165,250,0.85)':subLabel==='約'?'rgba(59,130,246,0.9)':'rgba(148,163,184,0.5)'};color:${subLabel==='PM'?'#1e3a8a':'#fff'};margin-right:4px;">SONO ${escapeHtml(subLabel)}</span>` : '';
-                return `<div class="stp-row">
+                const orderNum = v.orderInClinic ? `#${v.orderInClinic}` : '#—';
+                return `<div class="stp-row" data-jump-record="${escapeAttr(v.recordNumber)}" style="cursor:pointer;">
+                    <span class="stp-order" style="color:var(--text-muted);font-family:monospace;min-width:36px;display:inline-block;">${escapeHtml(orderNum)}</span>
                     <span class="stp-rec">${escapeHtml(v.recordNumber)}</span>
                     <span class="stp-name">${escapeHtml(surname)}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
                     <span class="stp-tags visit-tags">${subBadge}${tagChips}</span>
@@ -3486,6 +3488,17 @@
                 const t = statTag.dataset.statTag;
                 state.statTagExpanded = (state.statTagExpanded === t) ? null : t;
                 renderVisitList();
+                return;
+            }
+            const jumpRow = e.target.closest('[data-jump-record]');
+            if (jumpRow && !e.target.closest('[data-tag]')) {
+                const rec = jumpRow.dataset.jumpRecord;
+                const row = document.querySelector(`tr[data-record="${CSS.escape(rec)}"]`);
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('jump-flash');
+                    setTimeout(() => row.classList.remove('jump-flash'), 1800);
+                }
                 return;
             }
             const jump = e.target.closest('[data-jump-date]');
