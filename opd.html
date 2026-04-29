@@ -2469,6 +2469,11 @@
 
             const payment = detectPayment(line);
 
+            // dash 行 + 完全沒明確日期 = 討論/規劃 → 不計入
+            const isDashLine = line.trim().startsWith('-');
+            const noExplicitDate = !hasExplicitFuture && !hasExplicitPastOrToday;
+            if (isDashLine && noExplicitDate) return;
+
             PROC_KEYWORDS.forEach(k => {
                 const matches = line.match(k.re);
                 if (!matches || !matches.length) return;
@@ -3621,11 +3626,11 @@
         document.getElementById('v-anticoag-list').value = (patient.anticoagulants || []).join(', ');
         document.getElementById('v-anticoag-list').style.display = (acState === 'yes') ? 'inline-block' : 'none';
 
-        document.getElementById('v-bone-summary').value = patient.bonePlanSummary || '';
-        document.getElementById('v-pain-summary').value = patient.painPlanSummary || '';
-
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
+        // bone / pain 摘要：有手動值就用，沒有則自動生成（user 修改後 save 會變成「他的」）
+        document.getElementById('v-bone-summary').value = patient.bonePlanSummary || generateSummaryByCategory(BONE_PROCS) || '';
+        document.getElementById('v-pain-summary').value = patient.painPlanSummary || generateSummaryByCategory(PAIN_PROCS) || '';
         document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
 
         renderVisitTagPicker(state.visitTagsTemp);
