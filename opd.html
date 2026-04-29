@@ -69,6 +69,9 @@
         :root[data-theme="light"] .ac-icon.ac-yes  { color: #991b1b; }
         :root[data-theme="light"] .ac-icon.ac-none { color: #166534; }
         :root[data-theme="light"] .ac-icon.ac-unknown { color: #92400e; }
+        /* plan 行顏色亮模式 */
+        :root[data-theme="light"] .plan-line.done { color: #166534; }
+        :root[data-theme="light"] .plan-line.rtc-line { color: #1e40af; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -2445,7 +2448,7 @@
     const PROC_KEYWORDS = [
         { name: 'CT NB', re: /\bCT\s*NB\b/gi },
         { name: 'pRF', re: /\bp?RF\b/g },
-        { name: 'SONO', re: /\bSONO\s*INJ\b/gi },
+        { name: 'SONO', re: /\bSONO\b/gi },  // SONO INJ / PM / 約 / NB / Arthro 都算
         { name: 'TAME', re: /\b[sc]?TAME\b/gi },
         { name: 'MRI', re: /\bMRI\b/g },
         { name: 'PRP', re: /\bPRP\b/g },
