@@ -1997,11 +1997,13 @@
                         updates[id] = {
                             date: formatDateForInput(d),
                             period,
-                            recordNumber: c.recordNumber || '',
-                            name: c.name || '',
-                            type: c.type,
-                            anatomy: c.note || c.location || '',
-                            note: '',
+                            time: c.time || '',
+                            chartNo: c.chartNo || '',
+                            ageSex: '',
+                            type: c.type || '',
+                            otherSubtype: c.otherSubtype || '',
+                            note: c.note || '',
+                            noteExt: '',
                             status: 'pending',
                             source: 'cell',
                             cellRef: cellKey,
@@ -2048,19 +2050,26 @@
                 wrap.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div>';
                 return;
             }
-            const typeOpts = CASELIST_TYPES.map(t => `<option value="${t}">${CASELIST_TYPE_LABEL[t]}</option>`).join('');
+            const esc = (s) => (s == null ? '' : String(s)).replace(/"/g, '&quot;');
             const rows = items.map(c => {
                 const rowCls = c.status === 'done' ? 'row-done' : (c.status === 'cancel' ? 'row-cancel' : '');
                 const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'cancel' ? 'status-cancel' : 'status-pending');
                 const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'cancel' ? '❌ 取消' : '⏳ 待做');
+                // 兼容舊欄位名（之前 recordNumber/name → 改 chartNo/ageSex 後）
+                const chartNo = c.chartNo || c.recordNumber || '';
+                const noteExt = c.noteExt != null ? c.noteExt : (c.anatomy || '');
                 return `<tr class="${rowCls}" data-id="${c.id}">
                     <td><input type="date" data-field="date" value="${c.date || ''}"></td>
                     <td><select data-field="period"><option value="AM"${c.period === 'AM' ? ' selected' : ''}>AM</option><option value="PM"${c.period === 'PM' ? ' selected' : ''}>PM</option></select></td>
-                    <td><input type="text" data-field="recordNumber" value="${(c.recordNumber || '').replace(/"/g, '&quot;')}" placeholder="病歷號" data-trigger-fill="1"></td>
-                    <td><input type="text" data-field="name" value="${(c.name || '').replace(/"/g, '&quot;')}" placeholder="姓名"></td>
-                    <td><select data-field="type"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select></td>
-                    <td><input type="text" data-field="anatomy" value="${(c.anatomy || '').replace(/"/g, '&quot;')}" placeholder="部位"></td>
-                    <td><input type="text" data-field="note" value="${(c.note || '').replace(/"/g, '&quot;')}" placeholder="備註"></td>
+                    <td><input type="time" data-field="time" value="${esc(c.time)}"></td>
+                    <td><input type="text" data-field="chartNo" value="${esc(chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
+                    <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
+                    <td>
+                        <select data-field="type"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>
+                        ${c.type === 'other' ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="other 細項" style="margin-top:2px;">` : ''}
+                    </td>
+                    <td><input type="text" data-field="note" value="${esc(c.note)}" placeholder="排程備註"></td>
+                    <td><input type="text" data-field="noteExt" value="${esc(noteExt)}" placeholder="詳細筆記"></td>
                     <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
                     <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程自動同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
@@ -2070,12 +2079,13 @@
                 <thead><tr>
                     <th style="width:120px;">日期</th>
                     <th style="width:60px;">時段</th>
+                    <th style="width:90px;">時間</th>
                     <th style="width:100px;">病歷號</th>
-                    <th style="width:90px;">姓名</th>
-                    <th style="width:110px;">type</th>
-                    <th style="width:140px;">部位</th>
-                    <th>備註</th>
-                    <th style="width:90px;">狀態</th>
+                    <th style="width:80px;">年齡性別</th>
+                    <th style="width:130px;">類型</th>
+                    <th>排程備註</th>
+                    <th>詳細筆記</th>
+                    <th style="width:80px;">狀態</th>
                     <th style="width:30px;"></th>
                     <th style="width:30px;"></th>
                 </tr></thead>
@@ -2089,7 +2099,7 @@
                         const field = inp.dataset.field;
                         if (!field) return;
                         await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), { [field]: inp.value });
-                        if (inp.dataset.triggerFill === '1' && field === 'recordNumber') {
+                        if (inp.dataset.triggerFill === '1' && field === 'chartNo') {
                             tryAutoFillFromNearby(id, inp.value);
                         }
                     };
@@ -2112,11 +2122,18 @@
             try {
                 if (!caselistTabId) { alert('未選擇分頁'); return; }
                 const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-                const today = formatDateForInput(new Date());
+                // 用 tab 區間內的「今天或起始日」確保新 row 顯示在當前 view
+                const tab = getActiveTab();
+                const todayStr = formatDateForInput(new Date());
+                const startStr = tab ? formatDateForInput(new Date(tab.statsStartDate || tab.startDate)) : todayStr;
+                const endStr = tab ? formatDateForInput(new Date(tab.statsEndDate || tab.endDate)) : todayStr;
+                const useDate = (todayStr >= startStr && todayStr <= endStr) ? todayStr : startStr;
                 const hour = new Date().getHours();
                 await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), {
-                    date: today, period: hour < 12 ? 'AM' : 'PM',
-                    recordNumber: '', name: '', type: '', anatomy: '', note: '',
+                    date: useDate, period: hour < 12 ? 'AM' : 'PM',
+                    time: '', chartNo: '', ageSex: '',
+                    type: '', otherSubtype: '',
+                    note: '', noteExt: '',
                     status: 'pending', source: 'manual', createdAt: Date.now()
                 });
             } catch (err) {
@@ -2126,15 +2143,16 @@
         }
 
         // 病歷號自動填補：找同 tabId 內、同病歷號、日期距離 ≤ 30 天最近的一筆，prefill 空欄位
-        async function tryAutoFillFromNearby(currentId, recordNumber) {
-            if (!recordNumber || !recordNumber.trim()) return;
+        async function tryAutoFillFromNearby(currentId, chartNo) {
+            if (!chartNo || !chartNo.trim()) return;
             const cur = caselistData[currentId];
             if (!cur) return;
             const curDate = new Date(cur.date);
             let best = null, bestDist = Infinity;
             Object.entries(caselistData).forEach(([id, c]) => {
                 if (id === currentId) return;
-                if ((c.recordNumber || '').trim() !== recordNumber.trim()) return;
+                const cChart = c.chartNo || c.recordNumber || '';
+                if (cChart.trim() !== chartNo.trim()) return;
                 const d = new Date(c.date);
                 const dist = Math.abs(d - curDate) / (1000 * 60 * 60 * 24);
                 if (dist > 30) return;
@@ -2143,12 +2161,12 @@
             if (!best) {
                 const s = document.getElementById('caselist-status');
                 const old = s.textContent;
-                s.textContent = `（未找到 ${recordNumber} 相近紀錄可填補）`;
+                s.textContent = `（未找到 ${chartNo} 相近紀錄可填補）`;
                 setTimeout(() => { s.textContent = old; }, 2000);
                 return;
             }
             const fill = {};
-            ['name', 'type', 'anatomy', 'note'].forEach(f => {
+            ['ageSex', 'type', 'otherSubtype', 'note', 'noteExt'].forEach(f => {
                 if (!cur[f] && best[f]) fill[f] = best[f];
             });
             if (Object.keys(fill).length === 0) return;
