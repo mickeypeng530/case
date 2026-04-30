@@ -1907,6 +1907,12 @@
     let currentUser = null;
 
     // ========== 共用 utilities ==========
+    // 舊 tag 名稱對應到現有 tag（向後相容）
+    function normalizeTag(t) {
+        if (t === 'follow up') return 'f/u';
+        if (t === 'NB') return 'CT NB';
+        return t;
+    }
     function escapeHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
@@ -2970,7 +2976,7 @@
         const tagCounts = {};
         DEFAULT_TAGS.forEach(t => { tagCounts[t] = 0; });
         came.forEach(v => {
-            const ts = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            const ts = [...new Set((v.tags || []).map(normalizeTag))];
             ts.forEach(t => { if (tagCounts[t] !== undefined) tagCounts[t]++; });
         });
         const activeStatTag = state.statTagExpanded || '';
@@ -2979,7 +2985,7 @@
             .map(([t, n]) => `<span class="tag-chip ${t === activeStatTag ? 'active' : ''}" data-stat-tag="${escapeAttr(t)}" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
         let statTagPanelHtml = '';
         if (activeStatTag) {
-            const matched = came.filter(v => (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t).includes(activeStatTag));
+            const matched = came.filter(v => (v.tags || []).map(normalizeTag).includes(activeStatTag));
             // SONO 子分組：本次 anchor 後的 plan 含 [SONO PM] / [SONO 約]
             const detectSonoSub = (v) => {
                 if (activeStatTag !== 'SONO') return '';
@@ -2992,7 +2998,7 @@
             };
             const buildRow = (v, subLabel) => {
                 const p = state.patients[v.recordNumber] || {};
-                const tagChips = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))]
+                const tagChips = [...new Set((v.tags || []).map(normalizeTag))]
                     .map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
                 const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
                 const ageSex = displayAgeSex(p, date) || p.ageSex || '';
@@ -3053,7 +3059,7 @@
                 summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
             ].filter(Boolean).join('');
 
-            const normalizedTags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            const normalizedTags = [...new Set((v.tags || []).map(normalizeTag))];
             const tagChips = normalizedTags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
 
             const statusBadges = [
@@ -3564,7 +3570,7 @@
             if (v.examEducation) c5parts.push(v.examEducation);
             const c5 = c5parts.join('\n');
 
-            const tags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+            const tags = [...new Set((v.tags || []).map(normalizeTag))];
             const shading = v.noShow ? 'F0F0F0' : undefined;
 
             const baseCells = [
@@ -3658,7 +3664,7 @@
         const p = state.patients[recordNumber] || {};
         const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
         const ageSex = displayAgeSex(p, dateStr) || p.ageSex || '';
-        const tags = [...new Set(((visit && visit.tags) || []).map(t => t === 'follow up' ? 'f/u' : t))];
+        const tags = [...new Set(((visit && visit.tags) || []).map(normalizeTag))];
         const tagChips = tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
         const planText = visit && visit.plan ? visit.plan : '（無 plan 內容）';
 
@@ -3720,7 +3726,7 @@
         popover.className = 'tag-edit-popover';
 
         const renderChips = () => {
-            const cur = new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+            const cur = new Set((visit.tags || []).map(normalizeTag));
             popover.innerHTML = `<div class="tep-title">標籤 — ${escapeHtml(recordNumber)} (點 chip 即時 toggle、ESC 或點外面關閉)</div>` +
                 DEFAULT_TAGS.map(t => {
                     const sel = cur.has(t) ? 'selected' : '';
@@ -3746,7 +3752,7 @@
             const chip = e.target.closest('.tag-chip[data-tag]');
             if (!chip) return;
             const tag = chip.dataset.tag;
-            const tags = new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+            const tags = new Set((visit.tags || []).map(normalizeTag));
             if (tags.has(tag)) tags.delete(tag);
             else tags.add(tag);
             visit.tags = [...tags];
@@ -4098,7 +4104,7 @@
                 if (isCurrent) cls.push('current');
                 else if (v.status === 'confirmed') cls.push('confirmed');
                 else cls.push('draft');
-                const tags = [...new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+                const tags = [...new Set((v.tags || []).map(normalizeTag))];
                 const tagChips = tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
                 const meta = [
                     v.status === 'confirmed' ? '✓ 確認' : '草稿',
@@ -4199,7 +4205,7 @@
 
         state.editingVisitRecord = isEdit ? recordNumber : null;
         // 舊 tag 名稱遷移：follow up → f/u
-        state.visitTagsTemp = [...new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t))];
+        state.visitTagsTemp = [...new Set((visit.tags || []).map(normalizeTag))];
         state.procStatusesTemp = { ...(visit.procedureStatuses || {}) };
 
         document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
@@ -4685,7 +4691,7 @@
 
     // 把 visit 分到 4 大類（優先序：Procedure > Image > Med > f/u）
     function classifyVisit(v) {
-        const tags = (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t);
+        const tags = (v.tags || []).map(normalizeTag);
         const has = (t) => tags.includes(t);
         const hasProcedure = has('CT NB') || has('SONO') || has('TAME') || has('HA') || has('PRP') || has('pRF');
         const hasImage = has('MRI');
@@ -4914,7 +4920,7 @@
             if (!bucketKeys.has(bk)) return;
             Object.values(allByDate[dateStr]).forEach(v => {
                 if (v.noShow) return;
-                const tags = (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t);
+                const tags = (v.tags || []).map(normalizeTag);
                 const has = (t) => tags.includes(t);
 
                 // 推斷有效引導 tag（HA/PRP/pRF 若無上層 → 自動補預設傘：HA/PRP→SONO，pRF→CT NB）
@@ -5062,7 +5068,7 @@
             Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
                 scanned++;
                 if (v.noShow) return;
-                const existing = new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+                const existing = new Set((v.tags || []).map(normalizeTag));
                 const detected = new Set();
 
                 const lines = (v.plan || '').split(/\r?\n/);
@@ -5300,7 +5306,7 @@
     const RECORD_PATTERN = /^\s*([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?\s*$/;
     const PLAN_DATE_PATTERN = /^\s*[\*\-]?\s*(\d{1,2}\/\d{1,2}|\d{2}\/\d{1,2}\/\d{1,2})\b/;
     const EGFR_PATTERN = /^\s*[><=]?\s*\d+(\.\d+)?\s*$/;
-    const TAG_LABELS = ['NB', '鬆', 'f/u'];
+    const TAG_LABELS = ['CT NB', null, 'f/u'];  // 7/8/9 欄；中間「確」不轉 tag（是 status）
 
     function isValidEGFR(val) { return EGFR_PATTERN.test(val || ''); }
 
@@ -5408,7 +5414,7 @@
         if (tagStartIdx >= recIdx + 3) {
             for (let i = 0; i < 3; i++) {
                 const v = (parts[tagStartIdx + i] || '').trim();
-                if (v && v !== '-' && v !== '─') tags.push(TAG_LABELS[i]);
+                if (v && v !== '-' && v !== '─' && TAG_LABELS[i]) tags.push(TAG_LABELS[i]);
             }
         }
 
