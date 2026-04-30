@@ -617,7 +617,8 @@
         /* 線上 case list */
         .caselist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
         .caselist-table th { background: var(--bg-tertiary); color: var(--text-primary); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; font-weight: 600; }
-        .caselist-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: top; }
+        .caselist-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: top; white-space: nowrap; }
+        .caselist-table select, .caselist-table input { white-space: nowrap; }
         .caselist-table tr.row-done td { background: rgba(34,197,94,0.18); }
         .caselist-table tr.row-dc td   { background: rgba(148,163,184,0.25); color: var(--text-muted); }
         .caselist-table tr.row-mri td  { background: #E6E6FA; color: #1a1a2e; }
@@ -1956,7 +1957,7 @@
         // ============== 線上 case list（state-based，跟 cellData 一起 saveToStorage）==============
         const CASELIST_TYPES = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
         const CASELIST_TYPE_LABEL = {
-            'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
+            'ct-nb': 'CT NB', 'ct-nb-prf': 'CT pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
             'sono': 'SONO', 'mri': 'MRI', 'arthro': 'Arthro', 'other': 'Other'
         };
         let caselistTabId = null;
@@ -2294,9 +2295,8 @@
                     <td><input type="time" data-field="time" value="${esc(c.time)}"></td>
                     <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
                     <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
-                    <td>
-                        <select data-field="type"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>
-                        ${c.type === 'other' ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="other 細項" style="margin-top:2px;">` : ''}
+                    <td style="white-space: nowrap;">
+                        <select data-field="type" style="width:auto; max-width:80px;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>${c.type === 'other' ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:80px; margin-left:3px;">` : ''}
                     </td>
                     <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
                     <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
