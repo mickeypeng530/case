@@ -1963,7 +1963,7 @@
             document.getElementById('caselist-status').textContent = '載入中...';
             // 訂閱 Firebase
             if (caselistUnsub) caselistUnsub();
-            const r = ref(fbDb, `case-list/${caselistTabId}`);
+            const r = ref(fbDb, `scheduler/case-list/${caselistTabId}`);
             caselistUnsub = onValue(r, (snap) => {
                 caselistData = snap.val() || {};
                 renderCaselist();
@@ -2012,7 +2012,7 @@
                 });
             }
             if (Object.keys(updates).length > 0) {
-                const target = ref(fbDb, `case-list/${caselistTabId}`);
+                const target = ref(fbDb, `scheduler/case-list/${caselistTabId}`);
                 const cur = await get(target);
                 await set(target, { ...(cur.val() || {}), ...updates });
             }
@@ -2088,7 +2088,7 @@
                     const handler = async () => {
                         const field = inp.dataset.field;
                         if (!field) return;
-                        await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), { [field]: inp.value });
+                        await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), { [field]: inp.value });
                         if (inp.dataset.triggerFill === '1' && field === 'recordNumber') {
                             tryAutoFillFromNearby(id, inp.value);
                         }
@@ -2099,24 +2099,30 @@
                 tr.querySelector('[data-action="cycle-status"]')?.addEventListener('click', async () => {
                     const cur = caselistData[id]?.status || 'pending';
                     const next = cur === 'pending' ? 'done' : (cur === 'done' ? 'cancel' : 'pending');
-                    await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), { status: next });
+                    await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), { status: next });
                 });
                 tr.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
                     if (!confirm('刪除此 row？')) return;
-                    await remove(ref(fbDb, `case-list/${caselistTabId}/${id}`));
+                    await remove(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`));
                 });
             });
         }
 
         async function caselistAddRow() {
-            const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-            const today = formatDateForInput(new Date());
-            const hour = new Date().getHours();
-            await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), {
-                date: today, period: hour < 12 ? 'AM' : 'PM',
-                recordNumber: '', name: '', type: '', anatomy: '', note: '',
-                status: 'pending', source: 'manual', createdAt: Date.now()
-            });
+            try {
+                if (!caselistTabId) { alert('未選擇分頁'); return; }
+                const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+                const today = formatDateForInput(new Date());
+                const hour = new Date().getHours();
+                await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), {
+                    date: today, period: hour < 12 ? 'AM' : 'PM',
+                    recordNumber: '', name: '', type: '', anatomy: '', note: '',
+                    status: 'pending', source: 'manual', createdAt: Date.now()
+                });
+            } catch (err) {
+                alert('新增失敗：' + err.message + '\n\n（可能是 Firebase rules 未開放 scheduler/case-list 路徑）');
+                console.error(err);
+            }
         }
 
         // 病歷號自動填補：找同 tabId 內、同病歷號、日期距離 ≤ 30 天最近的一筆，prefill 空欄位
@@ -2146,7 +2152,7 @@
                 if (!cur[f] && best[f]) fill[f] = best[f];
             });
             if (Object.keys(fill).length === 0) return;
-            await update(ref(fbDb, `case-list/${caselistTabId}/${currentId}`), fill);
+            await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${currentId}`), fill);
             const s = document.getElementById('caselist-status');
             s.textContent = `✓ 已從 ${best.date} 同病歷號填補：${Object.keys(fill).join(', ')}`;
             setTimeout(() => renderCaselist(), 1500);
