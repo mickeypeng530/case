@@ -3743,10 +3743,15 @@
 
         const renderChips = () => {
             const cur = new Set((visit.tags || []).map(normalizeTag));
+            // 列出 DEFAULT_TAGS + 該 visit 已有但不在 DEFAULT_TAGS 的 legacy tag（讓 user 能取消）
+            const legacy = [...cur].filter(t => !DEFAULT_TAGS.includes(t));
+            const allChips = [...DEFAULT_TAGS, ...legacy];
             popover.innerHTML = `<div class="tep-title">標籤 — ${escapeHtml(recordNumber)} (點 chip 即時 toggle、ESC 或點外面關閉)</div>` +
-                DEFAULT_TAGS.map(t => {
+                allChips.map(t => {
                     const sel = cur.has(t) ? 'selected' : '';
-                    return `<span class="tag-chip ${sel}" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`;
+                    const isLegacy = !DEFAULT_TAGS.includes(t);
+                    const extraStyle = isLegacy ? ' style="opacity:0.7; outline:1px dashed var(--text-muted);"' : '';
+                    return `<span class="tag-chip ${sel}" data-tag="${escapeAttr(t)}"${extraStyle} title="${isLegacy ? 'legacy tag — 點擊移除' : ''}">${escapeHtml(t)}</span>`;
                 }).join('');
         };
         renderChips();
