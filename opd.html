@@ -144,6 +144,47 @@
             gap: 10px;
         }
         .stats-detail-panel .sd-row:first-of-type { border-top: 0; }
+
+        /* tag inline edit popover（雙擊 tag 欄觸發）*/
+        .tag-edit-popover {
+            position: fixed;
+            background: linear-gradient(135deg, #2e1d4d 0%, #1e1b3a 100%);
+            border: 1.5px solid #a855f7;
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-shadow: 0 8px 24px rgba(168,85,247,0.35);
+            z-index: 200;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-width: 320px;
+        }
+        :root[data-theme="light"] .tag-edit-popover {
+            background: #ffffff;
+            border-color: #6366f1;
+            box-shadow: 0 8px 24px rgba(99,102,241,0.25);
+        }
+        .tag-edit-popover .tep-title {
+            width: 100%;
+            font-size: 0.78rem;
+            color: #a78bfa;
+            margin-bottom: 4px;
+        }
+        :root[data-theme="light"] .tag-edit-popover .tep-title { color: #6366f1; }
+        .tag-edit-popover .tag-chip {
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            padding: 3px 8px;
+            font-size: 0.78rem;
+        }
+        .tag-edit-popover .tag-chip:not(.selected) {
+            opacity: 0.35;
+            filter: grayscale(0.4);
+        }
+        .tag-edit-popover .tag-chip:hover { transform: scale(1.05); }
+        @media (max-width: 768px) {
+            .col-tags .tag-edit-trigger { pointer-events: none; }
+        }
         #scroll-top-btn.visible { display: block; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -3000,7 +3041,7 @@
                         return html;
                     }).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
-                <td class="col-tags"><div class="visit-tags">${tagChips}${jumpChips}</div></td>
+                <td class="col-tags tag-edit-trigger" data-record="${escapeAttr(v.recordNumber)}" title="雙擊編輯標籤"><div class="visit-tags">${tagChips}${jumpChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
                         <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">✏️ 編輯</button>
@@ -3475,6 +3516,66 @@
         });
     }
 
+    function openTagEditPopover(cellEl) {
+        // 關閉既有
+        document.querySelectorAll('.tag-edit-popover').forEach(p => p.remove());
+        const recordNumber = cellEl.dataset.record;
+        const date = state.currentClinicDate;
+        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        if (!visit) return;
+        const popover = document.createElement('div');
+        popover.className = 'tag-edit-popover';
+
+        const renderChips = () => {
+            const cur = new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+            popover.innerHTML = `<div class="tep-title">標籤 — ${escapeHtml(recordNumber)} (點 chip 即時 toggle、ESC 或點外面關閉)</div>` +
+                DEFAULT_TAGS.map(t => {
+                    const sel = cur.has(t) ? 'selected' : '';
+                    return `<span class="tag-chip ${sel}" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`;
+                }).join('');
+        };
+        renderChips();
+
+        // 定位：cell 下方對齊；視窗下方不夠則顯示在上
+        const r = cellEl.getBoundingClientRect();
+        document.body.appendChild(popover);
+        const ph = popover.offsetHeight;
+        const below = window.innerHeight - r.bottom;
+        if (below >= ph + 8 || r.top < ph + 8) {
+            popover.style.top = (r.bottom + 4) + 'px';
+        } else {
+            popover.style.top = (r.top - ph - 4) + 'px';
+        }
+        const pw = popover.offsetWidth;
+        popover.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left)) + 'px';
+
+        popover.addEventListener('click', async (e) => {
+            const chip = e.target.closest('.tag-chip[data-tag]');
+            if (!chip) return;
+            const tag = chip.dataset.tag;
+            const tags = new Set((visit.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+            if (tags.has(tag)) tags.delete(tag);
+            else tags.add(tag);
+            visit.tags = [...tags];
+            await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { tags: visit.tags });
+            // listener 會 re-render visit list；popover 自己的 chip 也更新
+            renderChips();
+        });
+
+        // 關閉
+        const close = (ev) => {
+            if (ev && ev.type === 'mousedown' && popover.contains(ev.target)) return;
+            popover.remove();
+            document.removeEventListener('mousedown', close);
+            document.removeEventListener('keydown', onEsc);
+        };
+        const onEsc = (ev) => { if (ev.key === 'Escape') close(); };
+        setTimeout(() => {
+            document.addEventListener('mousedown', close);
+            document.addEventListener('keydown', onEsc);
+        }, 0);
+    }
+
     function startNumEdit(spanEl) {
         const recordNumber = spanEl.dataset.record;
         const date = state.currentClinicDate;
@@ -3644,6 +3745,14 @@
         document.getElementById('export-opd-btn').addEventListener('click', exportOpdDocx);
 
         // 表格內按鈕
+        document.getElementById('visit-list').addEventListener('dblclick', (e) => {
+            if (window.matchMedia('(max-width: 768px)').matches) return;
+            const cell = e.target.closest('td.tag-edit-trigger');
+            if (!cell) return;
+            // 避免雙擊文字 chip 的 click 副作用
+            window.getSelection()?.removeAllRanges();
+            openTagEditPopover(cell);
+        });
         document.getElementById('visit-list').addEventListener('click', (e) => {
             const statTag = e.target.closest('[data-stat-tag]');
             if (statTag) {
