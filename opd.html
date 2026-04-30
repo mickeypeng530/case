@@ -97,6 +97,53 @@
             color: #4f46e5;
             border-color: rgba(99,102,241,0.4);
         }
+
+        /* 統計表格 */
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.86rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .stats-table th, .stats-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            text-align: right;
+        }
+        .stats-table th {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.82rem;
+        }
+        .stats-table th:first-child, .stats-table td:first-child {
+            text-align: left;
+            color: var(--text-secondary);
+        }
+        .stats-table tr.total-row { background: rgba(99,102,241,0.08); font-weight: 600; }
+        .stats-table tr.total-row td { color: var(--text-primary); }
+        .stats-table tr.percent-row { background: rgba(168,85,247,0.06); font-style: italic; }
+        .stats-table tr.percent-row td { color: var(--text-secondary); font-size: 0.82rem; }
+        .stats-table td.cell-zero { color: var(--text-muted); }
+        .stats-table td.cell-clickable { cursor: pointer; }
+        .stats-table td.cell-clickable:hover { background: rgba(99,102,241,0.15); color: var(--text-primary); }
+        .stats-detail-panel {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            font-size: 0.84rem;
+        }
+        .stats-detail-panel .sd-row {
+            padding: 3px 0;
+            border-top: 1px dashed var(--border);
+            display: flex;
+            gap: 10px;
+        }
+        .stats-detail-panel .sd-row:first-of-type { border-top: 0; }
         #scroll-top-btn.visible { display: block; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -405,7 +452,7 @@
 
         /* 欄寬 */
         .col-num    { width: 36px; text-align: center; }
-        .col-record { width: 120px; }
+        .col-record { width: 95px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
         .visit-table tbody td.col-record .record-line {
             overflow: hidden;
@@ -472,8 +519,8 @@
             background: var(--border);
             border-radius: 2px;
         }
-        .col-plan   { /* 彈性 */ }
-        .col-tags   { width: 56px; }
+        .col-plan   { /* 彈性，吃掉其他欄縮減的空間 */ }
+        .col-tags   { width: 48px; }
         .col-actions { width: 90px; }
 
         /* 本日統計列 */
@@ -657,9 +704,9 @@
         }
         .visit-tags .tag-chip {
             display: inline-flex;
-            padding: 1px 6px;
+            padding: 0px 5px;
             border-radius: 8px;
-            font-size: 0.68rem;
+            font-size: 0.65rem;
             color: white;
             white-space: nowrap;
         }
@@ -1345,6 +1392,7 @@
     <div class="tabs">
         <button class="tab active" data-panel="panel-clinic">📅 門診日</button>
         <button class="tab" data-panel="panel-patients">👥 病人主表</button>
+        <button class="tab" data-panel="panel-stats">📊 統計</button>
         <button class="tab" data-panel="panel-io">📥 匯入 / 匯出</button>
     </div>
 
@@ -1389,6 +1437,36 @@
         </div>
         <div id="patient-master-list">
             <div class="empty-hint">載入中...</div>
+        </div>
+    </div>
+
+    <!-- 統計 -->
+    <div class="panel" id="panel-stats">
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+            <label style="font-size: 0.85rem; color: var(--text-secondary);">期間：</label>
+            <select id="stats-range" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
+                <optgroup label="逐月">
+                    <option value="m6">最近 6 個月</option>
+                    <option value="m12" selected>最近 12 個月</option>
+                    <option value="m24">最近 24 個月</option>
+                </optgroup>
+                <optgroup label="逐季">
+                    <option value="q4">最近 4 季</option>
+                    <option value="q8">最近 8 季（2 年）</option>
+                    <option value="q12">最近 12 季（3 年）</option>
+                </optgroup>
+                <optgroup label="逐年">
+                    <option value="y3">最近 3 年</option>
+                    <option value="y5">最近 5 年</option>
+                    <option value="y10">最近 10 年</option>
+                </optgroup>
+            </select>
+            <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
+            <button id="stats-export-btn">📤 匯出 xlsx</button>
+            <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+        <div id="stats-container">
+            <div class="empty-hint">點「重新計算」開始</div>
         </div>
     </div>
 
@@ -3552,6 +3630,10 @@
         // 新增病人按鈕
         document.getElementById('add-visit-btn').addEventListener('click', () => openVisitModal());
 
+        // 統計
+        document.getElementById('stats-refresh-btn')?.addEventListener('click', computeAndRenderStats);
+        document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsXlsx);
+
         // 匯出 docx
         document.getElementById('export-opd-btn').addEventListener('click', exportOpdDocx);
 
@@ -3629,13 +3711,14 @@
 
     // 抗凝劑停藥天數對照
     const ANTICOAG_HOLD_DAYS = {
-        'Aspirin':  '1–2d',
-        'Plavix':   '5d',
-        'Lixiana':  '2–3d',
-        'Eliquis':  '2–3d',
-        'Xarelto':  '2–3d',
-        'Pradaxa':  '2–3d',
-        'Warfarin': '依 INR'
+        'Aspirin':      '1–2d',
+        'Plavix':       '5d',
+        'Lixiana':      '2–3d',
+        'Eliquis':      '2–3d',
+        'Xarelto':      '2–3d',
+        'Pradaxa':      '2–3d',
+        'Warfarin':     '依 INR',
+        'Dipyridamole': '2d'
     };
     function getAnticoagHold(name) {
         const key = Object.keys(ANTICOAG_HOLD_DAYS).find(k => k.toLowerCase() === name.toLowerCase());
@@ -4120,6 +4203,197 @@
         });
     }
 
+    // ========== 統計：procedure × 月份 矩陣 ==========
+    const STATS_PROCEDURES = ['CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP'];
+
+    async function computeAndRenderStats() {
+        const container = document.getElementById('stats-container');
+        const status = document.getElementById('stats-status');
+        const rangeVal = document.getElementById('stats-range').value;
+        const granularity = rangeVal[0]; // m / q / y
+        const count = parseInt(rangeVal.slice(1), 10) || 12;
+
+        status.textContent = '載入中...';
+        container.innerHTML = '<div class="empty-hint">計算中...</div>';
+
+        // 依粒度計算桶列表（最近 N 個月 / 季 / 年）
+        const today = new Date();
+        const monthList = []; // 沿用變數名，content 為 buckets
+        if (granularity === 'm') {
+            for (let i = count - 1; i >= 0; i--) {
+                const dt = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                monthList.push({
+                    key: `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`,
+                    label: `${dt.getFullYear() % 100}/${String(dt.getMonth() + 1).padStart(2, '0')}`,
+                    bucketOf: (date) => date.slice(0, 7)
+                });
+            }
+        } else if (granularity === 'q') {
+            const curQ = Math.floor(today.getMonth() / 3);
+            for (let i = count - 1; i >= 0; i--) {
+                const totalQ = today.getFullYear() * 4 + curQ - i;
+                const yr = Math.floor(totalQ / 4);
+                const q = totalQ % 4;
+                monthList.push({
+                    key: `${yr}-Q${q + 1}`,
+                    label: `${yr % 100}/Q${q + 1}`,
+                    bucketOf: (date) => {
+                        const d = new Date(date + 'T00:00');
+                        const dq = Math.floor(d.getMonth() / 3);
+                        return `${d.getFullYear()}-Q${dq + 1}`;
+                    }
+                });
+            }
+        } else { // y
+            for (let i = count - 1; i >= 0; i--) {
+                const yr = today.getFullYear() - i;
+                monthList.push({
+                    key: `${yr}`,
+                    label: `${yr}`,
+                    bucketOf: (date) => date.slice(0, 4)
+                });
+            }
+        }
+        const bucketKeys = new Set(monthList.map(m => m.key));
+        const bucketOf = monthList[0].bucketOf;
+        // 全期日期範圍（從第一個 bucket 的最早可能日期 - 過濾用）
+        const firstBucketStart = (() => {
+            if (granularity === 'm') return monthList[0].key + '-01';
+            if (granularity === 'q') {
+                const [y, q] = monthList[0].key.split('-Q');
+                const m = (parseInt(q, 10) - 1) * 3 + 1;
+                return `${y}-${String(m).padStart(2, '0')}-01`;
+            }
+            return `${monthList[0].key}-01-01`;
+        })();
+        const startKey = firstBucketStart;
+        const endKey = '9999-99';
+
+        // 抓所有 visit（一次性）
+        const snap = await get(ref(fbDb, 'opd/visits'));
+        const allByDate = snap.val() || {};
+
+        // matrix[procName][monthKey] = { count, visits: [{date, recordNumber, line}] }
+        const matrix = {};
+        STATS_PROCEDURES.forEach(p => {
+            matrix[p] = {};
+            monthList.forEach(m => { matrix[p][m.key] = { count: 0, visits: [] }; });
+        });
+
+        // 遍歷所有 visit
+        Object.keys(allByDate).forEach(dateStr => {
+            if (dateStr < startKey || dateStr > endKey) return;
+            const bk = bucketOf(dateStr);
+            if (!bucketKeys.has(bk)) return;
+            const dayVisits = allByDate[dateStr];
+            Object.values(dayVisits).forEach(v => {
+                if (v.noShow) return;
+                const summary = summarizePlan(v.plan, dateStr);
+                summary.items.forEach(it => {
+                    if (!STATS_PROCEDURES.includes(it.name)) return;
+                    if (!it.done) return;
+                    matrix[it.name][bk].count += it.done;
+                    matrix[it.name][bk].visits.push({
+                        date: dateStr,
+                        recordNumber: v.recordNumber,
+                        done: it.done
+                    });
+                });
+            });
+        });
+
+        // 渲染
+        const colHeader = granularity === 'm' ? '月份' : granularity === 'q' ? '季' : '年份';
+        let html = '<table class="stats-table"><thead><tr><th>' + colHeader + '</th>';
+        STATS_PROCEDURES.forEach(p => html += `<th>${escapeHtml(p)}</th>`);
+        html += '<th>合計</th></tr></thead><tbody>';
+        const rowTotals = {};
+        STATS_PROCEDURES.forEach(p => rowTotals[p] = 0);
+        let grandTotal = 0;
+        monthList.forEach(m => {
+            html += `<tr><td>${escapeHtml(m.label)}</td>`;
+            let monthTotal = 0;
+            STATS_PROCEDURES.forEach(p => {
+                const c = matrix[p][m.key].count;
+                rowTotals[p] += c;
+                monthTotal += c;
+                const cls = c === 0 ? 'cell-zero' : 'cell-clickable';
+                html += `<td class="${cls}" data-proc="${escapeAttr(p)}" data-month="${escapeAttr(m.key)}">${c || '·'}</td>`;
+            });
+            grandTotal += monthTotal;
+            html += `<td>${monthTotal || '·'}</td></tr>`;
+        });
+        // 合計 row
+        html += '<tr class="total-row"><td>合計</td>';
+        STATS_PROCEDURES.forEach(p => html += `<td>${rowTotals[p]}</td>`);
+        html += `<td>${grandTotal}</td></tr>`;
+        // 百分比 row
+        html += '<tr class="percent-row"><td>占比</td>';
+        STATS_PROCEDURES.forEach(p => {
+            const pct = grandTotal > 0 ? ((rowTotals[p] / grandTotal) * 100).toFixed(1) : '0';
+            html += `<td>${pct}%</td>`;
+        });
+        html += '<td>100%</td></tr>';
+        html += '</tbody></table><div id="stats-detail" style="margin-top:12px;"></div>';
+        container.innerHTML = html;
+
+        // cell click → 顯示明細
+        container.querySelectorAll('td.cell-clickable').forEach(td => {
+            td.addEventListener('click', () => {
+                const proc = td.dataset.proc;
+                const monthKey = td.dataset.month;
+                const visits = matrix[proc][monthKey].visits;
+                const detail = document.getElementById('stats-detail');
+                if (!visits.length) { detail.innerHTML = ''; return; }
+                detail.innerHTML = `<div class="stats-detail-panel">
+                    <div style="color:var(--text-muted);margin-bottom:6px;">${escapeHtml(proc)} · ${escapeHtml(monthKey)} · ${visits.length} 筆</div>
+                    ${visits.map(v => `<div class="sd-row">
+                        <span style="color:var(--accent);font-family:monospace;min-width:90px;">${escapeHtml(v.recordNumber)}</span>
+                        <span style="color:var(--text-secondary);min-width:90px;">${escapeHtml(v.date)}</span>
+                        <span>×${v.done}</span>
+                    </div>`).join('')}
+                </div>`;
+            });
+        });
+
+        const unitLabel = granularity === 'm' ? '個月' : granularity === 'q' ? '季' : '年';
+        status.textContent = `共 ${grandTotal} 筆 procedure（${monthList.length} ${unitLabel}）`;
+
+        // 暫存供 export 用
+        state.statsMatrix = { matrix, monthList, rowTotals, grandTotal };
+    }
+
+    function exportStatsXlsx() {
+        if (!state.statsMatrix) { alert('請先計算'); return; }
+        const { matrix, monthList, rowTotals, grandTotal } = state.statsMatrix;
+        // 用 csv 替代 xlsx（不依賴額外 lib）
+        const rows = [];
+        rows.push(['月份', ...STATS_PROCEDURES, '合計']);
+        monthList.forEach(m => {
+            const row = [m.label];
+            let total = 0;
+            STATS_PROCEDURES.forEach(p => {
+                const c = matrix[p][m.key].count;
+                row.push(c);
+                total += c;
+            });
+            row.push(total);
+            rows.push(row);
+        });
+        rows.push(['合計', ...STATS_PROCEDURES.map(p => rowTotals[p]), grandTotal]);
+        rows.push(['占比', ...STATS_PROCEDURES.map(p => grandTotal ? ((rowTotals[p] / grandTotal) * 100).toFixed(1) + '%' : '0%'), '100%']);
+        const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `OPD_procedure_stats_${formatDate(new Date())}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
     function navigateClinicDate(delta) {
         // delta=1 上一個（較舊），-1 下一個（較新）。跨年自動跳。
         const all = state._allDates || [];
@@ -4347,12 +4621,13 @@
     // Bokey 是 Aspirin 商品名 → 正規化為 Aspirin
     function extractAnticoagulants(text) {
         if (!text) return { state: null, drugs: [] };
-        const knownDrugs = ['Aspirin', 'Plavix', 'Lixiana', 'Eliquis', 'Xarelto', 'Pradaxa', 'Warfarin', 'Bokey'];
+        const knownDrugs = ['Aspirin', 'Plavix', 'Lixiana', 'Eliquis', 'Xarelto', 'Pradaxa', 'Warfarin', 'Bokey', 'Dipyridamole', 'Persantin'];
         const found = [];
+        const canonicalMap = { 'Bokey': 'Aspirin', 'Persantin': 'Dipyridamole' };
         knownDrugs.forEach(drug => {
             const re = new RegExp('\\b' + drug + '\\b', 'i');
             if (re.test(text)) {
-                const canonical = drug === 'Bokey' ? 'Aspirin' : drug;
+                const canonical = canonicalMap[drug] || drug;
                 if (!found.includes(canonical)) found.push(canonical);
             }
         });
