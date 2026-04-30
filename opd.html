@@ -811,6 +811,7 @@
         .inline-badge.ib-sonopm { background: rgba(96,165,250,0.85); color: #1e3a8a; }       /* SONO PM 淺藍 */
         .inline-badge.ib-sonoyue { background: rgba(59,130,246,0.9); color: #ffffff; }        /* SONO 約 亮藍 */
         .inline-badge.ib-selfpay { background: rgba(234,179,8,0.9); color: #1a1a2e; }         /* 自費 / self paid 金黃 */
+        .inline-badge.ib-bma { background: rgba(217,70,239,0.85); color: #ffffff; }            /* BMA 紫紅 */
         /* 本次 anchor — 醒目 */
         .inline-badge.ib-anchor {
             background: rgba(99,102,241,0.7);
@@ -847,6 +848,7 @@
         .visit-tags .tag-chip[data-tag="自費"] { background: #eab308; color: #1a1a2e; }
         .visit-tags .tag-chip[data-tag="pRF"] { background: #fb923c; }
         .visit-tags .tag-chip[data-tag="HA"] { background: #14b8a6; }
+        .visit-tags .tag-chip[data-tag="BMA"] { background: #d946ef; }
 
         /* Procedure status overlay：覆蓋背景色 */
         .tag-chip[data-status="pending"] { background: #fbcfe8 !important; color: #831843 !important; }
@@ -1861,6 +1863,7 @@
                 <button type="button" data-insert="[SONO PM]" class="plan-insert-btn" style="background: rgba(96,165,250,0.5); color: #1e3a8a; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO PM]</button>
                 <button type="button" data-insert="[SONO 約]" class="plan-insert-btn" style="background: rgba(59,130,246,0.7); color: #ffffff; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO 約]</button>
                 <button type="button" data-insert="[自費]" class="plan-insert-btn" style="background: rgba(234,179,8,0.85); color: #1a1a2e; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[自費]</button>
+                <button type="button" data-insert="[BMA]" class="plan-insert-btn" style="background: rgba(217,70,239,0.85); color: white; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[BMA]</button>
                 <button type="button" data-insert="[TAME 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 已]</button>
                 <button type="button" data-insert="[TAME 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 待]</button>
             </div>
@@ -2920,6 +2923,8 @@
         if (/^(本次|today|本日)$/i.test(c)) return 'ib-anchor';
         // 自費 / self paid / self-paid
         if (/自費|self[\s-]?pa[iy]d/i.test(c)) return 'ib-selfpay';
+        // BMA (bone marrow aspirate)
+        if (/^BMA$/i.test(c)) return 'ib-bma';
         // procedure + status 組合
         if (/鬆.*已|鬆.*done/i.test(c)) return 'ib-songyi';
         if (/鬆.*待|鬆.*pending/i.test(c)) return 'ib-pending';
@@ -3513,6 +3518,7 @@
             '自費':  { bg: 'EAB308', fg: '1A1A2E' },
             'pRF':   { bg: 'FB923C', fg: 'FFFFFF' },
             'HA':    { bg: '14B8A6', fg: 'FFFFFF' },
+            'BMA':   { bg: 'D946EF', fg: 'FFFFFF' },
             'other': { bg: '94A3B8', fg: 'FFFFFF' },
             '確':    { bg: '16A34A', fg: 'FFFFFF' }
         };
@@ -4040,7 +4046,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP', 'MRI', 'f/u', 'med', '自費', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP', 'BMA', 'MRI', 'f/u', 'med', '自費', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
@@ -4542,8 +4548,8 @@
     // ========== 統計：procedure × 時間粒度 矩陣（階層 tag 計數）==========
     // 階層：CT NB / SONO 是「引導」傘，HA / PRP / pRF 是子類；TAME 自成。
     const STATS_HIERARCHY = [
-        { main: 'CT NB', subs: ['一般', 'pRF', 'PRP'] },
-        { main: 'SONO',  subs: ['一般', 'HA',  'PRP'] },
+        { main: 'CT NB', subs: ['一般', 'pRF', '增生'] },  // 增生 = PRP + BMA 加總
+        { main: 'SONO',  subs: ['一般', 'HA',  '增生'] },  // 增生 = PRP 加總
         { main: 'TAME',  subs: ['cTAME', 'sTAME', '其他'] }
     ];
     const STATS_ROWS = []; // 平坦化：[{main, sub:null} | {main, sub:'pRF'}, ...]
@@ -4920,12 +4926,14 @@
         const rowKey = (main, sub) => sub ? `${main}::${sub}` : main;
         STATS_ROWS.forEach(r => {
             matrix[rowKey(r.main, r.sub)] = {};
-            monthList.forEach(m => { matrix[rowKey(r.main, r.sub)][m.key] = { count: 0, visits: [] }; });
+            monthList.forEach(m => { matrix[rowKey(r.main, r.sub)][m.key] = { count: 0, visits: [], prp: 0, bma: 0 }; });
         });
 
-        const tally = (key, bk, v, dateStr) => {
+        const tally = (key, bk, v, dateStr, meta = {}) => {
             matrix[key][bk].count += 1;
-            matrix[key][bk].visits.push({ date: dateStr, recordNumber: v.recordNumber, done: 1 });
+            matrix[key][bk].visits.push({ date: dateStr, recordNumber: v.recordNumber, done: 1, ...meta });
+            if (meta.prp) matrix[key][bk].prp += 1;
+            if (meta.bma) matrix[key][bk].bma += 1;
         };
 
         Object.keys(allByDate).forEach(dateStr => {
@@ -4944,13 +4952,14 @@
                 if (effCtNb) {
                     tally('CT NB', bk, v, dateStr);
                     if (has('pRF'))                          tally('CT NB::pRF', bk, v, dateStr);
-                    else if (has('PRP') && !effSono)         tally('CT NB::PRP', bk, v, dateStr);
+                    else if (has('BMA'))                     tally('CT NB::增生', bk, v, dateStr, { bma: 1 });
+                    else if (has('PRP') && !effSono)         tally('CT NB::增生', bk, v, dateStr, { prp: 1 });
                     else                                     tally('CT NB::一般', bk, v, dateStr);
                 }
                 if (effSono) {
                     tally('SONO', bk, v, dateStr);
                     if (has('HA'))       tally('SONO::HA', bk, v, dateStr);
-                    else if (has('PRP')) tally('SONO::PRP', bk, v, dateStr);
+                    else if (has('PRP')) tally('SONO::增生', bk, v, dateStr, { prp: 1 });
                     else                 tally('SONO::一般', bk, v, dateStr);
                 }
                 if (has('TAME')) {
@@ -4991,19 +5000,32 @@
         visibleRows.forEach(r => {
             const key = rowKey(r.main, r.sub);
             const isSub = !!r.sub;
+            const isRegen = r.sub === '增生';
             const label = isSub ? `　└ ${escapeHtml(r.sub)}` : `<strong>${escapeHtml(r.main)}</strong>`;
             const cls = isSub ? 'sub-row' : 'main-row';
             html += `<tr class="${cls}"><td>${label}</td>`;
             let total = 0;
+            let totalPrp = 0, totalBma = 0;
             monthList.forEach(m => {
-                const c = matrix[key][m.key].count;
+                const cell = matrix[key][m.key];
+                const c = cell.count;
                 total += c;
+                if (isRegen) { totalPrp += cell.prp; totalBma += cell.bma; }
                 const cellCls = c === 0 ? 'cell-zero' : 'cell-clickable';
-                html += `<td class="${cellCls}" data-rowkey="${escapeAttr(key)}" data-bucket="${escapeAttr(m.key)}">${c || '·'}</td>`;
+                let display = c || '·';
+                if (isRegen && c > 0) {
+                    const ratio = cell.bma > 0 ? `${cell.prp}:${cell.bma}` : `${cell.prp}`;
+                    display = `${c}<span style="color:var(--text-muted);font-size:0.72rem;"> (P:B ${ratio})</span>`;
+                }
+                html += `<td class="${cellCls}" data-rowkey="${escapeAttr(key)}" data-bucket="${escapeAttr(m.key)}">${display}</td>`;
             });
             rowTotals[key] = total;
             if (!isSub && mainSet.has(r.main)) mainsGrand += total;
-            html += `<td><strong>${total || '·'}</strong></td></tr>`;
+            let totalDisplay = `<strong>${total || '·'}</strong>`;
+            if (isRegen && total > 0) {
+                totalDisplay = `<strong>${total}</strong><br><span style="color:var(--text-muted);font-size:0.74rem;">PRP:BMA = ${totalPrp}:${totalBma}</span>`;
+            }
+            html += `<td>${totalDisplay}</td></tr>`;
         });
 
         // 總計（主類加總；子類已含於主類，不再加）
@@ -5110,6 +5132,7 @@
             { tag: 'TAME',  re: /\b(c?TAME|IO\s*PRP)\b/i },
             { tag: 'HA',    re: /\bHA\b/ },
             { tag: 'PRP',   re: /\bPRP\b/i },
+            { tag: 'BMA',   re: /\bBMA\b/i },
             { tag: 'MRI',   re: /\bMRI\b/i },
             { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
         ];
