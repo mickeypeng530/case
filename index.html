@@ -614,6 +614,26 @@
         footer { margin-top: 15px; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
 
         /* 閱讀清單樣式 */
+        /* 線上 case list */
+        .caselist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .caselist-table th { background: var(--bg-tertiary); color: var(--text-primary); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; font-weight: 600; }
+        .caselist-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: top; }
+        .caselist-table tr.row-done td { background: rgba(34,197,94,0.12); color: var(--text-secondary); }
+        .caselist-table tr.row-cancel td { background: rgba(0,0,0,0.15); color: var(--text-muted); text-decoration: line-through; }
+        .caselist-table tr:hover td { background: rgba(99,102,241,0.08); }
+        .caselist-table tr.row-done:hover td { background: rgba(34,197,94,0.2); }
+        .caselist-table tr.row-cancel:hover td { background: rgba(0,0,0,0.25); }
+        .caselist-table input, .caselist-table select { width: 100%; background: transparent; border: 1px dashed transparent; color: inherit; font-family: inherit; font-size: inherit; padding: 2px 4px; box-sizing: border-box; }
+        .caselist-table input:focus, .caselist-table select:focus { background: var(--bg-primary); border-color: var(--color-info); outline: none; }
+        .caselist-table .status-btn { cursor: pointer; padding: 2px 6px; border-radius: 3px; border: none; font-family: inherit; font-size: 0.78rem; }
+        .caselist-table .status-pending { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+        .caselist-table .status-done { background: rgba(34,197,94,0.4); color: #f0fdf4; }
+        .caselist-table .status-cancel { background: rgba(148,163,184,0.3); color: #cbd5e1; }
+        .caselist-table .row-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; }
+        .caselist-table .row-delete:hover { color: var(--color-danger); }
+        .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
+        .caselist-table .src-cell { color: var(--text-muted); }
+
         .reading-list-modal {
             width: 90%;
             max-width: 450px;
@@ -1044,6 +1064,7 @@
                 <a href="opd.html" id="goto-opd-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="切換到 OPD 系統">🩺<span class="btn-text"> OPD</span></a>
                 <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
                 <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄<span class="btn-text"> 匯出</span></button>
+                <button id="caselist-btn" style="padding: 6px 12px; background: var(--color-info); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📋<span class="btn-text"> 線上 list</span></button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
                 <span class="storage-status">
                     <span class="storage-dot" id="storage-dot"></span>
@@ -1219,6 +1240,30 @@
                 <p>尚無閱讀項目</p>
                 <p style="font-size: 0.75rem; opacity: 0.7;">貼上網址開始收藏</p>
             </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- 線上 case list -->
+    <div class="modal-overlay" id="caselist-modal">
+        <div class="modal-wrapper">
+        <div class="modal caselist-modal" style="max-width: 1200px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="caselist-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+                <h3 style="margin:0;">📋 線上 case list</h3>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="caselist-filter-status" style="padding:4px 8px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:inherit; font-size:0.82rem;">
+                        <option value="all">全部</option>
+                        <option value="pending" selected>未完成</option>
+                        <option value="done">已完成</option>
+                        <option value="cancel">取消</option>
+                    </select>
+                    <button id="caselist-add-btn" style="padding:5px 10px; background:var(--color-info); border:none; color:white; border-radius:4px; cursor:pointer; font-size:0.82rem;">+ 新增</button>
+                    <button id="caselist-sync-btn" title="從目前排程拉新案例（不會刪 list 既有的）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🔄 同步排程</button>
+                    <button id="caselist-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">✕ 關閉</button>
+                </div>
+            </div>
+            <div id="caselist-status" style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;"></div>
+            <div id="caselist-table-wrap" style="overflow:auto; flex:1; min-height:0;"></div>
         </div>
         </div>
     </div>
@@ -1896,6 +1941,209 @@
         };
         
         // 匯出 Word 文件
+        // ========== 線上 case list ==========
+        const CASELIST_TYPES = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
+        const CASELIST_TYPE_LABEL = {
+            'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
+            'sono': 'SONO', 'mri': 'MRI', 'arthro': 'Arthro', 'other': 'Other'
+        };
+        let caselistData = {}; // { caseId: { date, period, recordNumber, name, type, anatomy, note, status, source } }
+        let caselistTabId = null;
+        let caselistUnsub = null;
+
+        function caselistKey(c) {
+            return `${c.date}_${c.period}_${c.id || c.recordNumber || ''}`;
+        }
+
+        async function openCaselist() {
+            const tab = getActiveTab();
+            if (!tab) { alert('請先選擇分頁'); return; }
+            caselistTabId = tab.id;
+            document.getElementById('caselist-modal').classList.add('show');
+            document.getElementById('caselist-status').textContent = '載入中...';
+            // 訂閱 Firebase
+            if (caselistUnsub) caselistUnsub();
+            const r = ref(fbDb, `case-list/${caselistTabId}`);
+            caselistUnsub = onValue(r, (snap) => {
+                caselistData = snap.val() || {};
+                renderCaselist();
+            });
+            // 第一次：自動同步排程
+            await syncCaselistFromCells(true);
+        }
+        function closeCaselist() {
+            document.getElementById('caselist-modal').classList.remove('show');
+            if (caselistUnsub) { caselistUnsub(); caselistUnsub = null; }
+        }
+
+        // 從目前 tab 排程拉出案例 → 寫進 case-list（不刪 list 既有，自動加新案例）
+        async function syncCaselistFromCells(silent = false) {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const start = new Date(tab.statsStartDate || tab.startDate);
+            const end = new Date(tab.statsEndDate || tab.endDate);
+            const updates = {};
+            let added = 0;
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                ['AM', 'PM'].forEach(period => {
+                    const cellKey = `${formatDateForInput(d)}-${period}`;
+                    const cellData = state.cellData[cellKey];
+                    if (!cellData?.cases) return;
+                    const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
+                    cases.forEach((c, idx) => {
+                        if (!c || !CASELIST_TYPES.includes(c.type) || c.isEmpty) return;
+                        const id = `cell_${cellKey}_${c.id || idx}`;
+                        if (caselistData[id]) return; // 已存在 → 不覆蓋
+                        updates[id] = {
+                            date: formatDateForInput(d),
+                            period,
+                            recordNumber: c.recordNumber || '',
+                            name: c.name || '',
+                            type: c.type,
+                            anatomy: c.note || c.location || '',
+                            note: '',
+                            status: 'pending',
+                            source: 'cell',
+                            cellRef: cellKey,
+                            createdAt: Date.now()
+                        };
+                        added++;
+                    });
+                });
+            }
+            if (Object.keys(updates).length > 0) {
+                const target = ref(fbDb, `case-list/${caselistTabId}`);
+                const cur = await get(target);
+                await set(target, { ...(cur.val() || {}), ...updates });
+            }
+            if (!silent) {
+                document.getElementById('caselist-status').textContent = added > 0 ? `✓ 同步：新增 ${added} 筆` : '✓ 已是最新（無新增）';
+            }
+        }
+
+        function renderCaselist() {
+            const wrap = document.getElementById('caselist-table-wrap');
+            const filter = document.getElementById('caselist-filter-status').value;
+            const items = Object.entries(caselistData)
+                .map(([id, c]) => ({ id, ...c }))
+                .filter(c => filter === 'all' || c.status === filter)
+                .sort((a, b) => {
+                    if (a.date !== b.date) return a.date.localeCompare(b.date);
+                    if (a.period !== b.period) return a.period === 'AM' ? -1 : 1;
+                    return (a.createdAt || 0) - (b.createdAt || 0);
+                });
+            const total = Object.keys(caselistData).length;
+            const done = Object.values(caselistData).filter(c => c.status === 'done').length;
+            const pending = Object.values(caselistData).filter(c => c.status === 'pending').length;
+            document.getElementById('caselist-status').textContent = `共 ${total} 筆 · 待做 ${pending} · 已完成 ${done}`;
+            if (items.length === 0) {
+                wrap.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div>';
+                return;
+            }
+            const typeOpts = CASELIST_TYPES.map(t => `<option value="${t}">${CASELIST_TYPE_LABEL[t]}</option>`).join('');
+            const rows = items.map(c => {
+                const rowCls = c.status === 'done' ? 'row-done' : (c.status === 'cancel' ? 'row-cancel' : '');
+                const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'cancel' ? 'status-cancel' : 'status-pending');
+                const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'cancel' ? '❌ 取消' : '⏳ 待做');
+                return `<tr class="${rowCls}" data-id="${c.id}">
+                    <td><input type="date" data-field="date" value="${c.date || ''}"></td>
+                    <td><select data-field="period"><option value="AM"${c.period === 'AM' ? ' selected' : ''}>AM</option><option value="PM"${c.period === 'PM' ? ' selected' : ''}>PM</option></select></td>
+                    <td><input type="text" data-field="recordNumber" value="${(c.recordNumber || '').replace(/"/g, '&quot;')}" placeholder="病歷號" data-trigger-fill="1"></td>
+                    <td><input type="text" data-field="name" value="${(c.name || '').replace(/"/g, '&quot;')}" placeholder="姓名"></td>
+                    <td><select data-field="type"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select></td>
+                    <td><input type="text" data-field="anatomy" value="${(c.anatomy || '').replace(/"/g, '&quot;')}" placeholder="部位"></td>
+                    <td><input type="text" data-field="note" value="${(c.note || '').replace(/"/g, '&quot;')}" placeholder="備註"></td>
+                    <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
+                    <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程自動同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
+                    <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
+                </tr>`;
+            }).join('');
+            wrap.innerHTML = `<table class="caselist-table">
+                <thead><tr>
+                    <th style="width:120px;">日期</th>
+                    <th style="width:60px;">時段</th>
+                    <th style="width:100px;">病歷號</th>
+                    <th style="width:90px;">姓名</th>
+                    <th style="width:110px;">type</th>
+                    <th style="width:140px;">部位</th>
+                    <th>備註</th>
+                    <th style="width:90px;">狀態</th>
+                    <th style="width:30px;"></th>
+                    <th style="width:30px;"></th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+            // 綁事件
+            wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+                const id = tr.dataset.id;
+                tr.querySelectorAll('input,select').forEach(inp => {
+                    const handler = async () => {
+                        const field = inp.dataset.field;
+                        if (!field) return;
+                        await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), { [field]: inp.value });
+                        if (inp.dataset.triggerFill === '1' && field === 'recordNumber') {
+                            tryAutoFillFromNearby(id, inp.value);
+                        }
+                    };
+                    inp.addEventListener('change', handler);
+                    inp.addEventListener('blur', handler);
+                });
+                tr.querySelector('[data-action="cycle-status"]')?.addEventListener('click', async () => {
+                    const cur = caselistData[id]?.status || 'pending';
+                    const next = cur === 'pending' ? 'done' : (cur === 'done' ? 'cancel' : 'pending');
+                    await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), { status: next });
+                });
+                tr.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+                    if (!confirm('刪除此 row？')) return;
+                    await remove(ref(fbDb, `case-list/${caselistTabId}/${id}`));
+                });
+            });
+        }
+
+        async function caselistAddRow() {
+            const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+            const today = formatDateForInput(new Date());
+            const hour = new Date().getHours();
+            await update(ref(fbDb, `case-list/${caselistTabId}/${id}`), {
+                date: today, period: hour < 12 ? 'AM' : 'PM',
+                recordNumber: '', name: '', type: '', anatomy: '', note: '',
+                status: 'pending', source: 'manual', createdAt: Date.now()
+            });
+        }
+
+        // 病歷號自動填補：找同 tabId 內、同病歷號、日期距離 ≤ 30 天最近的一筆，prefill 空欄位
+        async function tryAutoFillFromNearby(currentId, recordNumber) {
+            if (!recordNumber || !recordNumber.trim()) return;
+            const cur = caselistData[currentId];
+            if (!cur) return;
+            const curDate = new Date(cur.date);
+            let best = null, bestDist = Infinity;
+            Object.entries(caselistData).forEach(([id, c]) => {
+                if (id === currentId) return;
+                if ((c.recordNumber || '').trim() !== recordNumber.trim()) return;
+                const d = new Date(c.date);
+                const dist = Math.abs(d - curDate) / (1000 * 60 * 60 * 24);
+                if (dist > 30) return;
+                if (dist < bestDist) { bestDist = dist; best = c; }
+            });
+            if (!best) {
+                const s = document.getElementById('caselist-status');
+                const old = s.textContent;
+                s.textContent = `（未找到 ${recordNumber} 相近紀錄可填補）`;
+                setTimeout(() => { s.textContent = old; }, 2000);
+                return;
+            }
+            const fill = {};
+            ['name', 'type', 'anatomy', 'note'].forEach(f => {
+                if (!cur[f] && best[f]) fill[f] = best[f];
+            });
+            if (Object.keys(fill).length === 0) return;
+            await update(ref(fbDb, `case-list/${caselistTabId}/${currentId}`), fill);
+            const s = document.getElementById('caselist-status');
+            s.textContent = `✓ 已從 ${best.date} 同病歷號填補：${Object.keys(fill).join(', ')}`;
+            setTimeout(() => renderCaselist(), 1500);
+        }
+
         async function exportToDocx() {
             const tab = getActiveTab();
             if (!tab) {
@@ -2296,6 +2544,11 @@
         function setupEventListeners() {
             // 匯出按鈕
             document.getElementById('export-btn')?.addEventListener('click', exportToDocx);
+            document.getElementById('caselist-btn')?.addEventListener('click', openCaselist);
+            document.getElementById('caselist-close')?.addEventListener('click', closeCaselist);
+            document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
+            document.getElementById('caselist-sync-btn')?.addEventListener('click', () => syncCaselistFromCells(false));
+            document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
             
             // 統計欄點擊事件
             document.getElementById('stats-bar').addEventListener('click', (e) => {
