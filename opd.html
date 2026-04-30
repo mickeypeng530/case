@@ -3963,6 +3963,17 @@
             window.getSelection()?.removeAllRanges();
             openTagEditPopover(cell);
         });
+        // 過去日期 tag 欄單擊也能開啟編輯（提速整理舊資料）
+        document.getElementById('visit-list').addEventListener('click', (e) => {
+            if (window.matchMedia('(max-width: 768px)').matches) return;
+            const cell = e.target.closest('td.tag-edit-trigger');
+            if (!cell) return;
+            // 避免點 chip 觸發
+            if (e.target.closest('[data-tag], [data-jump-date], button')) return;
+            const today = formatDate(new Date());
+            if (state.currentClinicDate >= today) return; // 未來 / 今天 → 維持要雙擊
+            openTagEditPopover(cell);
+        });
         document.getElementById('visit-list').addEventListener('click', (e) => {
             const statTag = e.target.closest('[data-stat-tag]');
             if (statTag) {
