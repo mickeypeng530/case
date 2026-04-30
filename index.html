@@ -618,17 +618,20 @@
         .caselist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
         .caselist-table th { background: var(--bg-tertiary); color: var(--text-primary); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; font-weight: 600; }
         .caselist-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: top; }
-        .caselist-table tr.row-done td { background: rgba(34,197,94,0.12); color: var(--text-secondary); }
-        .caselist-table tr.row-cancel td { background: rgba(0,0,0,0.15); color: var(--text-muted); text-decoration: line-through; }
-        .caselist-table tr:hover td { background: rgba(99,102,241,0.08); }
-        .caselist-table tr.row-done:hover td { background: rgba(34,197,94,0.2); }
-        .caselist-table tr.row-cancel:hover td { background: rgba(0,0,0,0.25); }
+        .caselist-table tr.row-done td { background: rgba(34,197,94,0.18); }
+        .caselist-table tr.row-dc td   { background: rgba(148,163,184,0.25); color: var(--text-muted); }
+        .caselist-table tr.row-mri td  { background: #E6E6FA; color: #1a1a2e; }
+        .caselist-table tr.row-arthro td { background: #FFFACD; color: #1a1a2e; }
+        :root[data-theme="dark"] .caselist-table tr.row-mri td { background: rgba(196,181,253,0.25); color: var(--text-primary); }
+        :root[data-theme="dark"] .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18); color: var(--text-primary); }
+        .caselist-table tr:hover td { filter: brightness(1.08); }
         .caselist-table input, .caselist-table select { width: 100%; background: transparent; border: 1px dashed transparent; color: inherit; font-family: inherit; font-size: inherit; padding: 2px 4px; box-sizing: border-box; }
         .caselist-table input:focus, .caselist-table select:focus { background: var(--bg-primary); border-color: var(--color-info); outline: none; }
         .caselist-table .status-btn { cursor: pointer; padding: 2px 6px; border-radius: 3px; border: none; font-family: inherit; font-size: 0.78rem; }
         .caselist-table .status-pending { background: rgba(99,102,241,0.25); color: #c7d2fe; }
         .caselist-table .status-done { background: rgba(34,197,94,0.4); color: #f0fdf4; }
         .caselist-table .status-cancel { background: rgba(148,163,184,0.3); color: #cbd5e1; }
+        .caselist-table .status-dc { background: rgba(148,163,184,0.4); color: #475569; }
         .caselist-table .row-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; }
         .caselist-table .row-delete:hover { color: var(--color-danger); }
         .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
@@ -1252,10 +1255,10 @@
                 <h3 style="margin:0;">📋 線上 case list</h3>
                 <div style="display:flex; gap:8px; align-items:center;">
                     <select id="caselist-filter-status" style="padding:4px 8px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:inherit; font-size:0.82rem;">
-                        <option value="all">全部</option>
-                        <option value="pending" selected>未完成</option>
+                        <option value="all" selected>全部</option>
+                        <option value="pending">待做</option>
                         <option value="done">已完成</option>
-                        <option value="cancel">取消</option>
+                        <option value="dc">DC</option>
                     </select>
                     <button id="caselist-add-btn" style="padding:5px 10px; background:var(--color-info); border:none; color:white; border-radius:4px; cursor:pointer; font-size:0.82rem;">+ 新增</button>
                     <button id="caselist-sync-btn" title="從目前排程拉新案例（不會刪 list 既有的）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🔄 同步排程</button>
@@ -1457,6 +1460,7 @@
             selectedCell: null,
             selectedSlotIndex: null,
             cellData: {},
+            caseList: {},  // { [tabId]: { [caseId]: { date, period, time, chartNo, ... } } }
             mobileWeekIndex: 0  // 手機版目前顯示的週數
         };
         
@@ -1505,9 +1509,13 @@
                         state.tabs = data.tabs || [];
                         state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
                         state.cellData = data.cellData || {};
+                        state.caseList = data.caseList || {};
                         saveToLocalStorage();
                         renderTabs();
                         renderTabContent();
+                        if (document.getElementById('caselist-modal')?.classList.contains('show')) {
+                            renderCaselist();
+                        }
                     }
                     showStatus('已同步', false);
                 });
@@ -1532,6 +1540,7 @@
                 state.tabs = parsed.tabs || [];
                 state.activeTabId = parsed.activeTabId || (state.tabs[0]?.id || null);
                 state.cellData = parsed.cellData || {};
+                state.caseList = parsed.caseList || {};
             }
         }
 
@@ -1539,20 +1548,22 @@
             localStorage.setItem('caseSchedulerV2', JSON.stringify({
                 tabs: state.tabs,
                 activeTabId: state.activeTabId,
-                cellData: state.cellData
+                cellData: state.cellData,
+                caseList: state.caseList || {}
             }));
         }
 
         function saveToStorage() {
             showStatus('儲存中...', true);
             saveToLocalStorage();
-            
+
             // 同步到 Firebase
             if (firebaseReady && fbDb) {
                 set(ref(fbDb, 'scheduler'), {
                     tabs: state.tabs,
                     activeTabId: state.activeTabId,
                     cellData: state.cellData,
+                    caseList: state.caseList || {},
                     lastUpdated: new Date().toISOString()
                 }).then(() => {
                     showStatus('已同步', false);
@@ -1942,47 +1953,40 @@
         
         // 匯出 Word 文件
         // ========== 線上 case list ==========
+        // ============== 線上 case list（state-based，跟 cellData 一起 saveToStorage）==============
         const CASELIST_TYPES = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
         const CASELIST_TYPE_LABEL = {
             'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
             'sono': 'SONO', 'mri': 'MRI', 'arthro': 'Arthro', 'other': 'Other'
         };
-        let caselistData = {}; // { caseId: { date, period, recordNumber, name, type, anatomy, note, status, source } }
         let caselistTabId = null;
-        let caselistUnsub = null;
 
-        function caselistKey(c) {
-            return `${c.date}_${c.period}_${c.id || c.recordNumber || ''}`;
+        function getCaselistFor(tabId) {
+            if (!state.caseList) state.caseList = {};
+            if (!state.caseList[tabId]) state.caseList[tabId] = {};
+            return state.caseList[tabId];
         }
 
-        async function openCaselist() {
+        function openCaselist() {
             const tab = getActiveTab();
             if (!tab) { alert('請先選擇分頁'); return; }
             caselistTabId = tab.id;
             document.getElementById('caselist-modal').classList.add('show');
-            document.getElementById('caselist-status').textContent = '載入中...';
-            // 訂閱 Firebase
-            if (caselistUnsub) caselistUnsub();
-            const r = ref(fbDb, `scheduler/case-list/${caselistTabId}`);
-            caselistUnsub = onValue(r, (snap) => {
-                caselistData = snap.val() || {};
-                renderCaselist();
-            });
-            // 第一次：自動同步排程
-            await syncCaselistFromCells(true);
+            // 第一次開：自動 sync 排程內案例（不刪 list 既有）
+            syncCaselistFromCells(true);
+            renderCaselist();
         }
         function closeCaselist() {
             document.getElementById('caselist-modal').classList.remove('show');
-            if (caselistUnsub) { caselistUnsub(); caselistUnsub = null; }
         }
 
-        // 從目前 tab 排程拉出案例 → 寫進 case-list（不刪 list 既有，自動加新案例）
-        async function syncCaselistFromCells(silent = false) {
+        // 從目前 tab 排程拉出案例 → 寫進 state.caseList（不刪 list 既有，只新增）
+        function syncCaselistFromCells(silent = false) {
             const tab = getActiveTab();
             if (!tab) return;
+            const list = getCaselistFor(tab.id);
             const start = new Date(tab.statsStartDate || tab.startDate);
             const end = new Date(tab.statsEndDate || tab.endDate);
-            const updates = {};
             let added = 0;
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
@@ -1993,8 +1997,8 @@
                     cases.forEach((c, idx) => {
                         if (!c || !CASELIST_TYPES.includes(c.type) || c.isEmpty) return;
                         const id = `cell_${cellKey}_${c.id || idx}`;
-                        if (caselistData[id]) return; // 已存在 → 不覆蓋
-                        updates[id] = {
+                        if (list[id]) return; // 已存在 → 不覆蓋
+                        list[id] = {
                             date: formatDateForInput(d),
                             period,
                             time: c.time || '',
@@ -2002,178 +2006,197 @@
                             ageSex: '',
                             type: c.type || '',
                             otherSubtype: c.otherSubtype || '',
-                            note: c.note || '',
-                            noteExt: '',
                             status: 'pending',
                             source: 'cell',
-                            cellRef: cellKey,
+                            sourceCellKey: cellKey,
                             createdAt: Date.now()
                         };
                         added++;
                     });
                 });
             }
-            if (Object.keys(updates).length > 0) {
-                const target = ref(fbDb, `scheduler/case-list/${caselistTabId}`);
-                const cur = await get(target);
-                await set(target, { ...(cur.val() || {}), ...updates });
-            }
+            if (added > 0) saveToStorage();
             if (!silent) {
-                document.getElementById('caselist-status').textContent = added > 0 ? `✓ 同步：新增 ${added} 筆` : '✓ 已是最新（無新增）';
+                const s = document.getElementById('caselist-status');
+                if (s) s.textContent = added > 0 ? `✓ 同步：新增 ${added} 筆` : '✓ 已是最新（無新增）';
+            }
+        }
+
+        function caselistAddRow() {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+            const todayStr = formatDateForInput(new Date());
+            const startStr = formatDateForInput(new Date(tab.statsStartDate || tab.startDate));
+            const endStr = formatDateForInput(new Date(tab.statsEndDate || tab.endDate));
+            const useDate = (todayStr >= startStr && todayStr <= endStr) ? todayStr : startStr;
+            const hour = new Date().getHours();
+            list[id] = {
+                date: useDate, period: hour < 12 ? 'AM' : 'PM',
+                time: '', chartNo: '', ageSex: '',
+                type: '', otherSubtype: '',
+                status: 'pending', source: 'manual', createdAt: Date.now()
+            };
+            saveToStorage();
+            renderCaselist();
+        }
+
+        function caselistUpdateField(id, field, value) {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            if (!list[id]) return;
+            list[id][field] = value;
+            saveToStorage();
+        }
+
+        function caselistDeleteRow(id) {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            delete list[id];
+            saveToStorage();
+            renderCaselist();
+        }
+
+        function caselistCycleStatus(id) {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            if (!list[id]) return;
+            const cur = list[id].status || 'pending';
+            list[id].status = cur === 'pending' ? 'done' : (cur === 'done' ? 'dc' : 'pending');
+            saveToStorage();
+            renderCaselist();
+        }
+
+        // 病歷號自動填補：同 tab list 內、同病歷號、日期距離 ≤ 30 天最近一筆 → 填空欄
+        function tryAutoFillFromNearby(currentId, chartNo) {
+            if (!chartNo || !chartNo.trim()) return;
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            const cur = list[currentId];
+            if (!cur) return;
+            const curDate = new Date(cur.date);
+            let best = null, bestDist = Infinity;
+            Object.entries(list).forEach(([id, c]) => {
+                if (id === currentId) return;
+                if ((c.chartNo || '').trim() !== chartNo.trim()) return;
+                const d = new Date(c.date);
+                const dist = Math.abs(d - curDate) / (1000 * 60 * 60 * 24);
+                if (dist > 30) return;
+                if (dist < bestDist) { bestDist = dist; best = c; }
+            });
+            if (!best) return;
+            const fill = {};
+            ['ageSex', 'type', 'otherSubtype'].forEach(f => {
+                if (!cur[f] && best[f]) fill[f] = best[f];
+            });
+            if (Object.keys(fill).length === 0) return;
+            Object.assign(cur, fill);
+            saveToStorage();
+            const s = document.getElementById('caselist-status');
+            if (s) {
+                s.textContent = `✓ 已從 ${best.date} 同病歷號填補：${Object.keys(fill).join(', ')}`;
+                setTimeout(() => renderCaselist(), 800);
+            } else {
+                renderCaselist();
             }
         }
 
         function renderCaselist() {
             const wrap = document.getElementById('caselist-table-wrap');
-            const filter = document.getElementById('caselist-filter-status').value;
+            if (!wrap) return;
             const tab = getActiveTab();
-            const startStr = tab ? formatDateForInput(new Date(tab.statsStartDate || tab.startDate)) : '';
-            const endStr = tab ? formatDateForInput(new Date(tab.statsEndDate || tab.endDate)) : '';
-            // 只顯示 tab 統計區間內的（同 export 範圍）
-            const inRange = (c) => !startStr || (c.date >= startStr && c.date <= endStr);
-            const items = Object.entries(caselistData)
+            if (!tab) { wrap.innerHTML = ''; return; }
+            const list = getCaselistFor(tab.id);
+            const filter = document.getElementById('caselist-filter-status').value;
+            const startStr = formatDateForInput(new Date(tab.statsStartDate || tab.startDate));
+            const endStr = formatDateForInput(new Date(tab.statsEndDate || tab.endDate));
+            const inRange = (c) => c.date >= startStr && c.date <= endStr;
+            const items = Object.entries(list)
                 .map(([id, c]) => ({ id, ...c }))
                 .filter(c => inRange(c))
                 .filter(c => filter === 'all' || c.status === filter)
                 .sort((a, b) => {
                     if (a.date !== b.date) return a.date.localeCompare(b.date);
                     if (a.period !== b.period) return a.period === 'AM' ? -1 : 1;
-                    return (a.createdAt || 0) - (b.createdAt || 0);
+                    return (a.time || '').localeCompare(b.time || '');
                 });
-            const inRangeAll = Object.values(caselistData).filter(inRange);
+            const inRangeAll = Object.values(list).filter(inRange);
             const total = inRangeAll.length;
             const done = inRangeAll.filter(c => c.status === 'done').length;
+            const dc = inRangeAll.filter(c => c.status === 'dc').length;
             const pending = inRangeAll.filter(c => c.status === 'pending').length;
-            const rangeLabel = startStr ? `（${startStr} ~ ${endStr}）` : '';
-            document.getElementById('caselist-status').textContent = `${rangeLabel} 共 ${total} 筆 · 待做 ${pending} · 已完成 ${done}`;
+            document.getElementById('caselist-status').textContent = `（${startStr} ~ ${endStr}）共 ${total} 筆 · 待做 ${pending} · 已完成 ${done} · DC ${dc}`;
+
             if (items.length === 0) {
                 wrap.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div>';
                 return;
             }
             const esc = (s) => (s == null ? '' : String(s)).replace(/"/g, '&quot;');
             const rows = items.map(c => {
-                const rowCls = c.status === 'done' ? 'row-done' : (c.status === 'cancel' ? 'row-cancel' : '');
-                const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'cancel' ? 'status-cancel' : 'status-pending');
-                const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'cancel' ? '❌ 取消' : '⏳ 待做');
-                // 兼容舊欄位名（之前 recordNumber/name → 改 chartNo/ageSex 後）
-                const chartNo = c.chartNo || c.recordNumber || '';
-                const noteExt = c.noteExt != null ? c.noteExt : (c.anatomy || '');
+                let rowCls = '';
+                if (c.status === 'done') rowCls = 'row-done';
+                else if (c.status === 'dc') rowCls = 'row-dc';
+                else if (c.type === 'mri') rowCls = 'row-mri';
+                else if (c.type === 'arthro') rowCls = 'row-arthro';
+                const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'dc' ? 'status-dc' : 'status-pending');
+                const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'dc' ? '⊘ DC' : '⏳ 待做');
                 return `<tr class="${rowCls}" data-id="${c.id}">
                     <td><input type="date" data-field="date" value="${c.date || ''}"></td>
                     <td><select data-field="period"><option value="AM"${c.period === 'AM' ? ' selected' : ''}>AM</option><option value="PM"${c.period === 'PM' ? ' selected' : ''}>PM</option></select></td>
                     <td><input type="time" data-field="time" value="${esc(c.time)}"></td>
-                    <td><input type="text" data-field="chartNo" value="${esc(chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
+                    <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
                     <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
                     <td>
                         <select data-field="type"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>
                         ${c.type === 'other' ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="other 細項" style="margin-top:2px;">` : ''}
                     </td>
-                    <td><input type="text" data-field="note" value="${esc(c.note)}" placeholder="排程備註"></td>
-                    <td><input type="text" data-field="noteExt" value="${esc(noteExt)}" placeholder="詳細筆記"></td>
                     <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
-                    <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程自動同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
+                    <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
                 </tr>`;
             }).join('');
             wrap.innerHTML = `<table class="caselist-table">
                 <thead><tr>
-                    <th style="width:120px;">日期</th>
-                    <th style="width:60px;">時段</th>
+                    <th style="width:130px;">日期</th>
+                    <th style="width:55px;">時段</th>
                     <th style="width:90px;">時間</th>
-                    <th style="width:100px;">病歷號</th>
-                    <th style="width:80px;">年齡性別</th>
-                    <th style="width:130px;">類型</th>
-                    <th>排程備註</th>
-                    <th>詳細筆記</th>
-                    <th style="width:80px;">狀態</th>
+                    <th style="width:110px;">病歷號</th>
+                    <th style="width:90px;">年齡性別</th>
+                    <th style="width:160px;">類型</th>
+                    <th style="width:90px;">狀態</th>
                     <th style="width:30px;"></th>
                     <th style="width:30px;"></th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
             </table>`;
-            // 綁事件
+            // 綁事件（mutate state + saveToStorage）
             wrap.querySelectorAll('tr[data-id]').forEach(tr => {
                 const id = tr.dataset.id;
                 tr.querySelectorAll('input,select').forEach(inp => {
-                    const handler = async () => {
+                    const handler = () => {
                         const field = inp.dataset.field;
                         if (!field) return;
-                        await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), { [field]: inp.value });
-                        if (inp.dataset.triggerFill === '1' && field === 'chartNo') {
+                        caselistUpdateField(id, field, inp.value);
+                        // type 改變 / chartNo blur：需 re-render 或 auto-fill
+                        if (field === 'type') renderCaselist();
+                        if (field === 'chartNo' && inp.dataset.triggerFill === '1') {
                             tryAutoFillFromNearby(id, inp.value);
                         }
                     };
                     inp.addEventListener('change', handler);
                     inp.addEventListener('blur', handler);
                 });
-                tr.querySelector('[data-action="cycle-status"]')?.addEventListener('click', async () => {
-                    const cur = caselistData[id]?.status || 'pending';
-                    const next = cur === 'pending' ? 'done' : (cur === 'done' ? 'cancel' : 'pending');
-                    await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), { status: next });
-                });
-                tr.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+                tr.querySelector('[data-action="cycle-status"]')?.addEventListener('click', () => caselistCycleStatus(id));
+                tr.querySelector('[data-action="delete"]')?.addEventListener('click', () => {
                     if (!confirm('刪除此 row？')) return;
-                    await remove(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`));
+                    caselistDeleteRow(id);
                 });
             });
-        }
-
-        async function caselistAddRow() {
-            try {
-                if (!caselistTabId) { alert('未選擇分頁'); return; }
-                const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-                // 用 tab 區間內的「今天或起始日」確保新 row 顯示在當前 view
-                const tab = getActiveTab();
-                const todayStr = formatDateForInput(new Date());
-                const startStr = tab ? formatDateForInput(new Date(tab.statsStartDate || tab.startDate)) : todayStr;
-                const endStr = tab ? formatDateForInput(new Date(tab.statsEndDate || tab.endDate)) : todayStr;
-                const useDate = (todayStr >= startStr && todayStr <= endStr) ? todayStr : startStr;
-                const hour = new Date().getHours();
-                await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${id}`), {
-                    date: useDate, period: hour < 12 ? 'AM' : 'PM',
-                    time: '', chartNo: '', ageSex: '',
-                    type: '', otherSubtype: '',
-                    note: '', noteExt: '',
-                    status: 'pending', source: 'manual', createdAt: Date.now()
-                });
-            } catch (err) {
-                alert('新增失敗：' + err.message + '\n\n（可能是 Firebase rules 未開放 scheduler/case-list 路徑）');
-                console.error(err);
-            }
-        }
-
-        // 病歷號自動填補：找同 tabId 內、同病歷號、日期距離 ≤ 30 天最近的一筆，prefill 空欄位
-        async function tryAutoFillFromNearby(currentId, chartNo) {
-            if (!chartNo || !chartNo.trim()) return;
-            const cur = caselistData[currentId];
-            if (!cur) return;
-            const curDate = new Date(cur.date);
-            let best = null, bestDist = Infinity;
-            Object.entries(caselistData).forEach(([id, c]) => {
-                if (id === currentId) return;
-                const cChart = c.chartNo || c.recordNumber || '';
-                if (cChart.trim() !== chartNo.trim()) return;
-                const d = new Date(c.date);
-                const dist = Math.abs(d - curDate) / (1000 * 60 * 60 * 24);
-                if (dist > 30) return;
-                if (dist < bestDist) { bestDist = dist; best = c; }
-            });
-            if (!best) {
-                const s = document.getElementById('caselist-status');
-                const old = s.textContent;
-                s.textContent = `（未找到 ${chartNo} 相近紀錄可填補）`;
-                setTimeout(() => { s.textContent = old; }, 2000);
-                return;
-            }
-            const fill = {};
-            ['ageSex', 'type', 'otherSubtype', 'note', 'noteExt'].forEach(f => {
-                if (!cur[f] && best[f]) fill[f] = best[f];
-            });
-            if (Object.keys(fill).length === 0) return;
-            await update(ref(fbDb, `scheduler/case-list/${caselistTabId}/${currentId}`), fill);
-            const s = document.getElementById('caselist-status');
-            s.textContent = `✓ 已從 ${best.date} 同病歷號填補：${Object.keys(fill).join(', ')}`;
-            setTimeout(() => renderCaselist(), 1500);
         }
 
         async function exportToDocx() {
@@ -2579,7 +2602,7 @@
             document.getElementById('caselist-btn')?.addEventListener('click', openCaselist);
             document.getElementById('caselist-close')?.addEventListener('click', closeCaselist);
             document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
-            document.getElementById('caselist-sync-btn')?.addEventListener('click', () => syncCaselistFromCells(false));
+            document.getElementById('caselist-sync-btn')?.addEventListener('click', () => { syncCaselistFromCells(false); renderCaselist(); });
             document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
             
             // 統計欄點擊事件
@@ -2649,6 +2672,7 @@
                         state.tabs = data.tabs || [];
                         state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
                         state.cellData = data.cellData || {};
+                        state.caseList = data.caseList || {};
                         saveToLocalStorage();
                         renderTabs();
                         renderTabContent();
