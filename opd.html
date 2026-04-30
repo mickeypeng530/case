@@ -721,6 +721,8 @@
         .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
         .visit-tags .tag-chip[data-tag="回診"] { background: #6366f1; }
         .visit-tags .tag-chip[data-tag="自費"] { background: #eab308; color: #1a1a2e; }
+        .visit-tags .tag-chip[data-tag="pRF"] { background: #fb923c; }
+        .visit-tags .tag-chip[data-tag="HA"] { background: #14b8a6; }
 
         /* Procedure status overlay：覆蓋背景色 */
         .tag-chip[data-status="pending"] { background: #fbcfe8 !important; color: #831843 !important; }
@@ -3343,6 +3345,8 @@
             'med':   { bg: 'F97316', fg: 'FFFFFF' },
             '回診':  { bg: '6366F1', fg: 'FFFFFF' },
             '自費':  { bg: 'EAB308', fg: '1A1A2E' },
+            'pRF':   { bg: 'FB923C', fg: 'FFFFFF' },
+            'HA':    { bg: '14B8A6', fg: 'FFFFFF' },
             'other': { bg: '94A3B8', fg: 'FFFFFF' },
             '確':    { bg: '16A34A', fg: 'FFFFFF' }
         };
@@ -3704,7 +3708,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med', '自費', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP', 'MRI', 'f/u', 'med', '自費', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
@@ -4203,8 +4207,8 @@
         });
     }
 
-    // ========== 統計：procedure × 月份 矩陣 ==========
-    const STATS_PROCEDURES = ['CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP'];
+    // ========== 統計：procedure × 時間粒度 矩陣（依 tag 計數）==========
+    const STATS_PROCEDURES = ['CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP'];  // 對應 visit.tags
 
     async function computeAndRenderStats() {
         const container = document.getElementById('stats-container');
@@ -4280,7 +4284,7 @@
             monthList.forEach(m => { matrix[p][m.key] = { count: 0, visits: [] }; });
         });
 
-        // 遍歷所有 visit
+        // 遍歷所有 visit；依 visit.tags 計數（每個 procedure tag = 1 筆）
         Object.keys(allByDate).forEach(dateStr => {
             if (dateStr < startKey || dateStr > endKey) return;
             const bk = bucketOf(dateStr);
@@ -4288,15 +4292,14 @@
             const dayVisits = allByDate[dateStr];
             Object.values(dayVisits).forEach(v => {
                 if (v.noShow) return;
-                const summary = summarizePlan(v.plan, dateStr);
-                summary.items.forEach(it => {
-                    if (!STATS_PROCEDURES.includes(it.name)) return;
-                    if (!it.done) return;
-                    matrix[it.name][bk].count += it.done;
-                    matrix[it.name][bk].visits.push({
+                const tags = (v.tags || []).map(t => t === 'follow up' ? 'f/u' : t);
+                STATS_PROCEDURES.forEach(p => {
+                    if (!tags.includes(p)) return;
+                    matrix[p][bk].count += 1;
+                    matrix[p][bk].visits.push({
                         date: dateStr,
                         recordNumber: v.recordNumber,
-                        done: it.done
+                        done: 1
                     });
                 });
             });
