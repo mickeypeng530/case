@@ -2024,18 +2024,26 @@
         function renderCaselist() {
             const wrap = document.getElementById('caselist-table-wrap');
             const filter = document.getElementById('caselist-filter-status').value;
+            const tab = getActiveTab();
+            const startStr = tab ? formatDateForInput(new Date(tab.statsStartDate || tab.startDate)) : '';
+            const endStr = tab ? formatDateForInput(new Date(tab.statsEndDate || tab.endDate)) : '';
+            // 只顯示 tab 統計區間內的（同 export 範圍）
+            const inRange = (c) => !startStr || (c.date >= startStr && c.date <= endStr);
             const items = Object.entries(caselistData)
                 .map(([id, c]) => ({ id, ...c }))
+                .filter(c => inRange(c))
                 .filter(c => filter === 'all' || c.status === filter)
                 .sort((a, b) => {
                     if (a.date !== b.date) return a.date.localeCompare(b.date);
                     if (a.period !== b.period) return a.period === 'AM' ? -1 : 1;
                     return (a.createdAt || 0) - (b.createdAt || 0);
                 });
-            const total = Object.keys(caselistData).length;
-            const done = Object.values(caselistData).filter(c => c.status === 'done').length;
-            const pending = Object.values(caselistData).filter(c => c.status === 'pending').length;
-            document.getElementById('caselist-status').textContent = `共 ${total} 筆 · 待做 ${pending} · 已完成 ${done}`;
+            const inRangeAll = Object.values(caselistData).filter(inRange);
+            const total = inRangeAll.length;
+            const done = inRangeAll.filter(c => c.status === 'done').length;
+            const pending = inRangeAll.filter(c => c.status === 'pending').length;
+            const rangeLabel = startStr ? `（${startStr} ~ ${endStr}）` : '';
+            document.getElementById('caselist-status').textContent = `${rangeLabel} 共 ${total} 筆 · 待做 ${pending} · 已完成 ${done}`;
             if (items.length === 0) {
                 wrap.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div>';
                 return;
