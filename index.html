@@ -1968,7 +1968,7 @@
         }
 
         let caselistDragInited = false;
-        function openCaselist() {
+        async function openCaselist() {
             const tab = getActiveTab();
             if (!tab) { alert('請先選擇分頁'); return; }
             caselistTabId = tab.id;
@@ -1982,6 +1982,84 @@
                 const handle = overlay.querySelector('.caselist-header');
                 if (modal && handle) initDraggable(modal, handle);
                 caselistDragInited = true;
+            }
+            // 自動填補所有缺 ageSex 的 row（從 OPD 主表 / 同 list 同病歷號）
+            await autoFillAllMissingAgeSex();
+        }
+
+        // 開啟 modal 時掃整張 list，凡有 chartNo 但缺 ageSex 的 row → 自動填
+        async function autoFillAllMissingAgeSex() {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            const startStr = formatDateForInput(new Date(tab.statsStartDate || tab.startDate));
+            const endStr = formatDateForInput(new Date(tab.statsEndDate || tab.endDate));
+            // 找所有需要填補的 row（在區間內 + 有 chartNo + 沒 ageSex）
+            const targets = Object.entries(list).filter(([id, c]) =>
+                c.date >= startStr && c.date <= endStr &&
+                (c.chartNo || '').trim() &&
+                !(c.ageSex || '').trim()
+            );
+            if (targets.length === 0) return;
+            const status = document.getElementById('caselist-status');
+            const oldStatus = status ? status.textContent : '';
+            if (status) status.textContent = `自動補 ageSex 中... (0/${targets.length})`;
+            let filled = 0;
+            // 用 Map 快取同 chartNo 的 OPD patient 結果，避免重複查
+            const opdCache = {};
+            for (let i = 0; i < targets.length; i++) {
+                const [id, c] = targets[i];
+                const trimChart = c.chartNo.trim();
+                // Source 1: 同 list ±30 天
+                const curDate = new Date(c.date);
+                let bestList = null, bestDist = Infinity;
+                Object.values(list).forEach(other => {
+                    if (other === c) return;
+                    if ((other.chartNo || '').trim() !== trimChart) return;
+                    if (!(other.ageSex || '').trim()) return;
+                    const dist = Math.abs(new Date(other.date) - curDate) / (86400000);
+                    if (dist > 30) return;
+                    if (dist < bestDist) { bestDist = dist; bestList = other; }
+                });
+                if (bestList) {
+                    c.ageSex = bestList.ageSex;
+                    if (!c.type && bestList.type) c.type = bestList.type;
+                    if (!c.otherSubtype && bestList.otherSubtype) c.otherSubtype = bestList.otherSubtype;
+                    filled++;
+                    continue;
+                }
+                // Source 2: OPD 主表（含快取）
+                let p;
+                if (trimChart in opdCache) {
+                    p = opdCache[trimChart];
+                } else {
+                    try {
+                        const snap = await get(ref(fbDb, `opd/patients/${trimChart}`));
+                        p = snap.val();
+                    } catch { p = null; }
+                    opdCache[trimChart] = p;
+                }
+                if (p) {
+                    let ageSex = '';
+                    if (p.birthYear) {
+                        const refYear = new Date(c.date).getFullYear();
+                        ageSex = `${refYear - p.birthYear}/${p.sex || ''}`;
+                    } else if (p.ageSex) {
+                        ageSex = p.ageSex;
+                    }
+                    if (ageSex) {
+                        c.ageSex = ageSex;
+                        filled++;
+                    }
+                }
+                if (status && i % 5 === 0) status.textContent = `自動補 ageSex 中... (${i + 1}/${targets.length})`;
+            }
+            if (filled > 0) {
+                saveToStorage();
+                renderCaselist();
+                if (status) status.textContent = `✓ 自動補了 ${filled} 筆 ageSex`;
+            } else {
+                if (status) status.textContent = oldStatus || `（${targets.length} 筆缺 ageSex 但 OPD 找不到）`;
             }
         }
 
