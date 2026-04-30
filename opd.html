@@ -1542,6 +1542,7 @@
                 <button class="icon-btn" id="add-clinic-date-btn" title="新增加診日">+</button>
                 <button class="icon-btn" id="remove-clinic-date-btn" title="刪除此加診日（需先把 visit 全部刪掉）" style="display:none;">🗑</button>
                 <button class="icon-btn" id="export-opd-btn" title="匯出本次門診名單為 docx">📤</button>
+                <button class="icon-btn" id="backfill-clinic-tags-btn" title="本次門診所有病人，依 plan 內容回填 procedure tag">🏷</button>
             </div>
         </div>
         <div class="header-notes" id="header-notes"></div>
@@ -1602,6 +1603,7 @@
             <button id="stats-export-btn">📤 匯出 xlsx</button>
             <button id="stats-migrate-btn" title="掃所有歷史 visit，依 plan 內容回填 procedure tag（只加不減）">🏷 從 plan 回填 tag</button>
             <button id="tame-import-btn" title="貼上 sheet 資料匯入 TAME 部位">📥 匯入 TAME 部位</button>
+            <button id="cleanup-old-ctnb-btn" title="刪除 2026-02 前所有 visit 的 CT NB tag（搭配「回填 tag」重整舊資料）">🧹 清除舊 CT NB tag</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
         <div id="stats-container">
@@ -3944,6 +3946,8 @@
             document.getElementById('clinic-agg').style.display = e.target.value === 'clinic' ? '' : 'none';
         });
         document.getElementById('tame-import-btn')?.addEventListener('click', openTameImportModal);
+        document.getElementById('cleanup-old-ctnb-btn')?.addEventListener('click', cleanupOldCtnbTags);
+        document.getElementById('backfill-clinic-tags-btn')?.addEventListener('click', backfillTagsForCurrentClinic);
         document.getElementById('tame-import-cancel')?.addEventListener('click', closeTameImportModal);
         document.getElementById('tame-import-parse-btn')?.addEventListener('click', previewTameImport);
         document.getElementById('tame-import-save')?.addEventListener('click', commitTameImport);
@@ -5124,6 +5128,103 @@
         status.textContent = `寫入中... ${willUpdate} 個`;
         await update(ref(fbDb), updates);
         status.textContent = `✓ 完成，更新了 ${willUpdate} 個 visit。請重新計算統計。`;
+    }
+
+    // 偵測單一 visit plan 內 procedure tag（共用邏輯）
+    function detectTagsFromVisit(v, dateStr) {
+        if (v.noShow) return new Set();
+        const DATE_RE = /(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/;
+        const detectors = [
+            { tag: 'CT NB', re: /\bCT\s*NB\b/i },
+            { tag: 'pRF',   re: /\bpRF\b/ },
+            { tag: 'SONO',  re: /\bSONO\b/i },
+            { tag: 'TAME',  re: /\b(c?TAME|IO\s*PRP)\b/i },
+            { tag: 'HA',    re: /\bHA\b/ },
+            { tag: 'PRP',   re: /\bPRP\b/i },
+            { tag: 'MRI',   re: /\bMRI\b/i },
+            { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
+        ];
+        const lines = (v.plan || '').split(/\r?\n/);
+        const anchorIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+        const scope = anchorIdx >= 0 ? lines.slice(anchorIdx) : lines;
+        const detected = new Set();
+        scope.forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            if (DISCUSS_PATTERN.test(trimmed)) return;
+            const isAnchor = trimmed.startsWith('*');
+            const isDash = trimmed.startsWith('-');
+            const m = trimmed.match(DATE_RE);
+            let isVisitDay = false;
+            if (m) {
+                let yy = m[1];
+                if (!yy) yy = dateStr.slice(0, 4);
+                if (yy.length === 2) yy = '20' + yy;
+                const lineDate = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+                isVisitDay = (lineDate === dateStr);
+            } else if (isAnchor) {
+                isVisitDay = true;
+            } else if (isDash) {
+                return;
+            } else {
+                isVisitDay = true;
+            }
+            if (!isVisitDay) return;
+            detectors.forEach(d => { if (d.re.test(trimmed)) detected.add(d.tag); });
+        });
+        return detected;
+    }
+
+    // 清除 2026-02 前所有 visit 的 CT NB tag
+    async function cleanupOldCtnbTags() {
+        const cutoff = '2026-02-01';
+        if (!confirm(`將從所有 ${cutoff} 之前的 visit 移除 「CT NB」 tag（包含舊的 'NB' 也會清掉）。\n\n之後可再用「🏷 從 plan 回填 tag」重建。\n\n確定執行？`)) return;
+        const status = document.getElementById('stats-status');
+        status.textContent = '掃描中...';
+        const snap = await get(ref(fbDb, 'opd/visits'));
+        const allByDate = snap.val() || {};
+        const updates = {};
+        let count = 0;
+        Object.keys(allByDate).forEach(dateStr => {
+            if (dateStr >= cutoff) return;
+            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
+                const tags = (v.tags || []);
+                const filtered = tags.filter(t => t !== 'CT NB' && t !== 'NB');
+                if (filtered.length !== tags.length) {
+                    updates[`opd/visits/${dateStr}/${recId}/tags`] = filtered;
+                    count++;
+                }
+            });
+        });
+        if (count === 0) { status.textContent = `掃描完，無需清除`; return; }
+        if (!confirm(`將清除 ${count} 個 visit 的 CT NB / NB tag。執行？`)) { status.textContent = '已取消'; return; }
+        await update(ref(fbDb), updates);
+        status.textContent = `✓ 已清除 ${count} 個 visit 的 CT NB tag`;
+    }
+
+    // 本次門診 — 批次回填 tag（依 plan 偵測，只加不減）
+    async function backfillTagsForCurrentClinic() {
+        const date = state.currentClinicDate;
+        if (!date) { alert('未選擇門診日'); return; }
+        const visits = state.visitsByDate?.[date] || {};
+        const recs = Object.keys(visits);
+        if (recs.length === 0) { alert('本日無 visit'); return; }
+        if (!confirm(`掃描本次門診 ${date} 共 ${recs.length} 位，依 plan 內容回填 procedure tag（只加不減）。\n\n執行？`)) return;
+        const updates = {};
+        let updated = 0;
+        recs.forEach(recId => {
+            const v = visits[recId];
+            const existing = new Set((v.tags || []).map(normalizeTag));
+            const detected = detectTagsFromVisit(v, date);
+            const merged = new Set([...existing, ...detected]);
+            if (merged.size > existing.size) {
+                updates[`opd/visits/${date}/${recId}/tags`] = [...merged];
+                updated++;
+            }
+        });
+        if (updated === 0) { setStatus('connected', '✓ 本次門診 tag 已是最新'); return; }
+        await update(ref(fbDb), updates);
+        setStatus('connected', `✓ 本次門診回填了 ${updated} 個 visit 的 tag`);
     }
 
     function exportStatsXlsx() {
