@@ -132,6 +132,10 @@
         .stats-table td.cell-zero { color: var(--text-muted); }
         .stats-table td.cell-clickable { cursor: pointer; }
         .stats-table td.cell-clickable:hover { background: rgba(99,102,241,0.15); color: var(--text-primary); }
+        .stats-table td.cell-anomaly-high { background: rgba(34,197,94,0.18); font-weight: 600; }
+        .stats-table td.cell-anomaly-low  { background: rgba(251,191,36,0.18); font-style: italic; }
+        :root[data-theme="light"] .stats-table td.cell-anomaly-high { background: rgba(34,197,94,0.25); }
+        :root[data-theme="light"] .stats-table td.cell-anomaly-low  { background: rgba(251,191,36,0.3); }
         .stats-detail-panel {
             margin-top: 12px;
             padding: 10px 14px;
@@ -840,6 +844,8 @@
         .visit-tags .tag-chip[data-tag="CT NB"] { background: #f59e0b; color: #1a1a2e; }
         .visit-tags .tag-chip[data-tag="SONO"] { background: #22c55e; }
         .visit-tags .tag-chip[data-tag="TAME"] { background: #3b82f6; }
+        .visit-tags .tag-chip[data-tag="cTAME"] { background: #1e40af; }
+        .visit-tags .tag-chip[data-tag="sTAME"] { background: #60a5fa; color: #0f172a; }
         .visit-tags .tag-chip[data-tag="MRI"] { background: #c4b5fd; color: #1a1a2e; }
         .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
         .visit-tags .tag-chip[data-tag="f/u"] { background: #64748b; }
@@ -1821,6 +1827,7 @@
                     <option value="Xarelto">
                     <option value="Pradaxa">
                     <option value="Warfarin">
+                    <option value="Dipyridamole">
                 </datalist>
             </div>
         </div>
@@ -3510,6 +3517,8 @@
             'CT NB': { bg: 'F59E0B', fg: '1A1A2E' },
             'SONO':  { bg: '22C55E', fg: 'FFFFFF' },
             'TAME':  { bg: '3B82F6', fg: 'FFFFFF' },
+            'cTAME': { bg: '1E40AF', fg: 'FFFFFF' },
+            'sTAME': { bg: '60A5FA', fg: '0F172A' },
             'MRI':   { bg: 'C4B5FD', fg: '1A1A2E' },
             'PRP':   { bg: 'EC4899', fg: 'FFFFFF' },
             'f/u':   { bg: '64748B', fg: 'FFFFFF' },
@@ -4046,7 +4055,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'TAME', 'HA', 'PRP', 'BMA', 'MRI', 'f/u', 'med', '自費', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA', 'MRI', 'f/u', 'med', '自費', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
@@ -4962,26 +4971,32 @@
                     else if (has('PRP')) tally('SONO::增生', bk, v, dateStr, { prp: 1 });
                     else                 tally('SONO::一般', bk, v, dateStr);
                 }
-                if (has('TAME')) {
+                // TAME：tag 優先（cTAME / sTAME 直接 tag）；沒細分 → 從 plan 偵測 fallback
+                if (has('TAME') || has('cTAME') || has('sTAME')) {
                     tally('TAME', bk, v, dateStr);
-                    // 從 plan 偵測 cTAME / sTAME（visit 當天那行）
-                    let tameSub = '其他';
-                    (v.plan || '').split(/\r?\n/).forEach(line => {
-                        const trimmed = line.trim();
-                        if (!trimmed) return;
-                        const dm = trimmed.match(/(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/);
-                        let isVisitDay = !dm;
-                        if (dm) {
-                            let yy = dm[1];
-                            if (!yy) yy = dateStr.slice(0, 4);
-                            if (yy.length === 2) yy = '20' + yy;
-                            const ld = `${yy}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`;
-                            isVisitDay = (ld === dateStr);
-                        }
-                        if (!isVisitDay) return;
-                        if (/cTAME/i.test(trimmed)) tameSub = 'cTAME';
-                        else if (/sTAME/i.test(trimmed) && tameSub === '其他') tameSub = 'sTAME';
-                    });
+                    let tameSub = null;
+                    if (has('cTAME')) tameSub = 'cTAME';
+                    else if (has('sTAME')) tameSub = 'sTAME';
+                    else {
+                        // tag 只寫 TAME → 從 plan 偵測（visit 當天那行）
+                        tameSub = '其他';
+                        (v.plan || '').split(/\r?\n/).forEach(line => {
+                            const trimmed = line.trim();
+                            if (!trimmed) return;
+                            const dm = trimmed.match(/(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/);
+                            let isVisitDay = !dm;
+                            if (dm) {
+                                let yy = dm[1];
+                                if (!yy) yy = dateStr.slice(0, 4);
+                                if (yy.length === 2) yy = '20' + yy;
+                                const ld = `${yy}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`;
+                                isVisitDay = (ld === dateStr);
+                            }
+                            if (!isVisitDay) return;
+                            if (/cTAME/i.test(trimmed)) tameSub = 'cTAME';
+                            else if (/sTAME/i.test(trimmed) && tameSub === '其他') tameSub = 'sTAME';
+                        });
+                    }
                     tally(`TAME::${tameSub}`, bk, v, dateStr);
                 }
             });
@@ -4989,13 +5004,120 @@
 
         const visibleRows = STATS_ROWS;
         const colHeader = granularity === 'm' ? '月份' : granularity === 'q' ? '季' : '年份';
-        let html = '<table class="stats-table"><thead><tr><th>Procedure</th>';
+        const unitName = granularity === 'm' ? '本月' : granularity === 'q' ? '本季' : '本年';
+        const lastUnitName = granularity === 'm' ? '上月' : granularity === 'q' ? '上季' : '去年';
+
+        // === Phase A: dashboard cards ===
+        const lastIdx = monthList.length - 1;
+        const lastBucket = monthList[lastIdx];
+        const prevBucket = lastIdx >= 1 ? monthList[lastIdx - 1] : null;
+        const sumAtBucket = (bk) => STATS_HIERARCHY.reduce((s, h) => s + matrix[h.main][bk].count, 0);
+        const lastTotal = lastBucket ? sumAtBucket(lastBucket.key) : 0;
+        const prevTotal = prevBucket ? sumAtBucket(prevBucket.key) : 0;
+        const deltaPct = prevTotal > 0 ? Math.round(((lastTotal - prevTotal) / prevTotal) * 100) : null;
+        const deltaArrow = deltaPct == null ? '—' : (deltaPct > 0 ? `↑ +${deltaPct}%` : (deltaPct < 0 ? `↓ ${deltaPct}%` : '— 持平'));
+        const deltaColor = deltaPct == null ? 'var(--text-muted)' : (deltaPct > 0 ? '#22c55e' : (deltaPct < 0 ? '#ef4444' : 'var(--text-muted)'));
+
+        // 各主類全期計數（用於 top-n）
+        const mainTotals = STATS_HIERARCHY.map(h => ({ name: h.main, total: monthList.reduce((s, m) => s + matrix[h.main][m.key].count, 0) }));
+        mainTotals.sort((a, b) => b.total - a.total);
+        const grandAll = mainTotals.reduce((s, x) => s + x.total, 0);
+        const top1 = mainTotals[0];
+
+        // 子類全期 top（找最常做的具體子類）
+        const subTotals = [];
+        STATS_HIERARCHY.forEach(h => {
+            h.subs.forEach(sub => {
+                const k = `${h.main}::${sub}`;
+                const t = monthList.reduce((s, m) => s + matrix[k][m.key].count, 0);
+                if (t > 0) subTotals.push({ key: k, total: t });
+            });
+        });
+        subTotals.sort((a, b) => b.total - a.total);
+        const topSub = subTotals[0];
+
+        const cardStyle = 'flex:1; min-width:140px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:10px 12px;';
+        const cardLabel = 'font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;';
+        const cardValue = 'font-size:1.4rem; font-weight:700; color:var(--text-primary);';
+        const cardSub = 'font-size:0.72rem; color:var(--text-secondary); margin-top:2px;';
+
+        let dashboardHtml = `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">${escapeHtml(unitName)} procedure 數</div>
+                <div style="${cardValue}">${lastTotal}</div>
+                <div style="${cardSub}">${lastBucket ? escapeHtml(lastBucket.label) : ''}</div>
+            </div>
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">vs ${escapeHtml(lastUnitName)}</div>
+                <div style="${cardValue}; color:${deltaColor};">${deltaArrow}</div>
+                <div style="${cardSub}">${prevTotal} → ${lastTotal}</div>
+            </div>
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">全期累計</div>
+                <div style="${cardValue}">${grandAll}</div>
+                <div style="${cardSub}">${monthList.length} ${escapeHtml(granularity === 'm' ? '個月' : granularity === 'q' ? '季' : '年')}</div>
+            </div>
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">最常 procedure</div>
+                <div style="${cardValue}">${top1 ? escapeHtml(top1.name) : '—'}</div>
+                <div style="${cardSub}">${top1 ? `${top1.total} 筆 · ${grandAll ? Math.round((top1.total / grandAll) * 100) : 0}%` : ''}</div>
+            </div>
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">最常 sub-type</div>
+                <div style="${cardValue}; font-size:1.05rem;">${topSub ? escapeHtml(topSub.key.replace('::', ' / ')) : '—'}</div>
+                <div style="${cardSub}">${topSub ? `${topSub.total} 筆` : ''}</div>
+            </div>
+        </div>`;
+
+        // === Phase B: 自然語言摘要 ===
+        const summaryParts = [];
+        if (lastTotal > 0) {
+            let s = `📈 ${unitName} ${lastTotal} 筆 procedure`;
+            if (deltaPct != null) s += `，比${lastUnitName} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${prevTotal} → ${lastTotal}）`;
+            summaryParts.push(s + '。');
+        }
+        if (top1 && top1.total > 0) summaryParts.push(`最常做 ${top1.name}（${top1.total} 筆，全期占 ${grandAll ? Math.round((top1.total / grandAll) * 100) : 0}%）。`);
+        if (topSub) summaryParts.push(`次分類 top：${topSub.key.replace('::', ' / ')}（${topSub.total} 筆）。`);
+        // 趨勢（最近 3 期 vs 之前 3 期）
+        if (monthList.length >= 6) {
+            const recent3 = monthList.slice(-3).reduce((s, m) => s + sumAtBucket(m.key), 0);
+            const prev3 = monthList.slice(-6, -3).reduce((s, m) => s + sumAtBucket(m.key), 0);
+            if (prev3 > 0) {
+                const trendPct = Math.round(((recent3 - prev3) / prev3) * 100);
+                summaryParts.push(`近 3 期 ${recent3} 筆 vs 前 3 期 ${prev3} 筆 ${trendPct >= 0 ? '↑' : '↓'} ${Math.abs(trendPct)}%。`);
+            }
+        }
+        const summaryHtml = summaryParts.length ? `<div style="background:rgba(99,102,241,0.08); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:0.88rem; line-height:1.6;">${summaryParts.map(escapeHtml).join(' ')}</div>` : '';
+
+        // 算每行平均 + 標準差，找異常
+        const rowStats = {};
+        visibleRows.forEach(r => {
+            const key = rowKey(r.main, r.sub);
+            const vals = monthList.map(m => matrix[key][m.key].count);
+            const mean = vals.reduce((a,b) => a+b, 0) / vals.length;
+            const variance = vals.reduce((a,v) => a + (v-mean)**2, 0) / vals.length;
+            const sd = Math.sqrt(variance);
+            rowStats[key] = { mean, sd };
+        });
+
+        let html = dashboardHtml + summaryHtml;
+        html += '<table class="stats-table"><thead><tr><th>Procedure</th>';
         monthList.forEach(m => html += `<th>${escapeHtml(m.label)}</th>`);
-        html += '<th>合計</th></tr></thead><tbody>';
+        html += '<th style="width:100px;">趨勢</th><th>合計</th></tr></thead><tbody>';
 
         const rowTotals = {};
         let mainsGrand = 0; // 主類加總（用於占比，避免子類重複）
         const mainSet = new Set(['CT NB', 'SONO', 'TAME', 'HA', 'PRP', 'pRF']);
+
+        // sparkline 產生器
+        const buildSpark = (vals) => {
+            if (!vals.length) return '';
+            const max = Math.max(...vals, 1);
+            const w = 80, h = 18;
+            const stepX = w / Math.max(1, vals.length - 1);
+            const points = vals.map((v, i) => `${(i * stepX).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`).join(' ');
+            return `<svg width="${w}" height="${h}" style="vertical-align:middle;"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" points="${points}"/></svg>`;
+        };
 
         visibleRows.forEach(r => {
             const key = rowKey(r.main, r.sub);
@@ -5006,12 +5128,20 @@
             html += `<tr class="${cls}"><td>${label}</td>`;
             let total = 0;
             let totalPrp = 0, totalBma = 0;
+            const rowVals = [];
+            const stat = rowStats[key];
             monthList.forEach(m => {
                 const cell = matrix[key][m.key];
                 const c = cell.count;
                 total += c;
+                rowVals.push(c);
                 if (isRegen) { totalPrp += cell.prp; totalBma += cell.bma; }
-                const cellCls = c === 0 ? 'cell-zero' : 'cell-clickable';
+                let cellCls = c === 0 ? 'cell-zero' : 'cell-clickable';
+                // 異常標示：超過 mean + 1.5σ → 高；低於 mean - 1.5σ → 低（且 mean > 0）
+                if (stat.sd > 0 && c > 0) {
+                    if (c > stat.mean + 1.5 * stat.sd) cellCls += ' cell-anomaly-high';
+                    else if (c < stat.mean - 1.5 * stat.sd && stat.mean >= 2) cellCls += ' cell-anomaly-low';
+                }
                 let display = c || '·';
                 if (isRegen && c > 0) {
                     const ratio = cell.bma > 0 ? `${cell.prp}:${cell.bma}` : `${cell.prp}`;
@@ -5025,22 +5155,20 @@
             if (isRegen && total > 0) {
                 totalDisplay = `<strong>${total}</strong><br><span style="color:var(--text-muted);font-size:0.74rem;">PRP:BMA = ${totalPrp}:${totalBma}</span>`;
             }
+            html += `<td>${total > 0 ? buildSpark(rowVals) : ''}</td>`;
             html += `<td>${totalDisplay}</td></tr>`;
         });
 
         // 總計（主類加總；子類已含於主類，不再加）
+        const totalVals = monthList.map(m => STATS_HIERARCHY.reduce((s, h) => s + matrix[h.main][m.key].count, 0));
         html += '<tr class="total-row"><td>總計</td>';
-        monthList.forEach(m => {
-            let bucketSum = 0;
-            STATS_HIERARCHY.forEach(h => { bucketSum += matrix[h.main][m.key].count; });
-            html += `<td>${bucketSum || '·'}</td>`;
-        });
-        html += `<td>${mainsGrand}</td></tr>`;
+        totalVals.forEach(v => html += `<td>${v || '·'}</td>`);
+        html += `<td>${buildSpark(totalVals)}</td><td>${mainsGrand}</td></tr>`;
 
         // 占比 row（依主類）
         html += '<tr class="percent-row"><td>占比（主類）</td>';
         monthList.forEach(_ => html += `<td></td>`);
-        html += `<td>${STATS_HIERARCHY.map(h => `${escapeHtml(h.main)} ${mainsGrand ? ((rowTotals[h.main] / mainsGrand) * 100).toFixed(1) : '0'}%`).join(' / ')}</td></tr>`;
+        html += `<td></td><td>${STATS_HIERARCHY.map(h => `${escapeHtml(h.main)} ${mainsGrand ? ((rowTotals[h.main] / mainsGrand) * 100).toFixed(1) : '0'}%`).join(' / ')}</td></tr>`;
 
         html += '</tbody></table><div id="stats-detail" style="margin-top:12px;"></div>';
         container.innerHTML = html;
@@ -5129,7 +5257,9 @@
             { tag: 'CT NB', re: /\bCT\s*NB\b/i },
             { tag: 'pRF',   re: /\bpRF\b/ },
             { tag: 'SONO',  re: /\bSONO\b/i },
-            { tag: 'TAME',  re: /\b(c?TAME|IO\s*PRP)\b/i },
+            { tag: 'cTAME', re: /\bcTAME\b/i },
+            { tag: 'sTAME', re: /\bsTAME\b/i },
+            { tag: 'TAME',  re: /\b(TAME|IO\s*PRP)\b/i },  // 含義廣的 TAME 兜底
             { tag: 'HA',    re: /\bHA\b/ },
             { tag: 'PRP',   re: /\bPRP\b/i },
             { tag: 'BMA',   re: /\bBMA\b/i },
