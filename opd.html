@@ -147,6 +147,80 @@
             gap: 10px;
         }
         .stats-detail-panel .sd-row:first-of-type { border-top: 0; }
+        .stats-detail-panel .sd-row.clickable { cursor: pointer; }
+        .stats-detail-panel .sd-row.clickable:hover { background: rgba(99,102,241,0.12); border-radius: 4px; }
+
+        /* stats 病人 popover（顯示該次 plan）*/
+        .stats-pt-popover {
+            position: fixed;
+            background: var(--bg-secondary);
+            border: 1.5px solid var(--accent);
+            border-radius: 8px;
+            padding: 12px 14px;
+            box-shadow: 0 8px 24px rgba(99,102,241,0.35);
+            z-index: 200;
+            max-width: 480px;
+            min-width: 320px;
+            font-size: 0.84rem;
+        }
+        .stats-pt-popover .pp-head {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .stats-pt-popover .pp-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        .stats-pt-popover .pp-close:hover { color: var(--text-primary); }
+        .stats-pt-popover .pp-meta {
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            margin-bottom: 8px;
+        }
+        .stats-pt-popover .pp-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-bottom: 8px;
+        }
+        .stats-pt-popover .pp-plan {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-family: 'Noto Sans TC', monospace;
+            white-space: pre-wrap;
+            color: var(--text-primary);
+            font-size: 0.82rem;
+            line-height: 1.45;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .stats-pt-popover .pp-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .stats-pt-popover .pp-actions button {
+            padding: 5px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.82rem;
+            cursor: pointer;
+        }
+        .stats-pt-popover .pp-actions button:hover { background: var(--accent); color: white; border-color: var(--accent); }
 
         /* tag inline edit popover（雙擊 tag 欄觸發）*/
         .tag-edit-popover {
@@ -1500,6 +1574,12 @@
                 <option value="procedure" selected>Procedure × 時間</option>
                 <option value="clinic">每次門診（病人分類）</option>
             </select>
+            <select id="clinic-agg" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; display: none;">
+                <option value="visit" selected>每次門診</option>
+                <option value="month">月匯總</option>
+                <option value="quarter">季匯總</option>
+                <option value="year">年匯總</option>
+            </select>
             <label style="font-size: 0.85rem; color: var(--text-secondary);">期間：</label>
             <select id="stats-range" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
                 <optgroup label="逐月">
@@ -1521,6 +1601,7 @@
             <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
             <button id="stats-export-btn">📤 匯出 xlsx</button>
             <button id="stats-migrate-btn" title="掃所有歷史 visit，依 plan 內容回填 procedure tag（只加不減）">🏷 從 plan 回填 tag</button>
+            <button id="tame-import-btn" title="貼上 sheet 資料匯入 TAME 部位">📥 匯入 TAME 部位</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
         <div id="stats-container">
@@ -1561,6 +1642,27 @@
         <div style="color: var(--text-muted); font-size: 0.9rem;">下個 commit 實作。</div>
     </div>
 
+</div>
+
+<!-- TAME 部位匯入 Modal -->
+<div class="modal-overlay" id="tame-import-modal">
+    <div class="modal" style="max-width: 900px;">
+        <h3>📥 匯入 TAME 部位資料</h3>
+        <div style="font-size: 0.82rem; color: var(--text-secondary); margin: 8px 0 10px;">
+            從 sheet 複製整張表 (Cmd+A → Cmd+C)，貼到下面。空白病歷號 = 同上一人。<br>
+            支援欄位順序：type / record / anatomy_text / date_text / 其他...（前 4 欄會用）
+        </div>
+        <textarea id="tame-import-input" style="width: 100%; min-height: 180px; font-family: monospace; font-size: 0.78rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px;" placeholder="貼上資料..."></textarea>
+        <div style="display: flex; gap: 8px; margin: 10px 0;">
+            <button class="primary" id="tame-import-parse-btn">🔍 解析預覽</button>
+            <span id="tame-import-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+        </div>
+        <div id="tame-import-preview" style="max-height: 400px; overflow: auto;"></div>
+        <div class="modal-actions">
+            <button id="tame-import-cancel">取消</button>
+            <button id="tame-import-save" class="primary" style="display:none;">✓ 寫入 Firebase</button>
+        </div>
+    </div>
 </div>
 
 <!-- 病人歷次門診 Timeline Modal -->
@@ -3530,6 +3632,83 @@
         });
     }
 
+    async function openStatsPatientPopover(rowEl) {
+        document.querySelectorAll('.stats-pt-popover').forEach(p => p.remove());
+        const recordNumber = rowEl.dataset.ptRecord;
+        const dateStr = rowEl.dataset.ptDate;
+        const popover = document.createElement('div');
+        popover.className = 'stats-pt-popover';
+        popover.innerHTML = '<div class="pp-meta">載入中...</div>';
+        document.body.appendChild(popover);
+
+        // 定位
+        const r = rowEl.getBoundingClientRect();
+        const pw = 360;
+        popover.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left)) + 'px';
+        popover.style.top = (r.bottom + 6) + 'px';
+
+        // 抓 visit
+        let visit = (state.visitsByDate?.[dateStr] || {})[recordNumber];
+        if (!visit) {
+            try {
+                const snap = await get(ref(fbDb, `opd/visits/${dateStr}/${recordNumber}`));
+                visit = snap.val();
+            } catch {}
+        }
+        const p = state.patients[recordNumber] || {};
+        const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+        const ageSex = displayAgeSex(p, dateStr) || p.ageSex || '';
+        const tags = [...new Set(((visit && visit.tags) || []).map(t => t === 'follow up' ? 'f/u' : t))];
+        const tagChips = tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+        const planText = visit && visit.plan ? visit.plan : '（無 plan 內容）';
+
+        popover.innerHTML = `
+            <div class="pp-head">
+                <span>${escapeHtml(recordNumber)}${surname ? ' ('+escapeHtml(surname)+')' : ''}${ageSex ? ' '+escapeHtml(ageSex) : ''} · ${escapeHtml(formatDateLabel(dateStr))}</span>
+                <button class="pp-close" title="關閉">×</button>
+            </div>
+            <div class="pp-tags visit-tags">${tagChips || '<span style="color:var(--text-muted);">（無 tag）</span>'}</div>
+            <div class="pp-plan">${escapeHtml(planText)}</div>
+            <div class="pp-actions">
+                <button data-action="jump">→ 跳到此次門診</button>
+                <button data-action="history">📅 看此病人歷次</button>
+            </div>
+        `;
+
+        // 重新定位（內容多了高度可能變化，避免超出視窗）
+        const ph = popover.offsetHeight;
+        const below = window.innerHeight - r.bottom;
+        if (below < ph + 12 && r.top > ph + 12) popover.style.top = (r.top - ph - 6) + 'px';
+
+        popover.querySelector('.pp-close').addEventListener('click', () => popover.remove());
+        popover.querySelector('[data-action="jump"]').addEventListener('click', () => {
+            popover.remove();
+            state.scrollToRecord = recordNumber;
+            state.currentClinicDate = dateStr;
+            localStorage.setItem('opd:currentClinicDate', dateStr);
+            onClinicDateChanged(dateStr);
+            renderClinicDateSelector();
+            activateTab('panel-clinic');
+        });
+        popover.querySelector('[data-action="history"]').addEventListener('click', () => {
+            popover.remove();
+            openPatientHistory(recordNumber);
+        });
+
+        // 點外面 / ESC 關
+        const close = (ev) => {
+            if (ev && ev.type === 'mousedown' && popover.contains(ev.target)) return;
+            popover.remove();
+            document.removeEventListener('mousedown', close);
+            document.removeEventListener('keydown', onEsc);
+        };
+        const onEsc = (ev) => { if (ev.key === 'Escape') close(); };
+        setTimeout(() => {
+            document.addEventListener('mousedown', close);
+            document.addEventListener('keydown', onEsc);
+        }, 0);
+    }
+
     function openTagEditPopover(cellEl) {
         // 關閉既有
         document.querySelectorAll('.tag-edit-popover').forEach(p => p.remove());
@@ -3754,6 +3933,14 @@
         document.getElementById('stats-refresh-btn')?.addEventListener('click', computeAndRenderStats);
         document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsXlsx);
         document.getElementById('stats-migrate-btn')?.addEventListener('click', migrateBackfillTags);
+        // 切換 view 時顯示/隱藏 clinic-agg
+        document.getElementById('stats-view')?.addEventListener('change', (e) => {
+            document.getElementById('clinic-agg').style.display = e.target.value === 'clinic' ? '' : 'none';
+        });
+        document.getElementById('tame-import-btn')?.addEventListener('click', openTameImportModal);
+        document.getElementById('tame-import-cancel')?.addEventListener('click', closeTameImportModal);
+        document.getElementById('tame-import-parse-btn')?.addEventListener('click', previewTameImport);
+        document.getElementById('tame-import-save')?.addEventListener('click', commitTameImport);
 
         // 匯出 docx
         document.getElementById('export-opd-btn').addEventListener('click', exportOpdDocx);
@@ -4335,15 +4522,166 @@
     // ========== 統計：procedure × 時間粒度 矩陣（階層 tag 計數）==========
     // 階層：CT NB / SONO 是「引導」傘，HA / PRP / pRF 是子類；TAME 自成。
     const STATS_HIERARCHY = [
-        { main: 'CT NB', subs: ['pRF', 'PRP', 'HA', '一般'] },
-        { main: 'SONO',  subs: ['HA',  'PRP', '一般'] },
-        { main: 'TAME',  subs: [] }
+        { main: 'CT NB', subs: ['一般', 'pRF', 'PRP'] },
+        { main: 'SONO',  subs: ['一般', 'HA',  'PRP'] },
+        { main: 'TAME',  subs: ['cTAME', 'sTAME', '其他'] }
     ];
     const STATS_ROWS = []; // 平坦化：[{main, sub:null} | {main, sub:'pRF'}, ...]
     STATS_HIERARCHY.forEach(h => {
         STATS_ROWS.push({ main: h.main, sub: null, standaloneOnly: !!h.standaloneOnly });
         h.subs.forEach(s => STATS_ROWS.push({ main: h.main, sub: s }));
     });
+
+    // ===== TAME 部位匯入 =====
+    const TAME_ANATOMIES = ['Hand & Wrist', 'Knee', 'Hip', 'Shoulder', 'Elbow', 'Foot & Ankle', 'Back'];
+    function detectTameAnatomy(text) {
+        const t = (text || '').toLowerCase();
+        if (/\bknee|tka\b/.test(t)) return 'Knee';
+        if (/\bhip\b/.test(t)) return 'Hip';
+        if (/\bshoulder\b/.test(t)) return 'Shoulder';
+        if (/\belbow|epicondyl/.test(t)) return 'Elbow';
+        if (/\bfoot|ankle|metatars|plantar|cal\s*enth|\bpta\b|\bata\b|\bpa\b/.test(t)) return 'Foot & Ankle';
+        if (/\bback|spine\b/.test(t)) return 'Back';
+        if (/\bhand|wrist|tfcc|\bra\b|\bua\b/.test(t)) return 'Hand & Wrist';
+        return null;
+    }
+    function parseTameRowDate(text, lastYear) {
+        if (!text) return { date: null, side: '', year: lastYear };
+        // 取側別
+        const sideM = text.match(/\b([LRB])\b/);
+        const side = sideM ? sideM[1] : '';
+        // 抓日期：YY/MM/DD 或 MM/DD（年補）
+        const m = text.match(/(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/);
+        if (!m) return { date: null, side, year: lastYear };
+        let yy = m[1];
+        let yearUsed = lastYear;
+        if (yy) {
+            yearUsed = yy.length === 2 ? '20' + yy : yy;
+        }
+        const date = `${yearUsed}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+        return { date, side, year: yearUsed };
+    }
+    function parseTamePastedSheet(raw) {
+        if (!raw) return { rows: [], errors: [] };
+        const lines = raw.split(/\r?\n/);
+        const out = [];
+        const errors = [];
+        let lastRecord = '';
+        let lastAnatomy = null;
+        // 年份推斷：起始 2024（資料 since 2024-04）；明確年份覆寫；
+        // 純 MM/DD 在月份從大跳小（>= 6→<= 5）時自動 +1
+        let curYear = 2024;
+        let lastMonth = 0;
+        lines.forEach((line, idx) => {
+            if (!line.trim()) return;
+            const cols = line.includes('\t') ? line.split('\t') : line.split(/\s{2,}/);
+            const type = (cols[0] || '').trim();
+            if (!/^[cs]TAME$/i.test(type)) return; // 嚴格只收 cTAME / sTAME
+            let recRaw = (cols[1] || '').trim().replace(/\.0$/, ''); // 去 Excel 的 ".0"
+            const anatomyText = (cols[2] || '').trim();
+            const dateText = (cols[3] || '').trim();
+            const sideExtra = (cols[4] || '').trim();
+            const effect = (cols[5] || '').trim();
+
+            const record = recRaw || lastRecord;
+            if (recRaw) lastRecord = recRaw;
+
+            let anatomy = detectTameAnatomy(anatomyText) || detectTameAnatomy(dateText) || detectTameAnatomy(sideExtra);
+            if (!anatomy && lastAnatomy) anatomy = lastAnatomy;
+            if (anatomy) lastAnatomy = anatomy;
+
+            // 日期：YY/MM/DD 或 MM/DD
+            const sideM = dateText.match(/\b([LRB])\b/);
+            const side = sideM ? sideM[1] : '';
+            const m = dateText.match(/(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/);
+            if (!m) {
+                errors.push(`row ${idx + 1}: 日期解析失敗 — "${dateText}"`);
+                return;
+            }
+            let yy = m[1];
+            const mo = parseInt(m[2], 10);
+            const dd = parseInt(m[3], 10);
+            if (yy) {
+                curYear = yy.length === 2 ? 2000 + parseInt(yy, 10) : parseInt(yy, 10);
+            } else {
+                // 推斷：月份從 >=8 跳到 <=5 → 年 +1
+                if (lastMonth >= 8 && mo <= 5) curYear += 1;
+            }
+            lastMonth = mo;
+            const date = `${curYear}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+
+            if (!anatomy) {
+                errors.push(`row ${idx + 1}: 部位無法判讀 — "${anatomyText}" / "${dateText}"`);
+            }
+            out.push({
+                type: type.toLowerCase() === 'ctame' ? 'cTAME' : 'sTAME',
+                record,
+                anatomy: anatomy || '?',
+                date,
+                side,
+                effect,
+                rawLine: line
+            });
+        });
+        return { rows: out, errors };
+    }
+
+    let tameImportParsed = null;
+    function openTameImportModal() {
+        document.getElementById('tame-import-modal').classList.add('show');
+        document.getElementById('tame-import-input').value = '';
+        document.getElementById('tame-import-preview').innerHTML = '';
+        document.getElementById('tame-import-status').textContent = '';
+        document.getElementById('tame-import-save').style.display = 'none';
+        tameImportParsed = null;
+    }
+    function closeTameImportModal() {
+        document.getElementById('tame-import-modal').classList.remove('show');
+    }
+    function previewTameImport() {
+        const raw = document.getElementById('tame-import-input').value;
+        const { rows, errors } = parseTamePastedSheet(raw);
+        const status = document.getElementById('tame-import-status');
+        const preview = document.getElementById('tame-import-preview');
+        if (rows.length === 0) {
+            status.textContent = `❌ 無資料：${errors.length ? errors[0] : '檢查格式'}`;
+            preview.innerHTML = errors.map(e => `<div style="color:var(--color-danger);font-size:0.8rem;">${escapeHtml(e)}</div>`).join('');
+            return;
+        }
+        status.textContent = `✓ 解析 ${rows.length} 筆${errors.length ? `（${errors.length} 個警告）` : ''}`;
+        const groupCounts = {};
+        rows.forEach(r => { groupCounts[`${r.type}::${r.anatomy}`] = (groupCounts[`${r.type}::${r.anatomy}`] || 0) + 1; });
+        const summaryHtml = `<div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:8px;">${Object.entries(groupCounts).map(([k, n]) => `${escapeHtml(k)}: ${n}`).join(' · ')}</div>`;
+        const tableHtml = `<table class="stats-table" style="font-size:0.78rem;"><thead><tr>
+            <th>type</th><th>病歷號</th><th>部位</th><th>日期</th><th>side</th><th>effect</th>
+        </tr></thead><tbody>` +
+            rows.map(r => `<tr>
+                <td>${escapeHtml(r.type)}</td>
+                <td style="color:var(--accent);font-family:monospace;">${escapeHtml(r.record || '—')}</td>
+                <td style="${r.anatomy === '?' ? 'color:var(--color-danger);' : ''}">${escapeHtml(r.anatomy)}</td>
+                <td>${escapeHtml(r.date)}</td>
+                <td>${escapeHtml(r.side)}</td>
+                <td style="font-size:0.74rem;color:var(--text-muted);">${escapeHtml(r.effect)}</td>
+            </tr>`).join('') +
+            '</tbody></table>';
+        const errHtml = errors.length ? `<div style="margin-top:8px;font-size:0.78rem;color:var(--color-warning);">${errors.map(e => escapeHtml(e)).join('<br>')}</div>` : '';
+        preview.innerHTML = summaryHtml + tableHtml + errHtml;
+        tameImportParsed = rows.filter(r => r.anatomy !== '?');
+        document.getElementById('tame-import-save').style.display = tameImportParsed.length > 0 ? 'inline-block' : 'none';
+    }
+    async function commitTameImport() {
+        if (!tameImportParsed || !tameImportParsed.length) return;
+        if (!confirm(`寫入 ${tameImportParsed.length} 筆 TAME 部位資料到 opd/tameStats？`)) return;
+        const updates = {};
+        const now = Date.now();
+        tameImportParsed.forEach((r, i) => {
+            const id = `${r.date}_${r.record || 'x'}_${i}`;
+            updates[`opd/tameStats/${id}`] = { ...r, importedAt: now };
+        });
+        await update(ref(fbDb), updates);
+        alert(`✓ 寫入 ${tameImportParsed.length} 筆`);
+        closeTameImportModal();
+    }
 
     // 把 visit 分到 4 大類（優先序：Procedure > Image > Med > f/u）
     function classifyVisit(v) {
@@ -4364,20 +4702,15 @@
         status.textContent = '載入中...';
         container.innerHTML = '<div class="empty-hint">計算中...</div>';
 
-        // 期間：使用相同 range，但展開成所有具體 clinic date
         const rangeVal = document.getElementById('stats-range').value;
         const granularity = rangeVal[0];
         const count = parseInt(rangeVal.slice(1), 10) || 12;
+        const aggMode = document.getElementById('clinic-agg').value || 'visit'; // visit | month | quarter | year
         const today = new Date();
         let startDate;
-        if (granularity === 'm') {
-            startDate = new Date(today.getFullYear(), today.getMonth() - count + 1, 1);
-        } else if (granularity === 'q') {
-            const curQ = Math.floor(today.getMonth() / 3);
-            startDate = new Date(today.getFullYear(), (curQ - count + 1) * 3, 1);
-        } else {
-            startDate = new Date(today.getFullYear() - count + 1, 0, 1);
-        }
+        if (granularity === 'm') startDate = new Date(today.getFullYear(), today.getMonth() - count + 1, 1);
+        else if (granularity === 'q') startDate = new Date(today.getFullYear(), (Math.floor(today.getMonth() / 3) - count + 1) * 3, 1);
+        else startDate = new Date(today.getFullYear() - count + 1, 0, 1);
         const startStr = formatDate(startDate);
 
         const snap = await get(ref(fbDb, 'opd/visits'));
@@ -4390,8 +4723,8 @@
             return;
         }
 
-        // 每個 clinic date 計算 4 大類
-        const rows = dateKeys.map(d => {
+        // 計算每個 clinic date 的 4 大類
+        const perDate = dateKeys.map(d => {
             const visits = Object.values(allByDate[d] || {}).filter(v => !v.noShow);
             const noShow = Object.values(allByDate[d] || {}).filter(v => v.noShow).length;
             const counts = { Procedure: 0, Image: 0, Med: 0, 'f/u': 0 };
@@ -4404,18 +4737,51 @@
             return { date: d, total: visits.length, noShow, counts, alsoImage };
         });
 
+        // 依 aggMode 聚合
+        const bucketOf = (d) => {
+            if (aggMode === 'month')   return d.slice(0, 7);
+            if (aggMode === 'quarter') {
+                const dt = new Date(d + 'T00:00');
+                return `${dt.getFullYear()}-Q${Math.floor(dt.getMonth() / 3) + 1}`;
+            }
+            if (aggMode === 'year')    return d.slice(0, 4);
+            return d; // visit
+        };
+        const buckets = {};
+        perDate.forEach(r => {
+            const k = bucketOf(r.date);
+            if (!buckets[k]) buckets[k] = { key: k, dates: [], total: 0, noShow: 0, counts: { Procedure: 0, Image: 0, Med: 0, 'f/u': 0 }, alsoImage: 0 };
+            buckets[k].dates.push(r.date);
+            buckets[k].total += r.total;
+            buckets[k].noShow += r.noShow;
+            buckets[k].counts.Procedure += r.counts.Procedure;
+            buckets[k].counts.Image += r.counts.Image;
+            buckets[k].counts.Med += r.counts.Med;
+            buckets[k].counts['f/u'] += r.counts['f/u'];
+            buckets[k].alsoImage += r.alsoImage;
+        });
+        const rows = Object.values(buckets).sort((a, b) => b.key.localeCompare(a.key));
+
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        const colHeader = aggMode === 'visit' ? '門診日期' : (aggMode === 'month' ? '月份' : aggMode === 'quarter' ? '季' : '年份');
         let html = '<table class="stats-table"><thead><tr>'
-            + '<th>門診日期</th><th>共 came</th><th>Procedure</th><th>Image only</th><th>Med</th><th>f/u</th><th>DC</th>'
+            + `<th>${colHeader}</th><th>共 came</th><th>Procedure</th><th>Image only</th><th>Med</th><th>f/u</th><th>DC</th>`
             + '</tr></thead><tbody>';
         const totals = { came: 0, Procedure: 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
         rows.forEach(r => {
-            const wd = dayNames[new Date(r.date + 'T00:00').getDay()];
+            let labelHtml;
+            if (aggMode === 'visit') {
+                const wd = dayNames[new Date(r.key + 'T00:00').getDay()];
+                labelHtml = `<a href="#" data-jump-clinic="${escapeAttr(r.key)}" style="color:var(--accent);text-decoration:none;">${escapeHtml(r.key.slice(2).replace(/-/g, '/'))} (${wd})</a>`;
+            } else {
+                const cnt = r.dates.length;
+                labelHtml = `${escapeHtml(r.key)} <span style="color:var(--text-muted);font-size:0.78rem;">(${cnt} 次門診)</span>`;
+            }
             const procCell = r.counts.Procedure > 0
                 ? (r.alsoImage > 0 ? `${r.counts.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(含 image ${r.alsoImage})</span>` : r.counts.Procedure)
                 : '·';
             html += `<tr>
-                <td><a href="#" data-jump-clinic="${escapeAttr(r.date)}" style="color:var(--accent);text-decoration:none;">${escapeHtml(r.date.slice(2).replace(/-/g, '/'))} (${wd})</a></td>
+                <td>${labelHtml}</td>
                 <td><strong>${r.total}</strong></td>
                 <td>${procCell}</td>
                 <td>${r.counts.Image || '·'}</td>
@@ -4559,7 +4925,6 @@
                     tally('CT NB', bk, v, dateStr);
                     if (has('pRF'))                          tally('CT NB::pRF', bk, v, dateStr);
                     else if (has('PRP') && !effSono)         tally('CT NB::PRP', bk, v, dateStr);
-                    else if (has('HA')  && !effSono)         tally('CT NB::HA',  bk, v, dateStr);
                     else                                     tally('CT NB::一般', bk, v, dateStr);
                 }
                 if (effSono) {
@@ -4568,7 +4933,28 @@
                     else if (has('PRP')) tally('SONO::PRP', bk, v, dateStr);
                     else                 tally('SONO::一般', bk, v, dateStr);
                 }
-                if (has('TAME')) tally('TAME', bk, v, dateStr);
+                if (has('TAME')) {
+                    tally('TAME', bk, v, dateStr);
+                    // 從 plan 偵測 cTAME / sTAME（visit 當天那行）
+                    let tameSub = '其他';
+                    (v.plan || '').split(/\r?\n/).forEach(line => {
+                        const trimmed = line.trim();
+                        if (!trimmed) return;
+                        const dm = trimmed.match(/(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/);
+                        let isVisitDay = !dm;
+                        if (dm) {
+                            let yy = dm[1];
+                            if (!yy) yy = dateStr.slice(0, 4);
+                            if (yy.length === 2) yy = '20' + yy;
+                            const ld = `${yy}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`;
+                            isVisitDay = (ld === dateStr);
+                        }
+                        if (!isVisitDay) return;
+                        if (/cTAME/i.test(trimmed)) tameSub = 'cTAME';
+                        else if (/sTAME/i.test(trimmed) && tameSub === '其他') tameSub = 'sTAME';
+                    });
+                    tally(`TAME::${tameSub}`, bk, v, dateStr);
+                }
             });
         });
 
@@ -4619,19 +5005,26 @@
 
         // cell click → 顯示明細
         container.querySelectorAll('td.cell-clickable').forEach(td => {
-            td.addEventListener('click', () => {
+            td.addEventListener('click', (ev) => {
                 const key = td.dataset.rowkey;
                 const bk = td.dataset.bucket;
                 const visits = matrix[key][bk].visits;
                 const detail = document.getElementById('stats-detail');
                 if (!visits.length) { detail.innerHTML = ''; return; }
                 detail.innerHTML = `<div class="stats-detail-panel">
-                    <div style="color:var(--text-muted);margin-bottom:6px;">${escapeHtml(key)} · ${escapeHtml(bk)} · ${visits.length} 筆</div>
-                    ${visits.map(v => `<div class="sd-row">
+                    <div style="color:var(--text-muted);margin-bottom:6px;">${escapeHtml(key)} · ${escapeHtml(bk)} · ${visits.length} 筆（點任一查看 plan）</div>
+                    ${visits.map(v => `<div class="sd-row clickable" data-pt-record="${escapeAttr(v.recordNumber)}" data-pt-date="${escapeAttr(v.date)}">
                         <span style="color:var(--accent);font-family:monospace;min-width:90px;">${escapeHtml(v.recordNumber)}</span>
                         <span style="color:var(--text-secondary);min-width:90px;">${escapeHtml(v.date)}</span>
                     </div>`).join('')}
                 </div>`;
+                // sd-row click → popover
+                detail.querySelectorAll('.sd-row.clickable').forEach(row => {
+                    row.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openStatsPatientPopover(row);
+                    });
+                });
             });
         });
 
