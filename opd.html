@@ -1465,6 +1465,7 @@
             </select>
             <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
             <button id="stats-export-btn">📤 匯出 xlsx</button>
+            <button id="stats-migrate-btn" title="掃所有歷史 visit，依 plan 內容回填 procedure tag（只加不減）">🏷 從 plan 回填 tag</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
         <div id="stats-container">
@@ -3637,6 +3638,7 @@
         // 統計
         document.getElementById('stats-refresh-btn')?.addEventListener('click', computeAndRenderStats);
         document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsXlsx);
+        document.getElementById('stats-migrate-btn')?.addEventListener('click', migrateBackfillTags);
 
         // 匯出 docx
         document.getElementById('export-opd-btn').addEventListener('click', exportOpdDocx);
@@ -4364,6 +4366,91 @@
 
         // 暫存供 export 用
         state.statsMatrix = { matrix, monthList, rowTotals, grandTotal };
+    }
+
+    // 掃所有 visit，依 plan 內容回填 procedure tag（只加不減）
+    async function migrateBackfillTags() {
+        const status = document.getElementById('stats-status');
+        if (!confirm('將掃描所有歷史 visit，依 plan 內容回填 procedure tag。\n\n規則：只「加」tag、不會刪你既有的。\n會偵測：CT NB / pRF / SONO / TAME / HA / PRP / MRI / 鬆（Prolia/Aclasta/Evenity/Forteo/Fosamax）\n\n確定執行？')) return;
+        status.textContent = '掃描中...';
+
+        const snap = await get(ref(fbDb, 'opd/visits'));
+        const allByDate = snap.val() || {};
+        const DATE_RE = /(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})/;
+        const detectors = [
+            { tag: 'CT NB', re: /\bCT\s*NB\b/i },
+            { tag: 'pRF',   re: /\bpRF\b/ },
+            { tag: 'SONO',  re: /\bSONO\b/i },
+            { tag: 'TAME',  re: /\b(c?TAME|IO\s*PRP)\b/i },  // cTAME / IO PRP 也是 TAME 類
+            { tag: 'HA',    re: /\bHA\b/ },
+            { tag: 'PRP',   re: /\bPRP\b/i },
+            { tag: 'MRI',   re: /\bMRI\b/i },
+            { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
+        ];
+
+        const updates = {};
+        let scanned = 0, willUpdate = 0;
+
+        Object.keys(allByDate).forEach(dateStr => {
+            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
+                scanned++;
+                if (v.noShow) return;
+                const existing = new Set((v.tags || []).map(t => t === 'follow up' ? 'f/u' : t));
+                const detected = new Set();
+
+                const lines = (v.plan || '').split(/\r?\n/);
+                const anchorIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+                const scope = anchorIdx >= 0 ? lines.slice(anchorIdx) : lines;
+
+                scope.forEach(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return;
+                    if (DISCUSS_PATTERN.test(trimmed)) return;
+                    const isAnchor = trimmed.startsWith('*');
+                    const isDash = trimmed.startsWith('-');
+
+                    // 抽日期
+                    const m = trimmed.match(DATE_RE);
+                    let isVisitDay = false;
+                    if (m) {
+                        let yy = m[1];
+                        if (!yy) yy = dateStr.slice(0, 4);
+                        if (yy.length === 2) yy = '20' + yy;
+                        const lineDate = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+                        isVisitDay = (lineDate === dateStr);
+                    } else if (isAnchor || (anchorIdx >= 0 && line === lines[anchorIdx])) {
+                        isVisitDay = true; // 本次 anchor 行 / `*` 開頭無日期 → 視為當天
+                    } else if (isDash) {
+                        return; // dash 無日期 = 規劃，跳過
+                    } else {
+                        isVisitDay = true; // 普通 line 沒日期，且在 anchor 之後 → 算當天
+                    }
+                    if (!isVisitDay) return;
+
+                    detectors.forEach(d => {
+                        if (d.re.test(trimmed)) detected.add(d.tag);
+                    });
+                });
+
+                const merged = new Set([...existing, ...detected]);
+                if (merged.size > existing.size) {
+                    updates[`opd/visits/${dateStr}/${recId}/tags`] = [...merged];
+                    willUpdate++;
+                }
+            });
+        });
+
+        if (willUpdate === 0) {
+            status.textContent = `掃描 ${scanned} 個 visit，無需更新`;
+            return;
+        }
+        if (!confirm(`掃描 ${scanned} 個 visit，將更新 ${willUpdate} 個（補加偵測到的 tag）。\n\n執行？`)) {
+            status.textContent = '已取消';
+            return;
+        }
+        status.textContent = `寫入中... ${willUpdate} 個`;
+        await update(ref(fbDb), updates);
+        status.textContent = `✓ 完成，更新了 ${willUpdate} 個 visit。請重新計算統計。`;
     }
 
     function exportStatsXlsx() {
