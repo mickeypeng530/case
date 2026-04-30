@@ -5502,7 +5502,7 @@
         // 若有完整欄數（10-col 標準），即使 c3 不像 eGFR 格式（例如填了 INR）也不 shift，
         // 直接信任位置：c3=eGFR slot, c4=extra/PH, c5=exam, c6=plan
         const c2 = (parts[recIdx + 2] || '').trim();
-        const fullCols = parts.length - recIdx >= 7;
+        const fullCols = parts.length - recIdx >= 6;  // record/age/eGFR/extra/exam/plan ≥ 6 個位置就算完整
         let eGFRVal, extraIdx, examIdx, planIdx;
         if (fullCols || isValidEGFR(c2) || !c2) {
             eGFRVal = isValidEGFR(c2) ? c2 : '';
