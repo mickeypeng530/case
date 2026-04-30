@@ -1251,8 +1251,8 @@
     <div class="modal-overlay" id="caselist-modal">
         <div class="modal-wrapper">
         <div class="modal caselist-modal" style="max-width: 1200px; max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="caselist-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
-                <h3 style="margin:0;">📋 線上 case list</h3>
+            <div class="caselist-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding-bottom:8px; border-bottom:1px solid var(--border); cursor: move; user-select: none;">
+                <h3 style="margin:0;">📋 線上 case list <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;margin-left:4px;">（拖移標題列）</span></h3>
                 <div style="display:flex; gap:8px; align-items:center;">
                     <select id="caselist-filter-status" style="padding:4px 8px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:inherit; font-size:0.82rem;">
                         <option value="all" selected>全部</option>
@@ -1967,14 +1967,44 @@
             return state.caseList[tabId];
         }
 
+        let caselistDragInited = false;
         function openCaselist() {
             const tab = getActiveTab();
             if (!tab) { alert('請先選擇分頁'); return; }
             caselistTabId = tab.id;
-            document.getElementById('caselist-modal').classList.add('show');
+            const overlay = document.getElementById('caselist-modal');
+            overlay.classList.add('show');
             // 第一次開：自動 sync 排程內案例（不刪 list 既有）
             syncCaselistFromCells(true);
             renderCaselist();
+            if (!caselistDragInited) {
+                const modal = overlay.querySelector('.caselist-modal');
+                const handle = overlay.querySelector('.caselist-header');
+                if (modal && handle) initDraggable(modal, handle);
+                caselistDragInited = true;
+            }
+        }
+
+        // 通用：把 modal 變成可從 handle 拖移
+        function initDraggable(modalEl, handleEl) {
+            let dx = 0, dy = 0;
+            handleEl.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('button, input, select')) return;
+                e.preventDefault();
+                const startX = e.clientX, startY = e.clientY;
+                const startDx = dx, startDy = dy;
+                const onMove = (ev) => {
+                    dx = startDx + (ev.clientX - startX);
+                    dy = startDy + (ev.clientY - startY);
+                    modalEl.style.transform = `translate(${dx}px, ${dy}px)`;
+                };
+                const onUp = () => {
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                };
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+            });
         }
         function closeCaselist() {
             document.getElementById('caselist-modal').classList.remove('show');
@@ -2071,8 +2101,8 @@
             renderCaselist();
         }
 
-        // 病歷號自動填補：同 tab list 內、同病歷號、日期距離 ≤ 30 天最近一筆 → 填空欄
-        function tryAutoFillFromNearby(currentId, chartNo) {
+        // 病歷號自動填補：先查 caselist 自己（同病歷號 ±30 天）→ 沒有則查 OPD 病人主表
+        async function tryAutoFillFromNearby(currentId, chartNo) {
             if (!chartNo || !chartNo.trim()) return;
             const tab = getActiveTab();
             if (!tab) return;
@@ -2080,27 +2110,62 @@
             const cur = list[currentId];
             if (!cur) return;
             const curDate = new Date(cur.date);
+            const trimChart = chartNo.trim();
             let best = null, bestDist = Infinity;
             Object.entries(list).forEach(([id, c]) => {
                 if (id === currentId) return;
-                if ((c.chartNo || '').trim() !== chartNo.trim()) return;
+                if ((c.chartNo || '').trim() !== trimChart) return;
                 const d = new Date(c.date);
                 const dist = Math.abs(d - curDate) / (1000 * 60 * 60 * 24);
                 if (dist > 30) return;
                 if (dist < bestDist) { bestDist = dist; best = c; }
             });
-            if (!best) return;
             const fill = {};
-            ['ageSex', 'type', 'otherSubtype'].forEach(f => {
-                if (!cur[f] && best[f]) fill[f] = best[f];
-            });
-            if (Object.keys(fill).length === 0) return;
+            const sources = [];
+            // Source 1: caselist 自己
+            if (best) {
+                ['ageSex', 'type', 'otherSubtype'].forEach(f => {
+                    if (!cur[f] && best[f]) fill[f] = best[f];
+                });
+                if (Object.keys(fill).length) sources.push(`list ${best.date}`);
+            }
+            // Source 2: OPD 病人主表
+            if (!cur.ageSex || cur.ageSex.trim() === '') {
+                try {
+                    const snap = await get(ref(fbDb, `opd/patients/${trimChart}`));
+                    const p = snap.val();
+                    if (p) {
+                        let ageSex = '';
+                        if (p.birthYear) {
+                            const refYear = cur.date ? new Date(cur.date).getFullYear() : new Date().getFullYear();
+                            ageSex = `${refYear - p.birthYear}/${p.sex || ''}`;
+                        } else if (p.ageSex) {
+                            ageSex = p.ageSex;
+                        }
+                        if (ageSex && !fill.ageSex) {
+                            fill.ageSex = ageSex;
+                            sources.push('OPD 主表');
+                        }
+                    }
+                } catch (err) {
+                    console.warn('查 OPD 主表失敗', err);
+                }
+            }
+            if (Object.keys(fill).length === 0) {
+                const s = document.getElementById('caselist-status');
+                if (s) {
+                    const old = s.textContent;
+                    s.textContent = `（${trimChart} 未找到可填補資料）`;
+                    setTimeout(() => { s.textContent = old; }, 1800);
+                }
+                return;
+            }
             Object.assign(cur, fill);
             saveToStorage();
             const s = document.getElementById('caselist-status');
             if (s) {
-                s.textContent = `✓ 已從 ${best.date} 同病歷號填補：${Object.keys(fill).join(', ')}`;
-                setTimeout(() => renderCaselist(), 800);
+                s.textContent = `✓ 已從 ${sources.join(' + ')} 填補：${Object.keys(fill).join(', ')}`;
+                setTimeout(() => renderCaselist(), 1000);
             } else {
                 renderCaselist();
             }
