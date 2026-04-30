@@ -5089,8 +5089,8 @@
     }
 
     // 偵測單一 visit plan 內 procedure tag
-    // 規則（寬鬆版）：scan 本次 anchor 之後（無 anchor → 全 plan），任何 procedure keyword 命中就加 tag
-    // 跳過：DISCUSS 行（consider/may/discuss 等）、明確標記為過去年份的歷史 reference 行
+    // scope：該次 visit 日期那行（或 [本次] anchor）→ 下次明確日期那行 之間
+    // 規則：dash + DISCUSS 行跳；anchor `*` 與一般行掃 procedure keyword
     function detectTagsFromVisit(v, dateStr) {
         if (v.noShow) return new Set();
         const detectors = [
@@ -5104,21 +5104,44 @@
             { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
         ];
         const lines = (v.plan || '').split(/\r?\n/);
-        const anchorIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
-        const scope = anchorIdx >= 0 ? lines.slice(anchorIdx) : lines;
-        const visitYear = parseInt(dateStr.slice(0, 4), 10);
+
+        // 抽出每行第一個有效日期（YY/MM/DD 優先；MM/DD 用 visit 年補）
+        const lineDate = (line) => {
+            const yyM = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);
+            if (yyM) {
+                const mo = parseInt(yyM[2], 10), dd = parseInt(yyM[3], 10);
+                if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+                return `${2000 + parseInt(yyM[1], 10)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+            }
+            const mdM = line.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+            if (mdM) {
+                const mo = parseInt(mdM[1], 10), dd = parseInt(mdM[2], 10);
+                if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+                return `${dateStr.slice(0, 4)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+            }
+            return null;
+        };
+
+        // 找 scope start：[本次] anchor 行 OR 第一個 lineDate === dateStr 的行
+        let startIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+        if (startIdx < 0) startIdx = lines.findIndex(l => lineDate(l) === dateStr);
+        if (startIdx < 0) return new Set(); // 找不到本次區段 → 不亂猜
+
+        // 找 scope end：start 之後第一個明確日期 > dateStr 的行
+        let endIdx = lines.length;
+        for (let i = startIdx + 1; i < lines.length; i++) {
+            const ld = lineDate(lines[i]);
+            if (ld && ld > dateStr) { endIdx = i; break; }
+        }
+        const scope = lines.slice(startIdx, endIdx);
+
         const detected = new Set();
         scope.forEach(line => {
             const trimmed = line.trim();
             if (!trimmed) return;
-            if (DISCUSS_PATTERN.test(trimmed)) return;
-            // 排除明確 PAST 年份 reference 行（避免歷史紀錄被當當次）
-            // 例：visit 在 2025，但這行寫 "23/05/12 ..." → 2023 = 過去 → 跳
-            const yyM = trimmed.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);
-            if (yyM) {
-                const lineYear = 2000 + parseInt(yyM[1], 10);
-                if (lineYear < visitYear - 1) return; // 早 2 年以上 → 視為歷史 reference
-            }
+            const isDash = trimmed.startsWith('-');
+            // dash + DISCUSS 才跳（讓 anchor 行 `* ... Consider Evenity` 仍能抓到 Prolia）
+            if (isDash && DISCUSS_PATTERN.test(trimmed)) return;
             detectors.forEach(d => { if (d.re.test(trimmed)) detected.add(d.tag); });
         });
         return detected;
