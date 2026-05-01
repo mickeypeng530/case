@@ -965,8 +965,7 @@
                 if (result.headerNotes && (mode === 'overwrite' || !Object.keys(existingVisits).length)) {
                     updates[`opd/clinicMeta/${date}/headerNotes`] = result.headerNotes;
                 }
-                const dow = new Date(date + 'T00:00').getDay();
-                if (dow !== 3) {
+                if (!isRegularClinicDate(date)) {
                     updates[`opd/clinicDates/${date}`] = { date, type: 'ad-hoc', note: '從批次匯入', createdAt: now };
                 }
                 await update(ref(fbDb), updates);
@@ -1075,8 +1074,7 @@
         if (importedHeaderNotes && (mode === 'overwrite' || !Object.keys(existingVisits).length)) {
             updates[`opd/clinicMeta/${date}/headerNotes`] = importedHeaderNotes;
         }
-        const dayOfWeek = new Date(date + 'T00:00').getDay();
-        if (dayOfWeek !== 3) {
+        if (!isRegularClinicDate(date)) {
             updates[`opd/clinicDates/${date}`] = { date, type: 'ad-hoc', note: '從匯入建立', createdAt: now };
         }
 
@@ -1192,6 +1190,17 @@
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // 判斷某日期是否為規律門診日（雙週三 = 該月第 2 / 第 4 個週三）
+    // 不是只看 dow === 3，因為第 1/3/5 個週三不算規律日，需要當 ad-hoc 處理
+    function isRegularClinicDate(dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        if (dt.getDay() !== 3) return false;
+        const w2 = getNthWednesdayOfMonth(y, m, 2);
+        const w4 = getNthWednesdayOfMonth(y, m, 4);
+        return (w2 && formatDate(w2) === dateStr) || (w4 && formatDate(w4) === dateStr);
     }
 
     // 從 ageSex (e.g., "55/F") 解析 birthYear & sex
