@@ -535,7 +535,7 @@
         }
         .visit-table thead th {
             position: sticky;
-            top: 0;
+            top: 50px;  /* 讓開上方 sticky 的門診日 toolbar */
             background: var(--bg-tertiary);
             color: var(--text-primary);
             font-weight: 600;
@@ -544,6 +544,20 @@
             border-bottom: 1px solid var(--border);
             font-size: 0.82rem;
             z-index: 10;
+        }
+        /* 門診日 toolbar：往下滑時固定在最上排，背景實心遮掩底下內容 */
+        #panel-clinic .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            background: var(--bg-primary);
+            padding-top: 6px;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        :root[data-theme="light"] #panel-clinic .toolbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
         }
         .visit-table tbody td {
             padding: 6px 8px;
