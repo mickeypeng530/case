@@ -847,6 +847,7 @@
         .visit-tags .tag-chip[data-tag="cTAME"] { background: #1e40af; }
         .visit-tags .tag-chip[data-tag="sTAME"] { background: #60a5fa; color: #0f172a; }
         .visit-tags .tag-chip[data-tag="MRI"] { background: #c4b5fd; color: #1a1a2e; }
+        .visit-tags .tag-chip[data-tag="CT/MRI"] { background: #c4b5fd; color: #1a1a2e; }
         .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
         .visit-tags .tag-chip[data-tag="f/u"] { background: #64748b; }
         .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
@@ -1260,6 +1261,19 @@
                 background: #2a2632;
                 color: rgba(255,255,255,0.55);
             }
+            /* hover 時 sticky 欄位仍保持 opaque（覆蓋 :hover td 的半透明 bg）*/
+            .visit-table tbody tr:hover td.col-num,
+            .visit-table tbody tr:hover td.col-record {
+                background: var(--bg-secondary);
+            }
+            .visit-table tbody tr.no-show:hover td.col-num,
+            .visit-table tbody tr.no-show:hover td.col-record {
+                background: #2a2632;
+            }
+            .visit-table tbody tr.prepared td.col-num,
+            .visit-table tbody tr.prepared td.col-record {
+                background: var(--bg-secondary);
+            }
             .visit-table tbody tr.prepared td.col-num,
             .visit-table tbody tr.prepared td.col-record {
                 background: var(--bg-secondary);
@@ -1267,12 +1281,12 @@
 
             /* 各欄最小寬度（避免 fixed layout 擠太緊）*/
             .col-num    { width: 36px; }
-            .col-record { width: 110px; }
+            .col-record { width: 88px; }
             .col-labs   { width: 130px; }
             .col-extra  { width: 130px; }
             .col-exam   { width: 220px; }
             .col-plan   { width: 280px; }
-            .col-tags   { width: 130px; }
+            .col-tags   { width: 80px; }
             .col-actions { width: 100px; }
 
             /* row-actions 在手機改成直排省空間 */
@@ -1612,6 +1626,7 @@
             <button id="stats-migrate-btn" title="掃所有歷史 visit，依 plan 內容回填 procedure tag（只加不減）">🏷 從 plan 回填 tag</button>
             <button id="tame-import-btn" title="貼上 sheet 資料匯入 TAME 部位">📥 匯入 TAME 部位</button>
             <button id="cleanup-old-ctnb-btn" title="刪除 2026-02 前所有 visit 的 CT NB tag（搭配「回填 tag」重整舊資料）">🧹 清除舊 CT NB tag</button>
+            <button id="normalize-tags-btn" title="批次轉換 tag 名稱：MRI→CT/MRI、NB→CT NB、follow up→f/u">🔁 標籤正規化</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
         <div id="stats-container">
@@ -1751,6 +1766,7 @@
 </div>
 
 <!-- Visit 新增/編輯 Modal -->
+<div id="visit-modal-watermark" style="position:fixed; top:18px; left:50%; transform:translateX(-50%); font-size:1.4rem; font-weight:700; color:rgba(168,85,247,0.55); letter-spacing:0.05em; z-index:1100; pointer-events:none; display:none; text-shadow: 0 0 8px rgba(0,0,0,0.6); background:rgba(15,23,42,0.6); padding:4px 14px; border-radius:8px; backdrop-filter:blur(4px);"></div>
 <div class="modal-overlay" id="visit-modal">
     <div class="modal" style="max-width: 720px;">
         <h3 id="visit-modal-title">新增本日病人</h3>
@@ -1923,6 +1939,7 @@
     function normalizeTag(t) {
         if (t === 'follow up') return 'f/u';
         if (t === 'NB') return 'CT NB';
+        if (t === 'MRI') return 'CT/MRI';
         return t;
     }
     function escapeHtml(s) {
@@ -3520,6 +3537,7 @@
             'cTAME': { bg: '1E40AF', fg: 'FFFFFF' },
             'sTAME': { bg: '60A5FA', fg: '0F172A' },
             'MRI':   { bg: 'C4B5FD', fg: '1A1A2E' },
+            'CT/MRI': { bg: 'C4B5FD', fg: '1A1A2E' },
             'PRP':   { bg: 'EC4899', fg: 'FFFFFF' },
             'f/u':   { bg: '64748B', fg: 'FFFFFF' },
             'med':   { bg: 'F97316', fg: 'FFFFFF' },
@@ -3966,6 +3984,7 @@
         });
         document.getElementById('tame-import-btn')?.addEventListener('click', openTameImportModal);
         document.getElementById('cleanup-old-ctnb-btn')?.addEventListener('click', cleanupOldCtnbTags);
+        document.getElementById('normalize-tags-btn')?.addEventListener('click', normalizeAllTags);
         document.getElementById('backfill-clinic-tags-btn')?.addEventListener('click', backfillTagsForCurrentClinic);
         document.getElementById('tame-import-cancel')?.addEventListener('click', closeTameImportModal);
         document.getElementById('tame-import-parse-btn')?.addEventListener('click', previewTameImport);
@@ -4060,7 +4079,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA', 'MRI', 'f/u', 'med', '自費', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA', 'CT/MRI', 'f/u', 'med', '自費', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
@@ -4168,6 +4187,7 @@
     }
 
     // 依 procedure 類別生成摘要文字（從 v-plan textarea 讀，給 modal 用）
+    // 只取 done 事件（已執行）；不顯示 planned（未來計畫），避免老 visit 摘要出現未來資料
     function generateSummaryByCategory(procFilter) {
         const date = state.currentClinicDate;
         const planText = document.getElementById('v-plan').value;
@@ -4175,7 +4195,7 @@
         const lines = [];
         summary.items.filter(it => procFilter.includes(it.name)).forEach(it => {
             const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
-            const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
+            if (!doneEvts.length) return;
             const formatGroup = (events) => {
                 if (!events.length) return { prefix: '', body: '' };
                 const payments = events.map(e => e.payment).filter(Boolean);
@@ -4188,13 +4208,7 @@
                 return { prefix: '', body: `×${events.length} (${parts.join(', ')})` };
             };
             const doneFmt = formatGroup(doneEvts);
-            const planFmt = formatGroup(planEvts);
-            const planTail = planEvts.length ? `, ${planFmt.prefix}計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}` : '';
-            if (doneEvts.length) {
-                lines.push(`${doneFmt.prefix}${it.name}${doneFmt.body}${planTail}`);
-            } else if (planEvts.length) {
-                lines.push(`${planFmt.prefix}${it.name} 計${planEvts.length}${planFmt.body.replace(/^×\d+/, '')}`);
-            }
+            lines.push(`${doneFmt.prefix}${it.name}${doneFmt.body}`);
         });
         return lines.join('\n');
     }
@@ -4236,6 +4250,10 @@
         const isEdit = !!recordNumber;
         const visit = isEdit ? ((state.visitsByDate?.[date] || {})[recordNumber] || {}) : {};
         const patient = isEdit ? (state.patients[recordNumber] || {}) : {};
+
+        // 顯示 watermark：visit 日期淡淡浮在 modal 上方，避免 user 忘記在哪天
+        const wm = document.getElementById('visit-modal-watermark');
+        if (wm) { wm.textContent = `📅 ${formatDateLabel(date)}`; wm.style.display = 'block'; }
 
         state.editingVisitRecord = isEdit ? recordNumber : null;
         // 舊 tag 名稱遷移：follow up → f/u
@@ -4288,6 +4306,8 @@
 
     function closeVisitModal() {
         document.getElementById('visit-modal').classList.remove('show');
+        const wm = document.getElementById('visit-modal-watermark');
+        if (wm) wm.style.display = 'none';
         state.editingVisitRecord = null;
         state.visitTagsTemp = [];
         state.procStatusesTemp = {};
@@ -4371,11 +4391,21 @@
             painSummaryEdited: true
         };
 
+        const saveBtn = document.getElementById('v-modal-save');
+        if (saveBtn?.disabled) return;
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '儲存中...'; }
         try {
-            await saveVisit(visit, patientPartial);
-            closeVisitModal();
+            // 8 秒 timeout 避免網路卡住
+            await Promise.race([
+                saveVisit(visit, patientPartial),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('儲存逾時 (>8 秒)，請重試')), 8000))
+            ]);
+            // setTimeout 0：丟到下一個 tick，避開 iOS PWA 同步操作 DOM 偶發卡住問題
+            setTimeout(() => closeVisitModal(), 0);
         } catch (err) {
             alert('儲存失敗：' + err.message);
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '儲存'; }
         }
     }
 
@@ -4755,7 +4785,9 @@
 
         const snap = await get(ref(fbDb, 'opd/visits'));
         const allByDate = snap.val() || {};
-        const dateKeys = Object.keys(allByDate).filter(d => d >= startStr).sort((a, b) => b.localeCompare(a));
+        // 排除未來日期（門診還沒進行 / 名單會變動）
+        const todayStr = formatDate(new Date());
+        const dateKeys = Object.keys(allByDate).filter(d => d >= startStr && d <= todayStr).sort((a, b) => b.localeCompare(a));
 
         if (dateKeys.length === 0) {
             container.innerHTML = '<div class="empty-hint">期間內無門診資料</div>';
@@ -5268,7 +5300,7 @@
             { tag: 'HA',    re: /\bHA\b/ },
             { tag: 'PRP',   re: /\bPRP\b/i },
             { tag: 'BMA',   re: /\bBMA\b/i },
-            { tag: 'MRI',   re: /\bMRI\b/i },
+            { tag: 'CT/MRI', re: /\b(MRI|CT(?!\s*NB))\b/i },  // CT 或 MRI 影像（排除 "CT NB" procedure）
             { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
         ];
         const lines = (v.plan || '').split(/\r?\n/);
@@ -5313,6 +5345,33 @@
             detectors.forEach(d => { if (d.re.test(trimmed)) detected.add(d.tag); });
         });
         return detected;
+    }
+
+    // 批次正規化所有 visit 的 tag 名稱（用 normalizeTag），不動 plan、不加新 tag
+    async function normalizeAllTags() {
+        if (!confirm(`將掃描所有 visit，把舊 tag 名稱換成新名（MRI→CT/MRI、NB→CT NB、follow up→f/u）。\n\n不會 parse plan、不會加新 tag、不會刪 tag。\n\n確定執行？`)) return;
+        const status = document.getElementById('stats-status');
+        status.textContent = '掃描中...';
+        const snap = await get(ref(fbDb, 'opd/visits'));
+        const allByDate = snap.val() || {};
+        const updates = {};
+        let count = 0;
+        Object.keys(allByDate).forEach(dateStr => {
+            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
+                const old = (v.tags || []);
+                if (!old.length) return;
+                // 正規化 + 去重
+                const normalized = [...new Set(old.map(normalizeTag))];
+                if (old.join(' ') !== normalized.join(' ')) {
+                    updates[`opd/visits/${dateStr}/${recId}/tags`] = normalized;
+                    count++;
+                }
+            });
+        });
+        if (count === 0) { status.textContent = '掃描完，無需轉換'; return; }
+        if (!confirm(`將更新 ${count} 個 visit 的 tag。執行？`)) { status.textContent = '已取消'; return; }
+        await update(ref(fbDb), updates);
+        status.textContent = `✓ 已轉換 ${count} 個 visit 的 tag`;
     }
 
     // 清除 2026-02 前所有 visit 的舊 procedure tag（CT NB / NB / 鬆 / f/u / follow up）
