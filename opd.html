@@ -160,7 +160,6 @@
             <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
             <button id="stats-export-btn">📤 匯出 xlsx</button>
             <button id="tame-import-btn" title="貼上 sheet 資料匯入 TAME 部位">📥 匯入 TAME 部位</button>
-            <button id="import-json-btn" title="貼上由 Python 解析的 JSON，覆蓋 visits + patients（不刪原有未提及的）">📥 從 JSON 匯入</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
         <div id="stats-container">
@@ -201,25 +200,6 @@
         <div style="color: var(--text-muted); font-size: 0.9rem;">下個 commit 實作。</div>
     </div>
 
-</div>
-
-<!-- JSON 匯入 Modal -->
-<div class="modal-overlay" id="json-import-modal">
-    <div class="modal" style="max-width:800px;">
-        <h3>📥 從 JSON 匯入 OPD 資料</h3>
-        <div style="font-size:0.82rem;color:var(--text-secondary);margin:8px 0 10px;">
-            貼上 Python 解析的 JSON（含 visits/patients/clinicMeta/clinicDates）。<br>
-            模式：
-            <label style="margin-left:6px;"><input type="radio" name="json-mode" value="overwrite" checked> 覆蓋既有</label>
-            <label style="margin-left:10px;"><input type="radio" name="json-mode" value="skip"> 只加新的（既有跳過）</label>
-        </div>
-        <textarea id="json-import-input" style="width:100%; min-height:300px; font-family:monospace; font-size:0.78rem; background:var(--bg-primary); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; padding:8px;" placeholder='{"visits":{...},"patients":{...},...}'></textarea>
-        <div id="json-import-status" style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;"></div>
-        <div class="modal-actions">
-            <button id="json-import-cancel">取消</button>
-            <button id="json-import-go" class="primary">✓ 解析並寫入</button>
-        </div>
-    </div>
 </div>
 
 <!-- TAME 部位匯入 Modal -->
@@ -2618,9 +2598,6 @@
             document.getElementById('clinic-agg').style.display = e.target.value === 'clinic' ? '' : 'none';
         });
         document.getElementById('tame-import-btn')?.addEventListener('click', openTameImportModal);
-        document.getElementById('import-json-btn')?.addEventListener('click', openJsonImportModal);
-        document.getElementById('json-import-cancel')?.addEventListener('click', closeJsonImportModal);
-        document.getElementById('json-import-go')?.addEventListener('click', handleJsonImport);
         document.getElementById('backfill-clinic-tags-btn')?.addEventListener('click', backfillTagsForCurrentClinic);
         document.getElementById('tame-import-cancel')?.addEventListener('click', closeTameImportModal);
         document.getElementById('tame-import-parse-btn')?.addEventListener('click', previewTameImport);
@@ -4251,90 +4228,6 @@
             detectors.forEach(d => { if (d.re.test(trimmed)) detected.add(d.tag); });
         });
         return detected;
-    }
-
-    // 從 JSON 匯入 OPD 資料
-    function openJsonImportModal() {
-        document.getElementById('json-import-modal').classList.add('show');
-        document.getElementById('json-import-input').value = '';
-        document.getElementById('json-import-status').textContent = '';
-    }
-    function closeJsonImportModal() {
-        document.getElementById('json-import-modal').classList.remove('show');
-    }
-    async function handleJsonImport() {
-        const txt = document.getElementById('json-import-input').value.trim();
-        const status = document.getElementById('json-import-status');
-        if (!txt) { status.textContent = '請貼上 JSON'; return; }
-        let data;
-        try { data = JSON.parse(txt); }
-        catch (e) { status.textContent = `❌ JSON 解析失敗：${e.message}`; return; }
-        const mode = document.querySelector('input[name="json-mode"]:checked')?.value || 'overwrite';
-        const visits = data.visits || {};
-        const patients = data.patients || {};
-        const clinicMeta = data.clinicMeta || {};
-        const clinicDates = data.clinicDates || {};
-        const totalVisits = Object.values(visits).reduce((s, dv) => s + Object.keys(dv).length, 0);
-        if (!confirm(`要匯入：\n  Visits: ${totalVisits} 筆（${Object.keys(visits).length} 個日期）\n  Patients: ${Object.keys(patients).length}\n  ClinicMeta: ${Object.keys(clinicMeta).length}\n  ClinicDates: ${Object.keys(clinicDates).length}\n\n模式：${mode === 'overwrite' ? '覆蓋既有' : '只加新的'}\n\n執行？`)) return;
-        status.textContent = '寫入中...';
-        const updates = {};
-        const now = Date.now();
-        // 預先抓既有資料（skip 模式用）
-        let existingVisits = {}, existingPatients = {};
-        if (mode === 'skip') {
-            const [vs, ps] = await Promise.all([
-                get(ref(fbDb, 'opd/visits')),
-                get(ref(fbDb, 'opd/patients'))
-            ]);
-            existingVisits = vs.val() || {};
-            existingPatients = ps.val() || {};
-        }
-        let writtenV = 0, writtenP = 0;
-        Object.entries(visits).forEach(([date, dayVisits]) => {
-            Object.entries(dayVisits).forEach(([rec, v]) => {
-                if (mode === 'skip' && existingVisits[date]?.[rec]) return;
-                updates[`opd/visits/${date}/${rec}`] = {
-                    ...v,
-                    createdAt: now, updatedAt: now,
-                    confirmedAt: v.status === 'confirmed' ? now : null
-                };
-                updates[`opd/patientVisitIndex/${rec}/${date}`] = true;
-                writtenV++;
-            });
-        });
-        Object.entries(patients).forEach(([rec, p]) => {
-            const existing = existingPatients[rec];
-            if (mode === 'skip' && existing) {
-                // skip 模式且 patient 已存在：仍要把 firstVisitDate 取較早值寫回
-                // （否則 2024 批次匯入時，2025 已存在的病人 firstVisitDate 不會回推 → 規律日下拉漏列）
-                if (p.firstVisitDate && (!existing.firstVisitDate || p.firstVisitDate < existing.firstVisitDate)) {
-                    updates[`opd/patients/${rec}/firstVisitDate`] = p.firstVisitDate;
-                }
-                return;
-            }
-            updates[`opd/patients/${rec}`] = {
-                ...(mode === 'overwrite' ? (existing || {}) : {}),
-                ...p,
-                // firstVisitDate 永遠取較早值（不被既有值覆蓋）
-                firstVisitDate: [existing?.firstVisitDate, p.firstVisitDate].filter(Boolean).sort()[0] || null,
-                createdAt: existing?.createdAt || now,
-                updatedAt: now
-            };
-            writtenP++;
-        });
-        Object.entries(clinicMeta).forEach(([d, m]) => {
-            updates[`opd/clinicMeta/${d}/headerNotes`] = m.headerNotes || '';
-        });
-        Object.entries(clinicDates).forEach(([d, c]) => {
-            updates[`opd/clinicDates/${d}`] = { ...c, createdAt: now };
-        });
-        try {
-            await update(ref(fbDb), updates);
-            status.textContent = `✓ 完成：寫入 ${writtenV} 個 visit、${writtenP} 個 patient`;
-            setTimeout(closeJsonImportModal, 2000);
-        } catch (err) {
-            status.textContent = `❌ 寫入失敗：${err.message}`;
-        }
     }
 
     // 本次門診 — 批次回填 tag（依 plan 偵測，只加不減）
