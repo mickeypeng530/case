@@ -2617,7 +2617,7 @@
         return null;
     }
 
-    function generateRegularClinicDates(monthsBack = 6, monthsForward = 6) {
+    function generateRegularClinicDates(monthsBack = 36, monthsForward = 6) {
         const today = new Date();
         const dates = [];
         for (let offset = -monthsBack; offset <= monthsForward; offset++) {
