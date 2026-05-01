@@ -1211,6 +1211,12 @@
             #user-info { display: none; }
             #logout-btn .btn-text { display: none; }
             .toolbar { gap: 6px; }
+            #visit-modal-watermark {
+                font-size: 0.95rem !important;
+                top: 8px !important;
+                padding: 2px 8px !important;
+                letter-spacing: 0 !important;
+            }
 
             /* Phase 1：visit table 水平捲動 + sticky # / 病歷號 */
             .visit-table-wrapper {
@@ -1606,8 +1612,8 @@
             <label style="font-size: 0.85rem; color: var(--text-secondary);">期間：</label>
             <select id="stats-range" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
                 <optgroup label="逐月">
-                    <option value="m6">最近 6 個月</option>
-                    <option value="m12" selected>最近 12 個月</option>
+                    <option value="m6" selected>最近 6 個月</option>
+                    <option value="m12">最近 12 個月</option>
                     <option value="m24">最近 24 個月</option>
                 </optgroup>
                 <optgroup label="逐季">
@@ -1766,7 +1772,7 @@
 </div>
 
 <!-- Visit 新增/編輯 Modal -->
-<div id="visit-modal-watermark" style="position:fixed; top:18px; left:50%; transform:translateX(-50%); font-size:1.4rem; font-weight:700; color:rgba(168,85,247,0.55); letter-spacing:0.05em; z-index:1100; pointer-events:none; display:none; text-shadow: 0 0 8px rgba(0,0,0,0.6); background:rgba(15,23,42,0.6); padding:4px 14px; border-radius:8px; backdrop-filter:blur(4px);"></div>
+<div id="visit-modal-watermark" class="visit-modal-watermark" style="position:fixed; top:18px; left:50%; transform:translateX(-50%); font-size:1.4rem; font-weight:700; color:rgba(168,85,247,0.55); letter-spacing:0.05em; z-index:1100; pointer-events:none; display:none; text-shadow: 0 0 8px rgba(0,0,0,0.6); background:rgba(15,23,42,0.6); padding:4px 14px; border-radius:8px; backdrop-filter:blur(4px);"></div>
 <div class="modal-overlay" id="visit-modal">
     <div class="modal" style="max-width: 720px;">
         <h3 id="visit-modal-title">新增本日病人</h3>
@@ -2028,6 +2034,15 @@
     function activateTab(panelId) {
         document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
         document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === panelId));
+        // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
+        if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
+            // 已有結果就不重算（避免每次切回來都重跑）
+            const container = document.getElementById('stats-container');
+            if (container && (!state.statsLastComputed || container.querySelector('.empty-hint'))) {
+                computeAndRenderStats();
+                state.statsLastComputed = Date.now();
+            }
+        }
     }
 
     // ========== 啟動 ==========
@@ -3977,6 +3992,10 @@
         // 統計
         document.getElementById('stats-refresh-btn')?.addEventListener('click', computeAndRenderStats);
         document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsXlsx);
+        // 換視圖 / 區間 / 粒度 → 自動重新計算（不用按按鈕）
+        document.getElementById('stats-view')?.addEventListener('change', computeAndRenderStats);
+        document.getElementById('stats-range')?.addEventListener('change', computeAndRenderStats);
+        document.getElementById('clinic-agg')?.addEventListener('change', computeAndRenderStats);
         document.getElementById('stats-migrate-btn')?.addEventListener('click', migrateBackfillTags);
         // 切換 view 時顯示/隱藏 clinic-agg
         document.getElementById('stats-view')?.addEventListener('change', (e) => {
@@ -4785,7 +4804,7 @@
 
         const snap = await get(ref(fbDb, 'opd/visits'));
         const allByDate = snap.val() || {};
-        // 排除未來日期（門診還沒進行 / 名單會變動）
+        // 排除未來日期（門診還沒進行）— 預約人數仍可在 OPD 門診日下拉看
         const todayStr = formatDate(new Date());
         const dateKeys = Object.keys(allByDate).filter(d => d >= startStr && d <= todayStr).sort((a, b) => b.localeCompare(a));
 
@@ -4975,6 +4994,13 @@
             monthList.forEach(m => { matrix[rowKey(r.main, r.sub)][m.key] = { count: 0, visits: [], prp: 0, bma: 0 }; });
         });
 
+        // 額外統計累加器
+        const cameByBucket = {}, dcByBucket = {};
+        const patientCountInRange = {};  // recordNumber → visit 次數
+        const patientFirstByRec = {};    // recordNumber → earliest date in range
+        const yoyMatrix = {};            // year-month-key → procedure 總數（用於 YoY）
+        monthList.forEach(m => { cameByBucket[m.key] = 0; dcByBucket[m.key] = 0; });
+
         const tally = (key, bk, v, dateStr, meta = {}) => {
             matrix[key][bk].count += 1;
             matrix[key][bk].visits.push({ date: dateStr, recordNumber: v.recordNumber, done: 1, ...meta });
@@ -4982,10 +5008,46 @@
             if (meta.bma) matrix[key][bk].bma += 1;
         };
 
+        // 排除未來日期（procedure 統計只算已發生）
+        const procStatsToday = formatDate(new Date());
+
+        // YoY：算所有 visit 用 month-key（不限 bucket / range）為了拿去年同月
+        Object.keys(allByDate).forEach(dateStr => {
+            if (dateStr > procStatsToday) return;
+            const ymKey = dateStr.slice(0, 7); // YYYY-MM
+            yoyMatrix[ymKey] = yoyMatrix[ymKey] || 0;
+            const visits = Object.values(allByDate[dateStr] || {}).filter(v => !v.noShow);
+            // 計 procedure 數（每 visit 各 procedure 加總）
+            visits.forEach(v => {
+                const t = (v.tags || []).map(normalizeTag);
+                const has = (x) => t.includes(x);
+                let proc = 0;
+                if (has('CT NB') || (has('pRF') && !has('SONO'))) proc++;
+                if (has('SONO') || ((has('HA') || has('PRP')) && !has('CT NB'))) proc++;
+                if (has('TAME') || has('cTAME') || has('sTAME')) proc++;
+                yoyMatrix[ymKey] += proc;
+            });
+        });
+
         Object.keys(allByDate).forEach(dateStr => {
             if (dateStr < startKey || dateStr > endKey) return;
+            if (dateStr > procStatsToday) return; // 未來日期不算
             const bk = bucketOf(dateStr);
             if (!bucketKeys.has(bk)) return;
+            const allVisits = Object.values(allByDate[dateStr] || {});
+            // came / DC 計數
+            allVisits.forEach(v => {
+                if (v.noShow) dcByBucket[bk]++;
+                else cameByBucket[bk]++;
+            });
+            // 病人累計 + 最早 visit 日期
+            allVisits.forEach(v => {
+                if (v.noShow) return;
+                const r = v.recordNumber;
+                if (!r) return;
+                patientCountInRange[r] = (patientCountInRange[r] || 0) + 1;
+                if (!patientFirstByRec[r] || dateStr < patientFirstByRec[r]) patientFirstByRec[r] = dateStr;
+            });
             Object.values(allByDate[dateStr]).forEach(v => {
                 if (v.noShow) return;
                 const tags = (v.tags || []).map(normalizeTag);
@@ -5078,6 +5140,29 @@
         const cardValue = 'font-size:1.4rem; font-weight:700; color:var(--text-primary);';
         const cardSub = 'font-size:0.72rem; color:var(--text-secondary); margin-top:2px;';
 
+        // DC 比例（全期）
+        const totalCame = monthList.reduce((s, m) => s + cameByBucket[m.key], 0);
+        const totalDc = monthList.reduce((s, m) => s + dcByBucket[m.key], 0);
+        const dcPct = (totalCame + totalDc) > 0 ? ((totalDc / (totalCame + totalDc)) * 100).toFixed(1) : '0';
+
+        // YoY 同期比較（只 monthly 有意義）
+        let yoyCard = '';
+        if (granularity === 'm' && lastBucket) {
+            const ymThis = lastBucket.key; // 2026-04
+            const yThis = parseInt(ymThis.slice(0, 4), 10);
+            const ymLast = `${yThis - 1}${ymThis.slice(4)}`; // 2025-04
+            const yoyThis = yoyMatrix[ymThis] || 0;
+            const yoyLast = yoyMatrix[ymLast] || 0;
+            const yoyPct = yoyLast > 0 ? Math.round(((yoyThis - yoyLast) / yoyLast) * 100) : null;
+            const yoyArrow = yoyPct == null ? '—' : (yoyPct > 0 ? `↑ +${yoyPct}%` : (yoyPct < 0 ? `↓ ${yoyPct}%` : '— 持平'));
+            const yoyColor = yoyPct == null ? 'var(--text-muted)' : (yoyPct > 0 ? '#22c55e' : (yoyPct < 0 ? '#ef4444' : 'var(--text-muted)'));
+            yoyCard = `<div style="${cardStyle}">
+                <div style="${cardLabel}">vs 去年同月</div>
+                <div style="${cardValue}; color:${yoyColor};">${yoyArrow}</div>
+                <div style="${cardSub}">${yoyLast} → ${yoyThis}</div>
+            </div>`;
+        }
+
         let dashboardHtml = `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
             <div style="${cardStyle}">
                 <div style="${cardLabel}">${escapeHtml(unitName)} procedure 數</div>
@@ -5089,10 +5174,16 @@
                 <div style="${cardValue}; color:${deltaColor};">${deltaArrow}</div>
                 <div style="${cardSub}">${prevTotal} → ${lastTotal}</div>
             </div>
+            ${yoyCard}
             <div style="${cardStyle}">
                 <div style="${cardLabel}">全期累計</div>
                 <div style="${cardValue}">${grandAll}</div>
                 <div style="${cardSub}">${monthList.length} ${escapeHtml(granularity === 'm' ? '個月' : granularity === 'q' ? '季' : '年')}</div>
+            </div>
+            <div style="${cardStyle}">
+                <div style="${cardLabel}">DC 比例</div>
+                <div style="${cardValue}; color:${parseFloat(dcPct) > 8 ? '#ef4444' : 'var(--text-primary)'};">${dcPct}%</div>
+                <div style="${cardSub}">${totalDc} / ${totalCame + totalDc}</div>
             </div>
             <div style="${cardStyle}">
                 <div style="${cardLabel}">最常 procedure</div>
@@ -5208,7 +5299,94 @@
         html += `<td></td><td>${STATS_HIERARCHY.map(h => `${escapeHtml(h.main)} ${mainsGrand ? ((rowTotals[h.main] / mainsGrand) * 100).toFixed(1) : '0'}%`).join(' / ')}</td></tr>`;
 
         html += '</tbody></table><div id="stats-detail" style="margin-top:12px;"></div>';
+
+        // === 新病人 vs 回診（依病人在資料庫的最早 visit 是否落在期間內）===
+        const recsInRange = Object.keys(patientCountInRange);
+        let newPtCount = 0, returnPtCount = 0;
+        recsInRange.forEach(r => {
+            const overall = state.patients[r];
+            const firstDate = overall?.firstVisitDate || patientFirstByRec[r];
+            if (firstDate && firstDate >= startKey && firstDate <= endKey) newPtCount++;
+            else returnPtCount++;
+        });
+        const totalUniquePt = recsInRange.length;
+        const newPct = totalUniquePt > 0 ? Math.round((newPtCount / totalUniquePt) * 100) : 0;
+
+        // === 病人 top 10（最多次 visit）===
+        const topPts = Object.entries(patientCountInRange)
+            .sort((a, b) => b[1] - a[1]).slice(0, 10)
+            .map(([rec, n]) => {
+                const p = state.patients[rec] || {};
+                const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+                const ageSex = displayAgeSex(p, endKey.slice(0, 10)) || p.ageSex || '';
+                return { rec, n, surname, ageSex };
+            });
+
+        let extrasHtml = `<div style="display:flex; gap:14px; margin-top:18px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">📊 病人結構（區間內）</div>
+                <div style="font-size:1.1rem; color:var(--text-primary); margin-bottom:4px;">
+                    共 <strong>${totalUniquePt}</strong> 位獨立病人
+                </div>
+                <div style="font-size:0.88rem; color:var(--text-secondary);">
+                    新病人 <span style="color:#22c55e;font-weight:600;">${newPtCount}</span> (${newPct}%) ·
+                    回診 <span style="color:#3b82f6;font-weight:600;">${returnPtCount}</span> (${100 - newPct}%)
+                </div>
+                <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+                    區間內 came visits: ${totalCame} · DC: ${totalDc}
+                </div>
+            </div>
+            <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">🏆 Top 10 病人（visit 次數）</div>
+                ${topPts.length === 0 ? '<div style="color:var(--text-muted);font-size:0.85rem;">無資料</div>' :
+                    topPts.map((p, i) => `<div style="display:flex; gap:8px; padding:2px 0; font-size:0.84rem; border-top:${i === 0 ? '0' : '1px dashed var(--border)'};">
+                        <span style="color:var(--text-muted); width:20px; text-align:right;">${i + 1}.</span>
+                        <span style="color:var(--accent); font-family:monospace; min-width:80px;">${escapeHtml(p.rec)}</span>
+                        <span style="flex:1; color:var(--text-primary);">${escapeHtml(p.surname)}${p.ageSex ? ' ' + escapeHtml(p.ageSex) : ''}</span>
+                        <span style="color:var(--text-secondary); font-weight:600;">${p.n} 次</span>
+                    </div>`).join('')
+                }
+            </div>
+            <div id="tame-anatomy-section" style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">🧭 TAME 部位分佈（區間內）</div>
+                <div style="color:var(--text-muted);font-size:0.85rem;">載入中...</div>
+            </div>
+        </div>`;
+        html += extrasHtml;
         container.innerHTML = html;
+
+        // TAME 部位分佈：非同步抓 opd/tameStats，依區間 + 部位分組
+        (async () => {
+            try {
+                const tsSnap = await get(ref(fbDb, 'opd/tameStats'));
+                const ts = tsSnap.val() || {};
+                const inRange = Object.values(ts).filter(t => t.date >= startKey && t.date <= endKey);
+                const byAnatomy = {};
+                inRange.forEach(t => {
+                    const a = t.anatomy || '其他';
+                    byAnatomy[a] = (byAnatomy[a] || 0) + 1;
+                });
+                const sec = document.getElementById('tame-anatomy-section');
+                if (!sec) return;
+                if (inRange.length === 0) {
+                    sec.innerHTML = '<div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">🧭 TAME 部位分佈</div><div style="color:var(--text-muted);font-size:0.85rem;">區間內無 tameStats 資料（請先匯入）</div>';
+                    return;
+                }
+                const sorted = Object.entries(byAnatomy).sort((a, b) => b[1] - a[1]);
+                const totalT = inRange.length;
+                sec.innerHTML = `<div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">🧭 TAME 部位分佈（${totalT} 筆）</div>` +
+                    sorted.map(([a, n]) => {
+                        const pct = ((n / totalT) * 100).toFixed(0);
+                        return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:0.84rem;">
+                            <span style="min-width:90px; color:var(--text-primary);">${escapeHtml(a)}</span>
+                            <div style="flex:1; height:8px; background:var(--bg-tertiary); border-radius:4px; overflow:hidden;"><div style="height:100%; width:${pct}%; background:var(--accent);"></div></div>
+                            <span style="min-width:50px; text-align:right; color:var(--text-secondary);">${n} (${pct}%)</span>
+                        </div>`;
+                    }).join('');
+            } catch (err) {
+                console.warn('TAME 部位分佈抓取失敗', err);
+            }
+        })();
 
         // cell click → 顯示明細
         container.querySelectorAll('td.cell-clickable').forEach(td => {
