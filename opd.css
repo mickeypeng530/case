@@ -1442,6 +1442,23 @@
             grid-template-columns: 1fr 1fr;
             gap: 6px;
         }
+        /* inline 變體：label 跟 input 同一排（省 modal 高度） */
+        .modal .field.inline {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .modal .field.inline label {
+            display: inline-block;
+            margin-bottom: 0;
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+        .modal .field.inline > input,
+        .modal .field.inline > select {
+            flex: 1;
+            min-width: 0;
+        }
         .modal .actions {
             display: flex;
             gap: 6px;
