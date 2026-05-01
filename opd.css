@@ -534,8 +534,7 @@
             table-layout: fixed;
         }
         .visit-table thead th {
-            position: sticky;
-            top: var(--clinic-toolbar-h, 50px);  /* 動態跟 sticky toolbar 高度對齊 */
+            /* 不再 sticky；toolbar sticky 已提供日期/操作 context，thead 跟著捲掉 OK */
             background: var(--bg-tertiary);
             color: var(--text-primary);
             font-weight: 600;
