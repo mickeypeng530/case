@@ -1994,6 +1994,24 @@
         if (t === 'MRI') return 'CT/MRI';
         return t;
     }
+    // 從一行文字抽日期 → 'YYYY-MM-DD' 或 null（共用，避免重複實作）
+    // 若無年份 → 用 referenceDate 的年補
+    function parseLineDate(line, referenceDate) {
+        if (!line || !referenceDate) return null;
+        const yyM = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);
+        if (yyM) {
+            const mo = parseInt(yyM[2], 10), dd = parseInt(yyM[3], 10);
+            if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+            return `20${yyM[1]}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+        }
+        const mdM = line.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+        if (mdM) {
+            const mo = parseInt(mdM[1], 10), dd = parseInt(mdM[2], 10);
+            if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+            return `${referenceDate.slice(0, 4)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+        }
+        return null;
+    }
     function escapeHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
@@ -2711,10 +2729,12 @@
     // ========== 加診日 Firebase ==========
     function loadAdHocClinicDates() {
         if (!fbDb) return;
-        onValue(ref(fbDb, 'opd/clinicDates'), (snap) => {
+        if (state.adHocListener) state.adHocListener();
+        const unsub = onValue(ref(fbDb, 'opd/clinicDates'), (snap) => {
             state.adHocClinicDates = snap.val() || {};
             renderClinicDateSelector();
         });
+        state.adHocListener = unsub;
     }
 
     async function addAdHocClinicDate(dateStr, note = '') {
@@ -3389,8 +3409,15 @@
             updates['opd/patients/' + patientPartial.recordNumber] = merged;
         }
 
-        // visit — 保留既有狀態欄位（propagatedTo/From, status, prepared 等）
-        const existingVisit = (state.visitsByDate?.[visit.date] || {})[visit.recordNumber] || {};
+        // visit — 從 Firebase 抓最新（避免 state 跟另一裝置 listener 不同步）
+        let existingVisit = {};
+        try {
+            const freshSnap = await get(ref(fbDb, `opd/visits/${visit.date}/${visit.recordNumber}`));
+            existingVisit = freshSnap.val() || {};
+        } catch (e) {
+            console.warn('saveVisit fresh fetch 失敗，fallback 用 state:', e);
+            existingVisit = (state.visitsByDate?.[visit.date] || {})[visit.recordNumber] || {};
+        }
         const visitData = {
             ...existingVisit,
             ...visit,
@@ -3418,14 +3445,18 @@
 
     async function toggleNoShow(recordNumber) {
         const date = state.currentClinicDate;
-        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        // 抓 Firebase 最新值，避免 state 落後（race guard）
+        const snap = await get(ref(fbDb, `opd/visits/${date}/${recordNumber}`));
+        const visit = snap.val();
         if (!visit) return;
         await set(ref(fbDb, `opd/visits/${date}/${recordNumber}/noShow`), !visit.noShow);
     }
 
     async function toggleConfirm(recordNumber) {
         const date = state.currentClinicDate;
-        const visit = (state.visitsByDate?.[date] || {})[recordNumber];
+        // 抓 Firebase 最新（race guard）
+        const snap = await get(ref(fbDb, `opd/visits/${date}/${recordNumber}`));
+        const visit = snap.val();
         if (!visit) return;
         const newStatus = visit.status === 'confirmed' ? 'draft' : 'confirmed';
         const updates = { status: newStatus };
@@ -4447,7 +4478,7 @@
             orderInClinic: parseInt(document.getElementById('v-order').value) || null,
             examEducation: document.getElementById('v-exam').value.trim(),
             plan: document.getElementById('v-plan').value.trim(),
-            tags: [...state.visitTagsTemp],
+            tags: [...new Set(state.visitTagsTemp.map(normalizeTag))],
             procedureStatuses: cleanedProcStatuses,
             status: ((state.visitsByDate?.[date] || {})[recordNumber]?.status) || 'draft',
             noShow: ((state.visitsByDate?.[date] || {})[recordNumber]?.noShow) || false
@@ -5713,32 +5744,15 @@
         ];
         const lines = (v.plan || '').split(/\r?\n/);
 
-        // 抽出每行第一個有效日期（YY/MM/DD 優先；MM/DD 用 visit 年補）
-        const lineDate = (line) => {
-            const yyM = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);
-            if (yyM) {
-                const mo = parseInt(yyM[2], 10), dd = parseInt(yyM[3], 10);
-                if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
-                return `${2000 + parseInt(yyM[1], 10)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
-            }
-            const mdM = line.match(/\b(\d{1,2})\/(\d{1,2})\b/);
-            if (mdM) {
-                const mo = parseInt(mdM[1], 10), dd = parseInt(mdM[2], 10);
-                if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
-                return `${dateStr.slice(0, 4)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
-            }
-            return null;
-        };
-
         // 找 scope start：[本次] anchor 行 OR 第一個 lineDate === dateStr 的行
         let startIdx = lines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
-        if (startIdx < 0) startIdx = lines.findIndex(l => lineDate(l) === dateStr);
+        if (startIdx < 0) startIdx = lines.findIndex(l => parseLineDate(l, dateStr) === dateStr);
         if (startIdx < 0) return new Set(); // 找不到本次區段 → 不亂猜
 
         // 找 scope end：start 之後第一個明確日期 > dateStr 的行
         let endIdx = lines.length;
         for (let i = startIdx + 1; i < lines.length; i++) {
-            const ld = lineDate(lines[i]);
+            const ld = parseLineDate(lines[i], dateStr);
             if (ld && ld > dateStr) { endIdx = i; break; }
         }
         const scope = lines.slice(startIdx, endIdx);
@@ -5960,8 +5974,9 @@
     // ========== 病人主表 Firebase ==========
     function loadPatients() {
         if (!fbDb) return;
+        if (state.patientsListener) state.patientsListener();
         setStatus('saving', '載入中...');
-        onValue(ref(fbDb, 'opd/patients'), (snap) => {
+        const unsub = onValue(ref(fbDb, 'opd/patients'), (snap) => {
             state.patients = snap.val() || {};
             renderPatientMaster();
             setStatus('connected', '已連線');
@@ -5970,6 +5985,7 @@
             setStatus('', '連線失敗');
             alert('讀取病人資料失敗：' + err.message + '\n\n如顯示權限不足，請確認 Firebase Realtime Database rules 已設定 opd 路徑允許你的 UID。');
         });
+        state.patientsListener = unsub;
     }
 
     async function savePatient(patient) {
@@ -6362,7 +6378,7 @@
             INR: document.getElementById('pt-inr').value.trim(),
             INRDate: document.getElementById('pt-inr-date').value.trim(),
             extra: document.getElementById('pt-extra').value.trim(),
-            tags: [...state.currentTags]
+            tags: [...new Set(state.currentTags.map(normalizeTag))]
         };
 
         // 新增時若病歷號已存在 → 提示
