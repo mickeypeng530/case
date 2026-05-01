@@ -1612,6 +1612,7 @@
             <label style="font-size: 0.85rem; color: var(--text-secondary);">期間：</label>
             <select id="stats-range" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
                 <optgroup label="逐月">
+                    <option value="m3">最近 3 個月</option>
                     <option value="m6" selected>最近 6 個月</option>
                     <option value="m12">最近 12 個月</option>
                     <option value="m24">最近 24 個月</option>
@@ -1626,6 +1627,7 @@
                     <option value="y5">最近 5 年</option>
                     <option value="y10">最近 10 年</option>
                 </optgroup>
+                <option value="all">全時間（每年彙總）</option>
             </select>
             <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
             <button id="stats-export-btn">📤 匯出 xlsx</button>
@@ -4856,9 +4858,14 @@
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         const colHeader = aggMode === 'visit' ? '門診日期' : (aggMode === 'month' ? '月份' : aggMode === 'quarter' ? '季' : '年份');
         let html = '<table class="stats-table"><thead><tr>'
-            + `<th>${colHeader}</th><th>共 came</th><th>Procedure</th><th>Image only</th><th>Med</th><th>f/u</th><th>DC</th>`
+            + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>Image only</th><th>Med</th><th>f/u</th><th>DC</th>`
             + '</tr></thead><tbody>';
         const totals = { came: 0, Procedure: 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
+        const pctCell = (n, tot) => {
+            if (n === 0) return '·';
+            const pct = tot > 0 ? Math.round((n / tot) * 100) : 0;
+            return `${n} <span style="color:var(--text-muted);font-size:0.78rem;">(${pct}%)</span>`;
+        };
         rows.forEach(r => {
             let labelHtml;
             if (aggMode === 'visit') {
@@ -4868,16 +4875,17 @@
                 const cnt = r.dates.length;
                 labelHtml = `${escapeHtml(r.key)} <span style="color:var(--text-muted);font-size:0.78rem;">(${cnt} 次門診)</span>`;
             }
+            const procPct = r.total > 0 ? Math.round((r.counts.Procedure / r.total) * 100) : 0;
             const procCell = r.counts.Procedure > 0
-                ? (r.alsoImage > 0 ? `${r.counts.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(含 image ${r.alsoImage})</span>` : r.counts.Procedure)
+                ? `${r.counts.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(${procPct}%${r.alsoImage > 0 ? `, 含 image ${r.alsoImage}` : ''})</span>`
                 : '·';
             html += `<tr>
                 <td>${labelHtml}</td>
                 <td><strong>${r.total}</strong></td>
                 <td>${procCell}</td>
-                <td>${r.counts.Image || '·'}</td>
-                <td>${r.counts.Med || '·'}</td>
-                <td>${r.counts['f/u'] || '·'}</td>
+                <td>${pctCell(r.counts.Image, r.total)}</td>
+                <td>${pctCell(r.counts.Med, r.total)}</td>
+                <td>${pctCell(r.counts['f/u'], r.total)}</td>
                 <td style="color:var(--text-muted);">${r.noShow || '·'}</td>
             </tr>`;
             totals.came += r.total;
@@ -4888,13 +4896,14 @@
             totals.alsoImage += r.alsoImage;
             totals.dc += r.noShow;
         });
+        const totProcPct = totals.came > 0 ? Math.round((totals.Procedure / totals.came) * 100) : 0;
         html += `<tr class="total-row">
             <td>合計</td><td>${totals.came}</td>
-            <td>${totals.Procedure}${totals.alsoImage ? ` (含 image ${totals.alsoImage})` : ''}</td>
-            <td>${totals.Image}</td>
-            <td>${totals.Med}</td>
-            <td>${totals['f/u']}</td>
-            <td>${totals.dc}</td>
+            <td>${totals.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(${totProcPct}%${totals.alsoImage ? `, 含 image ${totals.alsoImage}` : ''})</span></td>
+            <td>${pctCell(totals.Image, totals.came)}</td>
+            <td>${pctCell(totals.Med, totals.came)}</td>
+            <td>${pctCell(totals['f/u'], totals.came)}</td>
+            <td>${totals.dc || '·'}</td>
         </tr>`;
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -4922,11 +4931,24 @@
         const container = document.getElementById('stats-container');
         const status = document.getElementById('stats-status');
         const rangeVal = document.getElementById('stats-range').value;
-        const granularity = rangeVal[0]; // m / q / y
-        const count = parseInt(rangeVal.slice(1), 10) || 12;
+        let granularity = rangeVal[0]; // m / q / y / a
+        let count = parseInt(rangeVal.slice(1), 10) || 12;
 
         status.textContent = '載入中...';
         container.innerHTML = '<div class="empty-hint">計算中...</div>';
+
+        // 「全時間」處理：先抓 DB 找最早 visit 年份，計算需要幾年
+        if (rangeVal === 'all') {
+            granularity = 'y';
+            try {
+                const allSnap = await get(ref(fbDb, 'opd/visits'));
+                const allDates = Object.keys(allSnap.val() || {});
+                const earliestYear = allDates.length ? parseInt(allDates.sort()[0].slice(0, 4), 10) : new Date().getFullYear();
+                count = new Date().getFullYear() - earliestYear + 1;
+            } catch {
+                count = 5;
+            }
+        }
 
         // 依粒度計算桶列表（最近 N 個月 / 季 / 年）
         const today = new Date();
@@ -5300,25 +5322,50 @@
 
         html += '</tbody></table><div id="stats-detail" style="margin-top:12px;"></div>';
 
-        // === 新病人 vs 回診（依病人在資料庫的最早 visit 是否落在期間內）===
+        // === 新病人 vs 回診 ===
+        // 用 opd/patientVisitIndex 抓每個病人「全期最早 visit 日期」做精準判斷
         const recsInRange = Object.keys(patientCountInRange);
-        let newPtCount = 0, returnPtCount = 0;
+        let newPtCount = 0, returnPtCount = 0, unknownPtCount = 0;
+        // 同 visit 內多次重複病人也算回診（visit > 1）
+        let repeatVisitorCount = 0;  // 期間內同一病人 ≥ 2 次來訪
+        // 期望抓 patientVisitIndex 加速
+        const idxResults = await Promise.all(recsInRange.map(async r => {
+            try {
+                const snap = await get(ref(fbDb, `opd/patientVisitIndex/${r}`));
+                const dates = Object.keys(snap.val() || {});
+                return [r, dates.length ? dates.sort()[0] : null];
+            } catch { return [r, null]; }
+        }));
+        const earliestByRec = Object.fromEntries(idxResults);
         recsInRange.forEach(r => {
-            const overall = state.patients[r];
-            const firstDate = overall?.firstVisitDate || patientFirstByRec[r];
-            if (firstDate && firstDate >= startKey && firstDate <= endKey) newPtCount++;
-            else returnPtCount++;
+            const earliest = earliestByRec[r];
+            if (!earliest) {
+                // 沒 patientVisitIndex 資料 → fallback 用 OPD 主表 firstVisitDate
+                const overall = state.patients[r];
+                if (overall?.firstVisitDate) {
+                    if (overall.firstVisitDate >= startKey) newPtCount++;
+                    else returnPtCount++;
+                } else {
+                    unknownPtCount++;
+                }
+            } else {
+                if (earliest >= startKey) newPtCount++;
+                else returnPtCount++;
+            }
+            if (patientCountInRange[r] >= 2) repeatVisitorCount++;
         });
         const totalUniquePt = recsInRange.length;
         const newPct = totalUniquePt > 0 ? Math.round((newPtCount / totalUniquePt) * 100) : 0;
+        const repeatPct = totalUniquePt > 0 ? Math.round((repeatVisitorCount / totalUniquePt) * 100) : 0;
 
         // === 病人 top 10（最多次 visit）===
+        const todayDateStr = formatDate(new Date());
         const topPts = Object.entries(patientCountInRange)
             .sort((a, b) => b[1] - a[1]).slice(0, 10)
             .map(([rec, n]) => {
                 const p = state.patients[rec] || {};
                 const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
-                const ageSex = displayAgeSex(p, endKey.slice(0, 10)) || p.ageSex || '';
+                const ageSex = displayAgeSex(p, todayDateStr) || p.ageSex || '';
                 return { rec, n, surname, ageSex };
             });
 
@@ -5328,12 +5375,16 @@
                 <div style="font-size:1.1rem; color:var(--text-primary); margin-bottom:4px;">
                     共 <strong>${totalUniquePt}</strong> 位獨立病人
                 </div>
-                <div style="font-size:0.88rem; color:var(--text-secondary);">
+                <div style="font-size:0.88rem; color:var(--text-secondary); line-height:1.6;">
                     新病人 <span style="color:#22c55e;font-weight:600;">${newPtCount}</span> (${newPct}%) ·
-                    回診 <span style="color:#3b82f6;font-weight:600;">${returnPtCount}</span> (${100 - newPct}%)
+                    回診 <span style="color:#3b82f6;font-weight:600;">${returnPtCount}</span> (${unknownPtCount > 0 ? Math.round(((totalUniquePt - newPtCount - unknownPtCount) / totalUniquePt) * 100) : 100 - newPct}%)
+                    ${unknownPtCount > 0 ? ` · 未知 <span style="color:var(--text-muted);">${unknownPtCount}</span>` : ''}
+                    <br>
+                    重複到診 <span style="color:#a855f7;font-weight:600;">${repeatVisitorCount}</span> (${repeatPct}%)
+                    <span style="color:var(--text-muted);font-size:0.78rem;">（區間內來 ≥ 2 次）</span>
                 </div>
                 <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
-                    區間內 came visits: ${totalCame} · DC: ${totalDc}
+                    Visits: ${totalCame} · DC: ${totalDc}
                 </div>
             </div>
             <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
