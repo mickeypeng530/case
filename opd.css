@@ -1451,8 +1451,11 @@
         .modal .field.inline label {
             display: inline-block;
             margin-bottom: 0;
-            flex: 0 0 auto;
+            flex: 0 0 70px;        /* 固定寬度 → 各 row 的 input 起點對齊 */
+            text-align: right;     /* 文字靠近 input，視覺整齊 */
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .modal .field.inline > input,
         .modal .field.inline > select {
