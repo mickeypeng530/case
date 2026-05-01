@@ -4778,10 +4778,14 @@
     function classifyVisit(v) {
         const tags = (v.tags || []).map(normalizeTag);
         const has = (t) => tags.includes(t);
-        const hasProcedure = has('CT NB') || has('SONO') || has('TAME') || has('HA') || has('PRP') || has('pRF');
-        const hasImage = has('MRI');
+        const hasProcedure = has('CT NB') || has('SONO') || has('TAME') ||
+                             has('cTAME') || has('sTAME') || has('pRF') ||
+                             has('HA') || has('PRP') || has('BMA');
+        const hasBone = has('鬆');
+        const hasImage = has('CT/MRI') || has('MRI');
         const hasMed = has('med');
         if (hasProcedure) return { primary: 'Procedure', alsoImage: hasImage };
+        if (hasBone) return { primary: '骨鬆', alsoImage: hasImage };
         if (hasImage) return { primary: 'Image', alsoImage: false };
         if (hasMed) return { primary: 'Med', alsoImage: false };
         return { primary: 'f/u', alsoImage: false };
@@ -4816,11 +4820,11 @@
             return;
         }
 
-        // 計算每個 clinic date 的 4 大類
+        // 計算每個 clinic date 的 5 大類
         const perDate = dateKeys.map(d => {
             const visits = Object.values(allByDate[d] || {}).filter(v => !v.noShow);
             const noShow = Object.values(allByDate[d] || {}).filter(v => v.noShow).length;
-            const counts = { Procedure: 0, Image: 0, Med: 0, 'f/u': 0 };
+            const counts = { Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0 };
             let alsoImage = 0;
             visits.forEach(v => {
                 const c = classifyVisit(v);
@@ -4843,11 +4847,12 @@
         const buckets = {};
         perDate.forEach(r => {
             const k = bucketOf(r.date);
-            if (!buckets[k]) buckets[k] = { key: k, dates: [], total: 0, noShow: 0, counts: { Procedure: 0, Image: 0, Med: 0, 'f/u': 0 }, alsoImage: 0 };
+            if (!buckets[k]) buckets[k] = { key: k, dates: [], total: 0, noShow: 0, counts: { Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0 }, alsoImage: 0 };
             buckets[k].dates.push(r.date);
             buckets[k].total += r.total;
             buckets[k].noShow += r.noShow;
             buckets[k].counts.Procedure += r.counts.Procedure;
+            buckets[k].counts['骨鬆'] += r.counts['骨鬆'];
             buckets[k].counts.Image += r.counts.Image;
             buckets[k].counts.Med += r.counts.Med;
             buckets[k].counts['f/u'] += r.counts['f/u'];
@@ -4858,9 +4863,9 @@
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         const colHeader = aggMode === 'visit' ? '門診日期' : (aggMode === 'month' ? '月份' : aggMode === 'quarter' ? '季' : '年份');
         let html = '<table class="stats-table"><thead><tr>'
-            + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>Image only</th><th>Med</th><th>f/u</th><th>DC</th>`
+            + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>骨鬆</th><th>Image only</th><th>Med + f/u</th><th>DC</th>`
             + '</tr></thead><tbody>';
-        const totals = { came: 0, Procedure: 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
+        const totals = { came: 0, Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
         const pctCell = (n, tot) => {
             if (n === 0) return '·';
             const pct = tot > 0 ? Math.round((n / tot) * 100) : 0;
@@ -4879,17 +4884,23 @@
             const procCell = r.counts.Procedure > 0
                 ? `${r.counts.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(${procPct}%${r.alsoImage > 0 ? `, 含 image ${r.alsoImage}` : ''})</span>`
                 : '·';
+            const medFuTotal = r.counts.Med + r.counts['f/u'];
+            const medFuPct = r.total > 0 ? Math.round((medFuTotal / r.total) * 100) : 0;
+            const medFuCell = medFuTotal > 0
+                ? `${medFuTotal} <span style="color:var(--text-muted);font-size:0.78rem;">(${medFuPct}% · med ${r.counts.Med} / f/u ${r.counts['f/u']})</span>`
+                : '·';
             html += `<tr>
                 <td>${labelHtml}</td>
                 <td><strong>${r.total}</strong></td>
                 <td>${procCell}</td>
+                <td>${pctCell(r.counts['骨鬆'], r.total)}</td>
                 <td>${pctCell(r.counts.Image, r.total)}</td>
-                <td>${pctCell(r.counts.Med, r.total)}</td>
-                <td>${pctCell(r.counts['f/u'], r.total)}</td>
+                <td>${medFuCell}</td>
                 <td style="color:var(--text-muted);">${r.noShow || '·'}</td>
             </tr>`;
             totals.came += r.total;
             totals.Procedure += r.counts.Procedure;
+            totals['骨鬆'] += r.counts['骨鬆'];
             totals.Image += r.counts.Image;
             totals.Med += r.counts.Med;
             totals['f/u'] += r.counts['f/u'];
@@ -4897,12 +4908,17 @@
             totals.dc += r.noShow;
         });
         const totProcPct = totals.came > 0 ? Math.round((totals.Procedure / totals.came) * 100) : 0;
+        const totMedFu = totals.Med + totals['f/u'];
+        const totMedFuPct = totals.came > 0 ? Math.round((totMedFu / totals.came) * 100) : 0;
+        const totMedFuCell = totMedFu > 0
+            ? `${totMedFu} <span style="color:var(--text-muted);font-size:0.78rem;">(${totMedFuPct}% · med ${totals.Med} / f/u ${totals['f/u']})</span>`
+            : '·';
         html += `<tr class="total-row">
             <td>合計</td><td>${totals.came}</td>
             <td>${totals.Procedure} <span style="color:var(--text-muted);font-size:0.78rem;">(${totProcPct}%${totals.alsoImage ? `, 含 image ${totals.alsoImage}` : ''})</span></td>
+            <td>${pctCell(totals['骨鬆'], totals.came)}</td>
             <td>${pctCell(totals.Image, totals.came)}</td>
-            <td>${pctCell(totals.Med, totals.came)}</td>
-            <td>${pctCell(totals['f/u'], totals.came)}</td>
+            <td>${totMedFuCell}</td>
             <td>${totals.dc || '·'}</td>
         </tr>`;
         html += '</tbody></table>';
