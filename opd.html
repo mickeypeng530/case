@@ -381,12 +381,12 @@
         </div>
         <div class="field inline" title="抗凝劑 / 抗血小板（病人主表）">
             <label>抗凝</label>
-            <select id="v-anticoag-state" style="flex: 0 0 auto; padding: 3px 7px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.86rem;">
+            <select id="v-anticoag-state" style="flex: 0 0 auto; width: auto;">
                 <option value="unknown">未確認</option>
                 <option value="none">無</option>
                 <option value="yes">有</option>
             </select>
-            <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名（多筆用 , 分隔）" style="flex: 1; min-width: 0; padding: 3px 7px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.86rem; display: none;"><div style="display: none;">
+            <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名（多筆用 , 分隔）" style="flex: 1; min-width: 0; display: none;"><div style="display: none;">
                 <datalist id="anticoag-options">
                     <option value="Aspirin">
                     <option value="Plavix">
@@ -401,14 +401,14 @@
         </div>
         <div class="field">
             <label style="display:flex; justify-content:space-between; align-items:center;">
-                <span>🦴 骨鬆摘要（病人主表，跨次累積）</span>
+                <span><span class="label-icon">🦴</span>骨鬆摘要（病人主表，跨次累積）</span>
                 <button type="button" id="v-generate-bone" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">🤖 從 plan 生成</button>
             </label>
             <textarea id="v-bone-summary" placeholder="例：Prolia ×3 NHI (25/03/26, 09/24, 26/04/22)" rows="1" style="min-height: 28px;"></textarea>
         </div>
         <div class="field">
             <label style="display:flex; justify-content:space-between; align-items:center;">
-                <span>💢 Pain 摘要（病人主表，跨次累積）</span>
+                <span><span class="label-icon">💢</span>Pain 摘要（病人主表，跨次累積）</span>
                 <button type="button" id="v-generate-pain" style="padding: 3px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">🤖 從 plan 生成</button>
             </label>
             <textarea id="v-pain-summary" placeholder="例：CT NB ×6 (L spine 4, C 1, SI 1) / HA L×3 R×4"></textarea>
