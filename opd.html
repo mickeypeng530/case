@@ -1371,6 +1371,8 @@
         const unsub = onValue(r, (snap) => {
             state.visitsByDate = state.visitsByDate || {};
             state.visitsByDate[dateStr] = snap.val() || {};
+            // visit 寫入會觸發 listener → 失效 stats cache（避免下次 stats 讀到舊資料）
+            if (typeof invalidateVisitsCache === 'function') invalidateVisitsCache();
             // 同步更新人數快取（用於日期下拉）
             const visits = Object.values(state.visitsByDate[dateStr]);
             state.visitCountsByDate = state.visitCountsByDate || {};
@@ -2602,7 +2604,11 @@
         document.getElementById('add-visit-btn').addEventListener('click', () => openVisitModal());
 
         // 統計
-        document.getElementById('stats-refresh-btn')?.addEventListener('click', computeAndRenderStats);
+        document.getElementById('stats-refresh-btn')?.addEventListener('click', () => {
+            state._statsForceRefresh = true;       // 這次強制 refresh cache
+            const p = computeAndRenderStats();
+            Promise.resolve(p).finally(() => { state._statsForceRefresh = false; });
+        });
         document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsXlsx);
         // 換視圖 / 區間 / 粒度 → 自動重新計算（不用按按鈕）
         document.getElementById('stats-view')?.addEventListener('change', computeAndRenderStats);
@@ -3407,6 +3413,24 @@
         return { primary: 'f/u', alsoImage: false };
     }
 
+    // Cache 整顆 opd/visits，避免 stats compute 反覆下載（59MB bug 元凶）
+    // - TTL 5 分鐘自動過期
+    // - 「🔄 重新計算」傳 forceRefresh=true
+    // - 寫入後（saveVisit/toggleNoShow 等）也會 invalidate（見 invalidateVisitsCache）
+    async function getCachedAllVisits(forceRefresh = false) {
+        const TTL = 5 * 60 * 1000;
+        const expired = !state.cachedAllVisitsAt || (Date.now() - state.cachedAllVisitsAt) > TTL;
+        if (!forceRefresh && state.cachedAllVisits && !expired) return state.cachedAllVisits;
+        const snap = await get(ref(fbDb, 'opd/visits'));
+        state.cachedAllVisits = snap.val() || {};
+        state.cachedAllVisitsAt = Date.now();
+        return state.cachedAllVisits;
+    }
+    function invalidateVisitsCache() {
+        state.cachedAllVisits = null;
+        state.cachedAllVisitsAt = 0;
+    }
+
     async function computeAndRenderClinicStats() {
         const container = document.getElementById('stats-container');
         const status = document.getElementById('stats-status');
@@ -3424,8 +3448,7 @@
         else startDate = new Date(today.getFullYear() - count + 1, 0, 1);
         const startStr = formatDate(startDate);
 
-        const snap = await get(ref(fbDb, 'opd/visits'));
-        const allByDate = snap.val() || {};
+        const allByDate = await getCachedAllVisits(state._statsForceRefresh);
         // 排除未來日期（門診還沒進行）— 預約人數仍可在 OPD 門診日下拉看
         const todayStr = formatDate(new Date());
         const dateKeys = Object.keys(allByDate).filter(d => d >= startStr && d <= todayStr).sort((a, b) => b.localeCompare(a));
@@ -3670,8 +3693,8 @@
         if (rangeVal === 'all') {
             granularity = 'y';
             try {
-                const allSnap = await get(ref(fbDb, 'opd/visits'));
-                const allDates = Object.keys(allSnap.val() || {});
+                const allByDate = await getCachedAllVisits(state._statsForceRefresh);
+                const allDates = Object.keys(allByDate);
                 const earliestYear = allDates.length ? parseInt(allDates.sort()[0].slice(0, 4), 10) : new Date().getFullYear();
                 count = new Date().getFullYear() - earliestYear + 1;
             } catch {
@@ -3732,9 +3755,8 @@
         const startKey = firstBucketStart;
         const endKey = '9999-99';
 
-        // 抓所有 visit（一次性）
-        const snap = await get(ref(fbDb, 'opd/visits'));
-        const allByDate = snap.val() || {};
+        // 抓所有 visit（用 cache，省下載量）
+        const allByDate = await getCachedAllVisits(state._statsForceRefresh);
 
         // matrix[rowKey][bucketKey] = { count, visits: [...] }
         // rowKey: "CT NB" / "CT NB::pRF" / "SONO::HA" / "TAME" 等
