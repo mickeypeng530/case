@@ -2344,42 +2344,44 @@
                 else if (c.type === 'arthro') rowCls = 'row-arthro';
                 const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'dc' ? 'status-dc' : 'status-pending');
                 const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'dc' ? '⊘ DC' : '⏳ 待做');
+                // 簡化型（mri/arthro）：plan 一行 + 不顯三 button
+                const isImaging = c.type === 'mri' || c.type === 'arthro';
+                const dateAMd = c.date ? `${parseInt(c.date.slice(5,7))}/${parseInt(c.date.slice(8,10))}` : 'A';
+                const planCellHtml = isImaging
+                    ? `<textarea data-field="planScratch" rows="1" placeholder="${esc(CASELIST_TYPE_LABEL[c.type] || '')} — 簡述" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; margin-left:6px;">${c.source === 'manual' ? '✏️' : '🔗'}</span>`
+                    : `<textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
+                        <div class="plan-row-actions" style="display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; align-items:center;">
+                            <button type="button" data-action="load-plan" title="載入 ${esc(c.date || '')} plan（覆蓋）" style="padding:2px 6px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 載入 ${esc(dateAMd)}</button>
+                            <button type="button" data-action="goto-b" title="跳到下次回診 OPD 編輯頁" style="padding:2px 6px; background:var(--color-info); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">🔗 → ?</button>
+                            <button type="button" data-action="append-b" title="追加到下次回診 plan（不覆蓋）" style="padding:2px 6px; background:var(--color-stame); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 追加 ?</button>
+                            <span class="plan-status" style="font-size:0.7rem; color:var(--text-muted);"></span>
+                            <span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="margin-left:auto; font-size:0.78rem;">${c.source === 'manual' ? '✏️' : '🔗'}</span>
+                        </div>`;
                 return `<tr class="${rowCls}" data-id="${c.id}">
-                    <td><input type="date" data-field="date" value="${c.date || ''}"></td>
-                    <td><select data-field="period"><option value="AM"${c.period === 'AM' ? ' selected' : ''}>AM</option><option value="PM"${c.period === 'PM' ? ' selected' : ''}>PM</option></select></td>
+                    <td><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
                     <td><input type="time" data-field="time" value="${esc(c.time)}"></td>
                     <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
                     <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
                     <td style="white-space: nowrap;">
                         ${c.type === 'other'
-                            ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:100px;"><button type="button" data-action="reset-type" title="改類型" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; font-size:0.85rem;">↻</button>`
-                            : `<select data-field="type" style="width:auto; max-width:90px;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>`
+                            ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:90px;"><button type="button" data-action="reset-type" title="改類型" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:0 4px; font-size:0.85rem;">↻</button>`
+                            : `<select data-field="type" style="width:100%;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>`
                         }
                     </td>
                     <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
-                    <td class="plan-cell" style="white-space:normal;">
-                        <textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 visit A plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
-                        <div class="plan-row-actions" style="display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; align-items:center;">
-                            <button type="button" data-action="load-plan" title="載入 visit A plan（覆蓋上面內容）" style="padding:2px 6px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 載入 A</button>
-                            <button type="button" data-action="goto-b" title="跳到 visit B 的 OPD 編輯頁" style="padding:2px 6px; background:var(--color-info); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">🔗 → B</button>
-                            <button type="button" data-action="append-b" title="把 plan 追加到 visit B 末尾（不覆蓋）" style="padding:2px 6px; background:var(--color-stame); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 追加 B</button>
-                            <span class="plan-status" style="font-size:0.7rem; color:var(--text-muted);"></span>
-                            <span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="margin-left:auto; font-size:0.78rem;">${c.source === 'manual' ? '✏️' : '🔗'}</span>
-                        </div>
-                    </td>
+                    <td class="plan-cell" style="white-space:normal;">${planCellHtml}</td>
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
                 </tr>`;
             }).join('');
             wrap.innerHTML = `<table class="caselist-table">
                 <thead><tr>
-                    <th style="width:108px;">日期</th>
-                    <th style="width:42px;">時段</th>
+                    <th style="width:78px;">日期</th>
                     <th style="width:78px;">時間</th>
                     <th style="width:92px;">病歷號</th>
                     <th style="width:72px;">年齡性別</th>
-                    <th style="width:120px;">類型</th>
+                    <th style="width:88px;">類型</th>
                     <th style="width:72px;">狀態</th>
-                    <th>Plan + 同步</th>
+                    <th>Plan</th>
                     <th style="width:30px;"></th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
@@ -2430,29 +2432,59 @@
                     }
                 });
                 // 跳到 visit B 的 OPD 編輯頁
-                tr.querySelector('[data-action="goto-b"]')?.addEventListener('click', async () => {
+                tr.querySelector('[data-action="goto-b"]')?.addEventListener('click', async (ev) => {
                     const c = getCaseRow();
                     if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
-                    statusEl.textContent = '查詢 visit B...';
-                    const dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
-                    if (!dateB) { statusEl.textContent = '找不到下次回診（visit B）'; return; }
+                    let dateB = ev.currentTarget.dataset.dateB;
+                    if (!dateB) {
+                        statusEl.textContent = '查詢 visit B...';
+                        dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                    }
+                    if (!dateB) { statusEl.textContent = '找不到下次回診'; return; }
                     statusEl.textContent = `→ 跳到 ${dateB}`;
                     window.location.href = `opd.html?date=${dateB}&rec=${encodeURIComponent(c.chartNo.trim())}`;
                 });
                 // 追加 textarea 到 visit B plan 末尾
-                tr.querySelector('[data-action="append-b"]')?.addEventListener('click', async () => {
+                tr.querySelector('[data-action="append-b"]')?.addEventListener('click', async (ev) => {
                     const c = getCaseRow();
                     if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
                     const content = ta.value || '';
                     if (!content.trim()) { statusEl.textContent = 'plan 內容為空'; return; }
-                    statusEl.textContent = '查詢 visit B...';
-                    const dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
-                    if (!dateB) { statusEl.textContent = '找不到下次回診（visit B）'; return; }
+                    let dateB = ev.currentTarget.dataset.dateB;
+                    if (!dateB) {
+                        statusEl.textContent = '查詢 visit B...';
+                        dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                    }
+                    if (!dateB) { statusEl.textContent = '找不到下次回診'; return; }
                     if (!confirm(`確定把目前 plan 追加到 visit B (${dateB}) 末尾？\n\n（不覆蓋既有內容）`)) {
                         statusEl.textContent = '已取消'; return;
                     }
                     await caselistAppendToVisitB(c.chartNo.trim(), dateB, content, c.date, statusEl);
                 });
+                // 非 imaging row（有 goto-b button 才預讀 visit B 日期更新 button label）
+                if (tr.querySelector('[data-action="goto-b"]')) {
+                    const c0 = getCaseRow();
+                    if (c0?.chartNo && c0?.date) {
+                        caselistFindVisitB(c0.chartNo.trim(), c0.date).then(dateB => {
+                            const btnGoto = tr.querySelector('[data-action="goto-b"]');
+                            const btnAppend = tr.querySelector('[data-action="append-b"]');
+                            if (!btnGoto || !btnAppend) return;
+                            if (!dateB) {
+                                btnGoto.textContent = '🔗 → 無';
+                                btnAppend.textContent = '⬇ 無 B';
+                                btnGoto.disabled = btnAppend.disabled = true;
+                                btnGoto.style.opacity = btnAppend.style.opacity = '0.5';
+                                btnGoto.title = btnAppend.title = '找不到下次回診';
+                                return;
+                            }
+                            const md = `${parseInt(dateB.slice(5,7))}/${parseInt(dateB.slice(8,10))}`;
+                            btnGoto.textContent = `🔗 → ${md}`;
+                            btnAppend.textContent = `⬇ 追加 ${md}`;
+                            btnGoto.dataset.dateB = dateB;
+                            btnAppend.dataset.dateB = dateB;
+                        }).catch(()=>{});
+                    }
+                }
             });
         }
 
