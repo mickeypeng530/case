@@ -1067,8 +1067,8 @@
             <div style="display: flex; align-items: center; gap: 12px;">
                 <a href="opd.html" id="goto-opd-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="切換到 OPD 系統">🩺<span class="btn-text"> OPD</span></a>
                 <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
-                <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄<span class="btn-text"> 匯出</span></button>
-                <button id="caselist-btn" style="padding: 6px 12px; background: var(--color-info); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📋<span class="btn-text"> 線上 list</span></button>
+                <button id="export-btn" title="匯出 docx" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄</button>
+                <button id="caselist-btn" title="線上 list" style="padding: 6px 12px; background: var(--color-info); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📋</button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
                 <span class="storage-status">
                     <span class="storage-dot" id="storage-dot"></span>
@@ -2184,6 +2184,57 @@
             renderCaselist();
         }
 
+        // ========== caselist plan 同步（visit A → visit B）==========
+        // 找該 case 的 visit B（下次回診）：優先讀 visit A.propagatedTo，否則查 patientVisitIndex
+        async function caselistFindVisitB(rec, dateA) {
+            try {
+                // 1. visit A 的 propagatedTo
+                const vaSnap = await get(ref(fbDb, `opd/visits/${dateA}/${rec}/propagatedTo`));
+                const tgt = vaSnap.val();
+                if (tgt && /^\d{4}-\d{2}-\d{2}$/.test(tgt)) return tgt;
+                // 2. patientVisitIndex 找 > dateA 最早一筆
+                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${rec}`));
+                const all = Object.keys(idxSnap.val() || {}).filter(d => d > dateA).sort();
+                return all[0] || null;
+            } catch (e) { console.warn('findVisitB', e); return null; }
+        }
+
+        async function caselistLoadVisitAPlan(rec, dateA, statusEl) {
+            statusEl.textContent = '載入中...';
+            try {
+                const snap = await get(ref(fbDb, `opd/visits/${dateA}/${rec}/plan`));
+                const plan = snap.val() || '';
+                statusEl.textContent = plan ? `已載入 (${plan.split('\n').length} 行)` : '此 visit 無 plan';
+                return plan;
+            } catch (e) {
+                statusEl.textContent = `載入失敗：${e.message}`;
+                return null;
+            }
+        }
+
+        async function caselistAppendToVisitB(rec, dateB, content, dateA, statusEl) {
+            if (!content || !content.trim()) {
+                statusEl.textContent = '內容為空，未追加';
+                return false;
+            }
+            statusEl.textContent = '追加中...';
+            try {
+                // race-guard：寫前抓最新
+                const freshSnap = await get(ref(fbDb, `opd/visits/${dateB}/${rec}/plan`));
+                const oldPlan = freshSnap.val() || '';
+                const now = new Date();
+                const ts = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                const sep = `\n\n----- 從 ${dateA} 補記 (${ts}) -----\n`;
+                const newPlan = (oldPlan ? oldPlan + sep : `從 ${dateA} 補記 (${ts})\n`) + content.trim();
+                await update(ref(fbDb), { [`opd/visits/${dateB}/${rec}/plan`]: newPlan });
+                statusEl.textContent = `✓ 已追加到 ${dateB}`;
+                return true;
+            } catch (e) {
+                statusEl.textContent = `追加失敗：${e.message}`;
+                return false;
+            }
+        }
+
         // 病歷號自動填補：先查 caselist 自己（同病歷號 ±30 天）→ 沒有則查 OPD 病人主表
         async function tryAutoFillFromNearby(currentId, chartNo) {
             if (!chartNo || !chartNo.trim()) return;
@@ -2300,23 +2351,35 @@
                     <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
                     <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
                     <td style="white-space: nowrap;">
-                        <select data-field="type" style="width:auto; max-width:80px;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>${c.type === 'other' ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:80px; margin-left:3px;">` : ''}
+                        ${c.type === 'other'
+                            ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:100px;"><button type="button" data-action="reset-type" title="改類型" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; font-size:0.85rem;">↻</button>`
+                            : `<select data-field="type" style="width:auto; max-width:90px;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>`
+                        }
                     </td>
                     <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
-                    <td><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}">${c.source === 'manual' ? '✏️' : '🔗'}</span></td>
+                    <td class="plan-cell" style="white-space:normal;">
+                        <textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 visit A plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
+                        <div class="plan-row-actions" style="display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; align-items:center;">
+                            <button type="button" data-action="load-plan" title="載入 visit A plan（覆蓋上面內容）" style="padding:2px 6px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 載入 A</button>
+                            <button type="button" data-action="goto-b" title="跳到 visit B 的 OPD 編輯頁" style="padding:2px 6px; background:var(--color-info); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">🔗 → B</button>
+                            <button type="button" data-action="append-b" title="把 plan 追加到 visit B 末尾（不覆蓋）" style="padding:2px 6px; background:var(--color-stame); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 追加 B</button>
+                            <span class="plan-status" style="font-size:0.7rem; color:var(--text-muted);"></span>
+                            <span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="margin-left:auto; font-size:0.78rem;">${c.source === 'manual' ? '✏️' : '🔗'}</span>
+                        </div>
+                    </td>
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
                 </tr>`;
             }).join('');
             wrap.innerHTML = `<table class="caselist-table">
                 <thead><tr>
-                    <th style="width:130px;">日期</th>
-                    <th style="width:55px;">時段</th>
-                    <th style="width:90px;">時間</th>
-                    <th style="width:110px;">病歷號</th>
-                    <th style="width:90px;">年齡性別</th>
-                    <th style="width:160px;">類型</th>
-                    <th style="width:90px;">狀態</th>
-                    <th style="width:30px;"></th>
+                    <th style="width:108px;">日期</th>
+                    <th style="width:42px;">時段</th>
+                    <th style="width:78px;">時間</th>
+                    <th style="width:92px;">病歷號</th>
+                    <th style="width:72px;">年齡性別</th>
+                    <th style="width:120px;">類型</th>
+                    <th style="width:72px;">狀態</th>
+                    <th>Plan + 同步</th>
                     <th style="width:30px;"></th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
@@ -2324,7 +2387,7 @@
             // 綁事件（mutate state + saveToStorage）
             wrap.querySelectorAll('tr[data-id]').forEach(tr => {
                 const id = tr.dataset.id;
-                tr.querySelectorAll('input,select').forEach(inp => {
+                tr.querySelectorAll('input,select,textarea').forEach(inp => {
                     const handler = () => {
                         const field = inp.dataset.field;
                         if (!field) return;
@@ -2342,6 +2405,53 @@
                 tr.querySelector('[data-action="delete"]')?.addEventListener('click', () => {
                     if (!confirm('刪除此 row？')) return;
                     caselistDeleteRow(id);
+                });
+                // 改類型：清空 type + otherSubtype，回到下拉選擇狀態
+                tr.querySelector('[data-action="reset-type"]')?.addEventListener('click', () => {
+                    caselistUpdateField(id, 'type', '');
+                    caselistUpdateField(id, 'otherSubtype', '');
+                    renderCaselist();
+                });
+                // ===== Plan 同步三 button =====
+                const ta = tr.querySelector('textarea[data-field="planScratch"]');
+                const statusEl = tr.querySelector('.plan-status');
+                const getCaseRow = () => {
+                    const tab = getActiveTab(); if (!tab) return null;
+                    return getCaselistFor(tab.id)[id] || null;
+                };
+                // 載入 visit A plan（覆蓋 textarea）
+                tr.querySelector('[data-action="load-plan"]')?.addEventListener('click', async () => {
+                    const c = getCaseRow();
+                    if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
+                    const plan = await caselistLoadVisitAPlan(c.chartNo.trim(), c.date, statusEl);
+                    if (plan != null) {
+                        ta.value = plan;
+                        caselistUpdateField(id, 'planScratch', plan);
+                    }
+                });
+                // 跳到 visit B 的 OPD 編輯頁
+                tr.querySelector('[data-action="goto-b"]')?.addEventListener('click', async () => {
+                    const c = getCaseRow();
+                    if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
+                    statusEl.textContent = '查詢 visit B...';
+                    const dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                    if (!dateB) { statusEl.textContent = '找不到下次回診（visit B）'; return; }
+                    statusEl.textContent = `→ 跳到 ${dateB}`;
+                    window.location.href = `opd.html?date=${dateB}&rec=${encodeURIComponent(c.chartNo.trim())}`;
+                });
+                // 追加 textarea 到 visit B plan 末尾
+                tr.querySelector('[data-action="append-b"]')?.addEventListener('click', async () => {
+                    const c = getCaseRow();
+                    if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
+                    const content = ta.value || '';
+                    if (!content.trim()) { statusEl.textContent = 'plan 內容為空'; return; }
+                    statusEl.textContent = '查詢 visit B...';
+                    const dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                    if (!dateB) { statusEl.textContent = '找不到下次回診（visit B）'; return; }
+                    if (!confirm(`確定把目前 plan 追加到 visit B (${dateB}) 末尾？\n\n（不覆蓋既有內容）`)) {
+                        statusEl.textContent = '已取消'; return;
+                    }
+                    await caselistAppendToVisitB(c.chartNo.trim(), dateB, content, c.date, statusEl);
                 });
             });
         }
