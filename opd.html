@@ -631,6 +631,30 @@
         .exam-content.expanded::after,
         .exam-content:hover::after { display: none; }
         .exam-content.short::after { display: none; }
+
+        /* 慢性病史欄展開 — 同 exam-content 行為 */
+        .visit-table tbody td.col-extra .extra-content {
+            max-height: 60px;
+            overflow: hidden;
+            position: relative;
+            transition: max-height 0.15s;
+        }
+        .visit-table tbody td.col-extra .extra-content.expanded,
+        .visit-table tbody td.col-extra .extra-content:hover {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .visit-table tbody td.col-extra .extra-content::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 16px;
+            background: linear-gradient(transparent, var(--bg-secondary));
+            pointer-events: none;
+        }
+        .visit-table tbody td.col-extra .extra-content.expanded::after,
+        .visit-table tbody td.col-extra .extra-content:hover::after { display: none; }
+        .visit-table tbody td.col-extra .extra-content.short::after { display: none; }
         .exam-toggle {
             display: inline-block;
             margin-top: 2px;
@@ -3172,7 +3196,6 @@
                 <td class="col-labs">${escapeHtml(labsDisplay)}</td>
                 <td class="col-extra">${(() => {
                     const bs = p.boneScore || '';
-                    // pastHistory 用 ?? 避免「空字串」還 fallback 到 extra（user 主動清空時尊重）
                     const ph = (p.pastHistory ?? p.extra) || '';
                     const acDrugs = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
                         ? p.anticoagulants.join(' / ') : '';
@@ -3180,7 +3203,9 @@
                     if (bs) parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`);
                     if (acDrugs) parts.push(`<span style="color:#f87171;font-weight:600;font-size:0.72rem">🩸 抗凝:</span> ${escapeHtml(acDrugs)}`);
                     if (ph) parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`);
-                    return parts.join('<br>');
+                    const total = (bs + ph + acDrugs).length;
+                    const cls = total < 60 ? 'short' : '';
+                    return `<div class="extra-content ${cls}" data-record="${escapeAttr(v.recordNumber)}">${parts.join('<br>')}</div>`;
                 })()}</td>
                 <td class="col-exam">${(() => {
                     const needs = visitNeedsAnticoagCheck(v);
@@ -4103,6 +4128,13 @@
             if (numEdit && !numEdit.querySelector('input')) {
                 startNumEdit(numEdit);
                 return;
+            }
+            // 點 慢性病史 / 本次概況 內容 → 展開/收合（手機友善）
+            const extra = e.target.closest('.extra-content:not(.short)');
+            if (extra) { extra.classList.toggle('expanded'); return; }
+            const examC = e.target.closest('.exam-content:not(.short)');
+            if (examC && !e.target.closest('.pill, .ac-icon, button, [data-jump-date]')) {
+                examC.classList.toggle('expanded'); return;
             }
             const histTrigger = e.target.closest('[data-history]');
             if (histTrigger) {
