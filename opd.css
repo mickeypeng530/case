@@ -535,7 +535,7 @@
         }
         .visit-table thead th {
             position: sticky;
-            top: 50px;  /* 讓開上方 sticky 的門診日 toolbar */
+            top: var(--clinic-toolbar-h, 50px);  /* 動態跟 sticky toolbar 高度對齊 */
             background: var(--bg-tertiary);
             color: var(--text-primary);
             font-weight: 600;
