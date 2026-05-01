@@ -2617,15 +2617,26 @@
         return null;
     }
 
-    function generateRegularClinicDates(monthsBack = 36, monthsForward = 6) {
+    function generateRegularClinicDates(monthsForward = 6) {
         const today = new Date();
+        // 動態起始：從 state.patients 最早 firstVisitDate；沒有 → 預設 12 個月前
+        let earliestStr = null;
+        Object.values(state.patients || {}).forEach(p => {
+            if (p.firstVisitDate && (!earliestStr || p.firstVisitDate < earliestStr)) {
+                earliestStr = p.firstVisitDate;
+            }
+        });
+        const start = earliestStr ? new Date(earliestStr) : new Date(today.getFullYear(), today.getMonth() - 12, 1);
+        // 起始月初
+        const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+        const end = new Date(today.getFullYear(), today.getMonth() + monthsForward, 1);
         const dates = [];
-        for (let offset = -monthsBack; offset <= monthsForward; offset++) {
-            const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-            const w2 = getNthWednesdayOfMonth(d.getFullYear(), d.getMonth() + 1, 2);
-            const w4 = getNthWednesdayOfMonth(d.getFullYear(), d.getMonth() + 1, 4);
+        while (cur <= end) {
+            const w2 = getNthWednesdayOfMonth(cur.getFullYear(), cur.getMonth() + 1, 2);
+            const w4 = getNthWednesdayOfMonth(cur.getFullYear(), cur.getMonth() + 1, 4);
             if (w2) dates.push({ date: formatDate(w2), type: 'regular' });
             if (w4) dates.push({ date: formatDate(w4), type: 'regular' });
+            cur.setMonth(cur.getMonth() + 1);
         }
         return dates;
     }
