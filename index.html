@@ -2156,6 +2156,10 @@
             if (!tab) return;
             const list = getCaselistFor(tab.id);
             if (!list[id]) return;
+            // chartNo / ageSex 等文字欄位 trim，避免比對失敗
+            if (typeof value === 'string' && ['chartNo','ageSex','time','otherSubtype','date'].includes(field)) {
+                value = value.trim();
+            }
             list[id][field] = value;
             saveToStorage();
         }
