@@ -4862,7 +4862,74 @@
 
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         const colHeader = aggMode === 'visit' ? '門診日期' : (aggMode === 'month' ? '月份' : aggMode === 'quarter' ? '季' : '年份');
-        let html = '<table class="stats-table"><thead><tr>'
+        // ===== Dashboard cards + summary =====
+        const numClinics = aggMode === 'visit' ? rows.length : perDate.length;
+        const visitsArr = perDate.map(r => r.total);
+        const meanVisits = visitsArr.length > 0 ? (visitsArr.reduce((a,b) => a+b, 0) / visitsArr.length) : 0;
+        const sdVisits = visitsArr.length > 0 ? Math.sqrt(visitsArr.reduce((a,v) => a + (v - meanVisits) ** 2, 0) / visitsArr.length) : 0;
+        const maxClinic = perDate.reduce((b, r) => r.total > (b?.total ?? -1) ? r : b, null);
+        const minClinic = perDate.reduce((b, r) => (b == null || r.total < b.total) ? r : b, null);
+        const totalVisitsAll = perDate.reduce((s, r) => s + r.total, 0);
+        const totalDcAll = perDate.reduce((s, r) => s + r.noShow, 0);
+        const totalProcAll = perDate.reduce((s, r) => s + r.counts.Procedure, 0);
+        const totalBoneAll = perDate.reduce((s, r) => s + r.counts['骨鬆'], 0);
+        const dcPctAll = (totalVisitsAll + totalDcAll) > 0 ? ((totalDcAll / (totalVisitsAll + totalDcAll)) * 100).toFixed(1) : '0';
+        const procPctAll = totalVisitsAll > 0 ? Math.round((totalProcAll / totalVisitsAll) * 100) : 0;
+        const procHeavyClinics = perDate.filter(r => r.total > 0 && r.counts.Procedure / r.total >= 0.5).length;
+        const procHeavyPct = perDate.length > 0 ? Math.round((procHeavyClinics / perDate.length) * 100) : 0;
+        const dayNamesShort = ['日','一','二','三','四','五','六'];
+        const fmtClinicLabel = (d) => d ? `${d.slice(5).replace('-','/')}(${dayNamesShort[new Date(d+'T00:00').getDay()]})` : '—';
+
+        const cardStyleC = 'flex:1; min-width:140px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:10px 12px;';
+        const cardLabelC = 'font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;';
+        const cardValueC = 'font-size:1.4rem; font-weight:700; color:var(--text-primary);';
+        const cardSubC = 'font-size:0.72rem; color:var(--text-secondary); margin-top:2px;';
+
+        const dashboardHtml = `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">門診次數</div>
+                <div style="${cardValueC}">${perDate.length}</div>
+                <div style="${cardSubC}">期間內</div>
+            </div>
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">平均人數 / 門診</div>
+                <div style="${cardValueC}">${meanVisits.toFixed(1)}</div>
+                <div style="${cardSubC}">標準差 ±${sdVisits.toFixed(1)}</div>
+            </div>
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">最忙 / 最閒</div>
+                <div style="${cardValueC}; font-size:1.05rem;">${maxClinic ? maxClinic.total : '—'} / ${minClinic ? minClinic.total : '—'}</div>
+                <div style="${cardSubC}">${maxClinic ? fmtClinicLabel(maxClinic.date) : ''} / ${minClinic ? fmtClinicLabel(minClinic.date) : ''}</div>
+            </div>
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">DC 比例</div>
+                <div style="${cardValueC}; color:${parseFloat(dcPctAll) > 8 ? '#ef4444' : 'var(--text-primary)'};">${dcPctAll}%</div>
+                <div style="${cardSubC}">${totalDcAll} / ${totalVisitsAll + totalDcAll}</div>
+            </div>
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">Procedure 占比</div>
+                <div style="${cardValueC}">${procPctAll}%</div>
+                <div style="${cardSubC}">${totalProcAll} / ${totalVisitsAll} visits</div>
+            </div>
+            <div style="${cardStyleC}">
+                <div style="${cardLabelC}">Procedure-heavy 門診</div>
+                <div style="${cardValueC}">${procHeavyClinics} <span style="font-size:0.9rem;color:var(--text-muted);">(${procHeavyPct}%)</span></div>
+                <div style="${cardSubC}">procedure ≥ 50%</div>
+            </div>
+        </div>`;
+
+        // 摘要文字
+        const summaryParts = [];
+        if (perDate.length > 0) {
+            summaryParts.push(`期間內 ${perDate.length} 次門診，共 ${totalVisitsAll} 位 visits（DC ${totalDcAll}, ${dcPctAll}%）。`);
+            summaryParts.push(`平均每門診 ${meanVisits.toFixed(1)} 位（最忙 ${maxClinic.total}、最少 ${minClinic.total}）。`);
+            summaryParts.push(`Procedure 占 ${procPctAll}%；Procedure-heavy 門診 ${procHeavyClinics} 次（${procHeavyPct}%）。`);
+            if (totalBoneAll > 0) summaryParts.push(`骨鬆 ${totalBoneAll} 位。`);
+        }
+        const summaryHtml = summaryParts.length ? `<div style="background:rgba(99,102,241,0.08); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:0.88rem; line-height:1.6;">${summaryParts.map(escapeHtml).join(' ')}</div>` : '';
+
+        let html = dashboardHtml + summaryHtml;
+        html += '<table class="stats-table"><thead><tr>'
             + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>骨鬆</th><th>Image only</th><th>Med + f/u</th><th>DC</th>`
             + '</tr></thead><tbody>';
         const totals = { came: 0, Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
@@ -4922,6 +4989,36 @@
             <td>${totals.dc || '·'}</td>
         </tr>`;
         html += '</tbody></table>';
+
+        // 聚合模式：在表格下方加 Visits / Procedure 占比 / DC 比例 三條 sparkline
+        if (aggMode !== 'visit' && rows.length >= 2) {
+            const buildSpark = (vals, color) => {
+                const max = Math.max(...vals, 1);
+                const w = 200, h = 30;
+                const stepX = vals.length > 1 ? w / (vals.length - 1) : 0;
+                const points = vals.map((v, i) => `${(i * stepX).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`).join(' ');
+                return `<svg width="${w}" height="${h}" style="vertical-align:middle;"><polyline fill="none" stroke="${color}" stroke-width="2" points="${points}"/></svg>`;
+            };
+            const reverseRows = [...rows].reverse(); // 時間升序
+            const visitsTrend = reverseRows.map(r => r.total);
+            const procPctTrend = reverseRows.map(r => r.total > 0 ? Math.round((r.counts.Procedure / r.total) * 100) : 0);
+            const dcPctTrend = reverseRows.map(r => (r.total + r.noShow) > 0 ? Math.round((r.noShow / (r.total + r.noShow)) * 100) : 0);
+            html += `<div style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:240px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">Visits 走勢（時間升序 →）</div>
+                    ${buildSpark(visitsTrend, '#a855f7')}
+                </div>
+                <div style="flex:1; min-width:240px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">Procedure 占比 % 走勢</div>
+                    ${buildSpark(procPctTrend, '#22c55e')}
+                </div>
+                <div style="flex:1; min-width:240px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">DC 比例 % 走勢</div>
+                    ${buildSpark(dcPctTrend, '#ef4444')}
+                </div>
+            </div>`;
+        }
+
         container.innerHTML = html;
 
         // 點門診日 → 跳到該日
