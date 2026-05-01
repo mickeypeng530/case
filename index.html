@@ -2359,7 +2359,7 @@
                         </div>`;
                 return `<tr class="${rowCls}" data-id="${c.id}">
                     <td><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
-                    <td><input type="time" data-field="time" value="${esc(c.time)}"></td>
+                    <td><input type="text" data-field="time" value="${esc(c.time)}" placeholder="13:00" pattern="[0-9]{1,2}:[0-9]{2}" maxlength="5" style="text-align:center;"></td>
                     <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
                     <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
                     <td style="white-space: nowrap;">
@@ -2376,10 +2376,10 @@
             wrap.innerHTML = `<table class="caselist-table">
                 <thead><tr>
                     <th style="width:78px;">日期</th>
-                    <th style="width:72px;">時間</th>
+                    <th style="width:62px;">時間</th>
                     <th style="width:78px;">病歷號</th>
                     <th style="width:55px;">年/性</th>
-                    <th style="width:62px;">類型</th>
+                    <th style="width:88px;">類型</th>
                     <th style="width:64px;">狀態</th>
                     <th>Plan</th>
                     <th style="width:28px;"></th>
