@@ -334,26 +334,26 @@
         </div>
 
         <div class="field-row">
-            <div class="field">
-                <label>序號（本日看診次序）</label>
-                <input type="number" id="v-order" placeholder="1, 3, 5...">
+            <div class="field inline" title="本日看診次序">
+                <label>序號</label>
+                <input type="number" id="v-order" placeholder="1,3,5...">
             </div>
-            <div class="field">
+            <div class="field inline">
                 <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
                 <input type="text" id="v-record-number" placeholder="W61564">
             </div>
         </div>
         <div class="field-row">
-            <div class="field">
+            <div class="field inline">
                 <label>姓</label>
                 <input type="text" id="v-surname" maxlength="2">
             </div>
-            <div class="field">
-                <label>年齡 / 性別</label>
+            <div class="field inline">
+                <label>年齡/性別</label>
                 <input type="text" id="v-age-sex" placeholder="55/F">
             </div>
         </div>
-        <div class="field">
+        <div class="field inline">
             <label>來源</label>
             <input type="text" id="v-referrer" list="referrer-options" placeholder="可選或自行輸入">
             <datalist id="referrer-options">
@@ -379,15 +379,14 @@
             <label>慢性病史 / PH（病人主表）</label>
             <textarea id="v-past-history" placeholder="L5 cpfr; L L5/S NF; S/P L1-S1 fixation; NF1; ..."></textarea>
         </div>
-        <div class="field">
-            <label>抗凝劑 / 抗血小板（病人主表）</label>
-            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                <select id="v-anticoag-state" style="padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
-                    <option value="unknown">未確認</option>
-                    <option value="none">已確認 — 無抗凝</option>
-                    <option value="yes">有用 — 列出藥名</option>
-                </select>
-                <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="可多筆，用 , 分隔" style="flex: 1; min-width: 200px; padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; font-family: inherit; font-size: 0.9rem; display: none;">
+        <div class="field inline" title="抗凝劑 / 抗血小板（病人主表）">
+            <label>抗凝</label>
+            <select id="v-anticoag-state" style="flex: 0 0 auto; padding: 3px 7px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.86rem;">
+                <option value="unknown">未確認</option>
+                <option value="none">無</option>
+                <option value="yes">有</option>
+            </select>
+            <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名（多筆用 , 分隔）" style="flex: 1; min-width: 0; padding: 3px 7px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.86rem; display: none;"><div style="display: none;">
                 <datalist id="anticoag-options">
                     <option value="Aspirin">
                     <option value="Plavix">
@@ -2944,7 +2943,7 @@
         const acState = patient.anticoagState || (patient.anticoagulants && patient.anticoagulants.length ? 'yes' : 'unknown');
         document.getElementById('v-anticoag-state').value = acState;
         document.getElementById('v-anticoag-list').value = (patient.anticoagulants || []).join(', ');
-        document.getElementById('v-anticoag-list').style.display = (acState === 'yes') ? 'inline-block' : 'none';
+        document.getElementById('v-anticoag-list').style.display = (acState === 'yes') ? '' : 'none';
 
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
@@ -3106,7 +3105,7 @@
         // 抗凝劑 state 切換 → 顯示/隱藏藥名輸入
         document.getElementById('v-anticoag-state').addEventListener('change', (e) => {
             const inp = document.getElementById('v-anticoag-list');
-            inp.style.display = (e.target.value === 'yes') ? 'inline-block' : 'none';
+            inp.style.display = (e.target.value === 'yes') ? '' : 'none';
             if (e.target.value !== 'yes') inp.value = '';
         });
 
