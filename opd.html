@@ -353,18 +353,27 @@
                 <input type="text" id="v-age-sex" placeholder="55/F">
             </div>
         </div>
-        <div class="field inline">
-            <label>來源</label>
-            <input type="text" id="v-referrer" list="referrer-options" placeholder="可選或自行輸入">
+        <div class="field-row">
+            <div class="field inline">
+                <label>來源</label>
+                <input type="text" id="v-referrer" list="referrer-options" placeholder="可選或自行輸入">
+            </div>
+            <div class="field inline" title="抗凝劑 / 抗血小板（病人主表）">
+                <label>抗凝</label>
+                <select id="v-anticoag-state" style="flex: 0 0 auto; width: auto;">
+                    <option value="unknown">未確認</option>
+                    <option value="none">無</option>
+                    <option value="yes">有</option>
+                </select>
+                <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名" style="flex: 1; min-width: 0; display: none;">
+            </div>
+        </div>
+        <div style="display: none;">
             <datalist id="referrer-options">
-                <option value="Buo">
-                <option value="Hsu">
-                <option value="Huang">
-                <option value="Yen">
-                <option value="Lin">
-                <option value="web">
-                <option value="friend">
-                <option value="other">
+                <option value="Buo"><option value="Hsu"><option value="Huang"><option value="Yen"><option value="Lin"><option value="web"><option value="friend"><option value="other">
+            </datalist>
+            <datalist id="anticoag-options">
+                <option value="Aspirin"><option value="Plavix"><option value="Lixiana"><option value="Eliquis"><option value="Xarelto"><option value="Pradaxa"><option value="Warfarin"><option value="Dipyridamole">
             </datalist>
         </div>
         <div class="field">
@@ -378,26 +387,6 @@
         <div class="field">
             <label>慢性病史 / PH（病人主表）</label>
             <textarea id="v-past-history" placeholder="L5 cpfr; L L5/S NF; S/P L1-S1 fixation; NF1; ..."></textarea>
-        </div>
-        <div class="field inline" title="抗凝劑 / 抗血小板（病人主表）">
-            <label>抗凝</label>
-            <select id="v-anticoag-state" style="flex: 0 0 auto; width: auto;">
-                <option value="unknown">未確認</option>
-                <option value="none">無</option>
-                <option value="yes">有</option>
-            </select>
-            <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名（多筆用 , 分隔）" style="flex: 1; min-width: 0; display: none;"><div style="display: none;">
-                <datalist id="anticoag-options">
-                    <option value="Aspirin">
-                    <option value="Plavix">
-                    <option value="Lixiana">
-                    <option value="Eliquis">
-                    <option value="Xarelto">
-                    <option value="Pradaxa">
-                    <option value="Warfarin">
-                    <option value="Dipyridamole">
-                </datalist>
-            </div>
         </div>
         <div class="field">
             <label style="display:flex; justify-content:space-between; align-items:center;">
@@ -2871,7 +2860,7 @@
         const row = document.getElementById('v-future-dates-row');
         if (!row) return;
         // 蒐集：常規門診日（雙週三）+ 加診日，過濾 > currentDate
-        const reg = generateRegularClinicDates(0, 12).map(d => d.date);
+        const reg = generateRegularClinicDates(12).map(d => d.date);
         const adHoc = Object.keys(state.adHocClinicDates || {});
         const all = [...new Set([...reg, ...adHoc])].filter(d => d > currentDate).sort();
         if (all.length === 0) { row.innerHTML = ''; return; }
