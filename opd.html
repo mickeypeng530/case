@@ -567,6 +567,10 @@
     function activateTab(panelId) {
         document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
         document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === panelId));
+        // 切到門診日 → 量測 toolbar 高度（display:none 時量不到，display 後才準）
+        if (panelId === 'panel-clinic' && typeof updateClinicToolbarHeight === 'function') {
+            setTimeout(updateClinicToolbarHeight, 50);
+        }
         // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
         if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
             // 已有結果就不重算（避免每次切回來都重跑）
@@ -683,6 +687,14 @@
     });
 
     // ========== 登入後初始化 ==========
+    // 量測門診日 toolbar 實際高度，寫進 CSS var → thead 的 sticky top 對齊
+    function updateClinicToolbarHeight() {
+        const tb = document.querySelector('#panel-clinic .toolbar');
+        if (!tb) return;
+        const h = tb.getBoundingClientRect().height;
+        document.documentElement.style.setProperty('--clinic-toolbar-h', `${Math.ceil(h)}px`);
+    }
+
     function onUserReady() {
         loadPatients();
         loadAdHocClinicDates();
@@ -690,6 +702,9 @@
         bindClinicDayUI();
         bindImportUI();
         initClinicDateSelector();
+        // toolbar 量測：初始 + resize 時更新
+        setTimeout(updateClinicToolbarHeight, 100);
+        window.addEventListener('resize', updateClinicToolbarHeight);
         // Deep-link：?date=YYYY-MM-DD&rec=XXXXXX → 自動切到該日 + 開 visit modal
         try {
             const params = new URLSearchParams(window.location.search);
