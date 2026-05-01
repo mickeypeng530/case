@@ -3886,7 +3886,46 @@
         const sumAtBucket = (bk) => STATS_HIERARCHY.reduce((s, h) => s + matrix[h.main][bk].count, 0);
         const lastTotal = lastBucket ? sumAtBucket(lastBucket.key) : 0;
         const prevTotal = prevBucket ? sumAtBucket(prevBucket.key) : 0;
-        const deltaPct = prevTotal > 0 ? Math.round(((lastTotal - prevTotal) / prevTotal) * 100) : null;
+
+        // 判斷某 bucket 是否「進行中」（current period not yet ended）
+        function bucketKeyForToday(gran) {
+            const t = new Date();
+            if (gran === 'm') return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+            if (gran === 'q') return `${t.getFullYear()}-Q${Math.floor(t.getMonth() / 3) + 1}`;
+            return String(t.getFullYear());
+        }
+        const todayBucketKey = bucketKeyForToday(granularity);
+        const isLastInProgress = lastBucket && lastBucket.key === todayBucketKey;
+
+        // 計算本期已過/總長（顯示在「進行中」徽章）
+        function bucketProgress(gran) {
+            const t = new Date();
+            if (gran === 'm') {
+                const total = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+                return { elapsed: t.getDate(), total, unit: '天' };
+            }
+            if (gran === 'q') {
+                const qStart = new Date(t.getFullYear(), Math.floor(t.getMonth() / 3) * 3, 1);
+                const qEnd = new Date(t.getFullYear(), Math.floor(t.getMonth() / 3) * 3 + 3, 0);
+                const total = Math.round((qEnd - qStart) / 86400000) + 1;
+                const elapsed = Math.round((t - qStart) / 86400000) + 1;
+                return { elapsed, total, unit: '天' };
+            }
+            // y
+            const yStart = new Date(t.getFullYear(), 0, 1);
+            const total = ((t.getFullYear() % 4 === 0 && t.getFullYear() % 100 !== 0) || t.getFullYear() % 400 === 0) ? 366 : 365;
+            const elapsed = Math.round((t - yStart) / 86400000) + 1;
+            return { elapsed, total, unit: '天' };
+        }
+
+        // 進行中時：上月卡比較 shift 一格 → 「上月 vs 上上月」
+        const compareLastBucket = isLastInProgress ? prevBucket : lastBucket;
+        const comparePrevBucket = isLastInProgress
+            ? (lastIdx >= 2 ? monthList[lastIdx - 2] : null)
+            : prevBucket;
+        const compareLastTotal = compareLastBucket ? sumAtBucket(compareLastBucket.key) : 0;
+        const comparePrevTotal = comparePrevBucket ? sumAtBucket(comparePrevBucket.key) : 0;
+        const deltaPct = comparePrevTotal > 0 ? Math.round(((compareLastTotal - comparePrevTotal) / comparePrevTotal) * 100) : null;
         const deltaArrow = deltaPct == null ? '—' : (deltaPct > 0 ? `↑ +${deltaPct}%` : (deltaPct < 0 ? `↓ ${deltaPct}%` : '— 持平'));
         const deltaColor = deltaPct == null ? 'var(--text-muted)' : (deltaPct > 0 ? '#22c55e' : (deltaPct < 0 ? '#ef4444' : 'var(--text-muted)'));
 
@@ -3919,33 +3958,48 @@
         const dcPct = (totalCame + totalDc) > 0 ? ((totalDc / (totalCame + totalDc)) * 100).toFixed(1) : '0';
 
         // YoY 同期比較（只 monthly 有意義）
+        // 進行中時：用「上月 vs 去年上月」（避免拿進行中半月去比完整月）
         let yoyCard = '';
         if (granularity === 'm' && lastBucket) {
-            const ymThis = lastBucket.key; // 2026-04
-            const yThis = parseInt(ymThis.slice(0, 4), 10);
-            const ymLast = `${yThis - 1}${ymThis.slice(4)}`; // 2025-04
-            const yoyThis = yoyMatrix[ymThis] || 0;
-            const yoyLast = yoyMatrix[ymLast] || 0;
-            const yoyPct = yoyLast > 0 ? Math.round(((yoyThis - yoyLast) / yoyLast) * 100) : null;
-            const yoyArrow = yoyPct == null ? '—' : (yoyPct > 0 ? `↑ +${yoyPct}%` : (yoyPct < 0 ? `↓ ${yoyPct}%` : '— 持平'));
-            const yoyColor = yoyPct == null ? 'var(--text-muted)' : (yoyPct > 0 ? '#22c55e' : (yoyPct < 0 ? '#ef4444' : 'var(--text-muted)'));
-            yoyCard = `<div style="${cardStyle}">
-                <div style="${cardLabel}">vs 去年同月</div>
-                <div style="${cardValue}; color:${yoyColor};">${yoyArrow}</div>
-                <div style="${cardSub}">${yoyLast} → ${yoyThis}</div>
-            </div>`;
+            // 進行中 → 比較對象 shift 到 prevBucket
+            const yoyTargetBucket = isLastInProgress ? prevBucket : lastBucket;
+            if (yoyTargetBucket) {
+                const ymThis = yoyTargetBucket.key; // e.g. "2026-04"
+                const yThis = parseInt(ymThis.slice(0, 4), 10);
+                const ymLast = `${yThis - 1}${ymThis.slice(4)}`; // "2025-04"
+                const yoyThis = yoyMatrix[ymThis] || 0;
+                const yoyLast = yoyMatrix[ymLast] || 0;
+                const yoyPct = yoyLast > 0 ? Math.round(((yoyThis - yoyLast) / yoyLast) * 100) : null;
+                const yoyArrow = yoyPct == null ? '—' : (yoyPct > 0 ? `↑ +${yoyPct}%` : (yoyPct < 0 ? `↓ ${yoyPct}%` : '— 持平'));
+                const yoyColor = yoyPct == null ? 'var(--text-muted)' : (yoyPct > 0 ? '#22c55e' : (yoyPct < 0 ? '#ef4444' : 'var(--text-muted)'));
+                const yoyLabel = isLastInProgress ? `${escapeHtml(yoyTargetBucket.label)} vs 去年同月` : 'vs 去年同月';
+                yoyCard = `<div style="${cardStyle}">
+                    <div style="${cardLabel}">${yoyLabel}</div>
+                    <div style="${cardValue}; color:${yoyColor};">${yoyArrow}</div>
+                    <div style="${cardSub}">${yoyLast} → ${yoyThis}</div>
+                </div>`;
+            }
         }
+
+        // 「進行中」徽章 + 比較卡標題（依是否進行中切換）
+        const inProgressBadge = isLastInProgress ? (() => {
+            const p = bucketProgress(granularity);
+            return ` <span style="font-size:0.66rem; padding:1px 5px; background:rgba(251,191,36,0.2); color:#fde68a; border-radius:3px; vertical-align:middle;">📅 進行中 ${p.elapsed}/${p.total}${p.unit}</span>`;
+        })() : '';
+        const compareCardLabel = isLastInProgress && compareLastBucket && comparePrevBucket
+            ? `${escapeHtml(compareLastBucket.label)} vs ${escapeHtml(comparePrevBucket.label)}`  // 例：26/04 vs 26/03
+            : `vs ${escapeHtml(lastUnitName)}`;
 
         let dashboardHtml = `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
             <div style="${cardStyle}">
-                <div style="${cardLabel}">${escapeHtml(unitName)} procedure 數</div>
+                <div style="${cardLabel}">${escapeHtml(unitName)} procedure 數${inProgressBadge}</div>
                 <div style="${cardValue}">${lastTotal}</div>
                 <div style="${cardSub}">${lastBucket ? escapeHtml(lastBucket.label) : ''}</div>
             </div>
             <div style="${cardStyle}">
-                <div style="${cardLabel}">vs ${escapeHtml(lastUnitName)}</div>
+                <div style="${cardLabel}">${compareCardLabel}</div>
                 <div style="${cardValue}; color:${deltaColor};">${deltaArrow}</div>
-                <div style="${cardSub}">${prevTotal} → ${lastTotal}</div>
+                <div style="${cardSub}">${comparePrevTotal} → ${compareLastTotal}${isLastInProgress && compareLastBucket ? ` (${escapeHtml(compareLastBucket.label)})` : ''}</div>
             </div>
             ${yoyCard}
             <div style="${cardStyle}">
@@ -3972,20 +4026,28 @@
 
         // === Phase B: 自然語言摘要 ===
         const summaryParts = [];
-        if (lastTotal > 0) {
+        if (lastTotal > 0 || isLastInProgress) {
             let s = `📈 ${unitName} ${lastTotal} 筆 procedure`;
-            if (deltaPct != null) s += `，比${lastUnitName} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${prevTotal} → ${lastTotal}）`;
+            if (isLastInProgress) {
+                s += `（進行中）`;
+                if (deltaPct != null && compareLastBucket && comparePrevBucket) {
+                    s += `；參考：${compareLastBucket.label} 比 ${comparePrevBucket.label} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${comparePrevTotal} → ${compareLastTotal}）`;
+                }
+            } else if (deltaPct != null) {
+                s += `，比${lastUnitName} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${comparePrevTotal} → ${compareLastTotal}）`;
+            }
             summaryParts.push(s + '。');
         }
         if (top1 && top1.total > 0) summaryParts.push(`最常做 ${top1.name}（${top1.total} 筆，全期占 ${grandAll ? Math.round((top1.total / grandAll) * 100) : 0}%）。`);
         if (topSub) summaryParts.push(`次分類 top：${topSub.key.replace('::', ' / ')}（${topSub.total} 筆）。`);
-        // 趨勢（最近 3 期 vs 之前 3 期）
-        if (monthList.length >= 6) {
-            const recent3 = monthList.slice(-3).reduce((s, m) => s + sumAtBucket(m.key), 0);
-            const prev3 = monthList.slice(-6, -3).reduce((s, m) => s + sumAtBucket(m.key), 0);
+        // 趨勢（最近 3 期 vs 之前 3 期）— 排除進行中那期，避免半期比整期失真
+        const completedList = isLastInProgress ? monthList.slice(0, -1) : monthList;
+        if (completedList.length >= 6) {
+            const recent3 = completedList.slice(-3).reduce((s, m) => s + sumAtBucket(m.key), 0);
+            const prev3 = completedList.slice(-6, -3).reduce((s, m) => s + sumAtBucket(m.key), 0);
             if (prev3 > 0) {
                 const trendPct = Math.round(((recent3 - prev3) / prev3) * 100);
-                summaryParts.push(`近 3 期 ${recent3} 筆 vs 前 3 期 ${prev3} 筆 ${trendPct >= 0 ? '↑' : '↓'} ${Math.abs(trendPct)}%。`);
+                summaryParts.push(`近 3 期 ${recent3} 筆 vs 前 3 期 ${prev3} 筆 ${trendPct >= 0 ? '↑' : '↓'} ${Math.abs(trendPct)}%（已排除進行中）。`);
             }
         }
         const summaryHtml = summaryParts.length ? `<div style="background:rgba(99,102,241,0.08); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:0.88rem; line-height:1.6;">${summaryParts.map(escapeHtml).join(' ')}</div>` : '';
