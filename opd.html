@@ -159,10 +159,7 @@
             </select>
             <button id="stats-refresh-btn" class="primary">🔄 重新計算</button>
             <button id="stats-export-btn">📤 匯出 xlsx</button>
-            <button id="stats-migrate-btn" title="掃所有歷史 visit，依 plan 內容回填 procedure tag（只加不減）">🏷 從 plan 回填 tag</button>
             <button id="tame-import-btn" title="貼上 sheet 資料匯入 TAME 部位">📥 匯入 TAME 部位</button>
-            <button id="cleanup-old-ctnb-btn" title="刪除 2026-02 前所有 visit 的 CT NB tag（搭配「回填 tag」重整舊資料）">🧹 清除舊 CT NB tag</button>
-            <button id="normalize-tags-btn" title="批次轉換 tag 名稱：MRI→CT/MRI、NB→CT NB、follow up→f/u">🔁 標籤正規化</button>
             <button id="import-json-btn" title="貼上由 Python 解析的 JSON，覆蓋 visits + patients（不刪原有未提及的）">📥 從 JSON 匯入</button>
             <span id="stats-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
         </div>
@@ -2598,14 +2595,11 @@
         document.getElementById('stats-view')?.addEventListener('change', computeAndRenderStats);
         document.getElementById('stats-range')?.addEventListener('change', computeAndRenderStats);
         document.getElementById('clinic-agg')?.addEventListener('change', computeAndRenderStats);
-        document.getElementById('stats-migrate-btn')?.addEventListener('click', migrateBackfillTags);
         // 切換 view 時顯示/隱藏 clinic-agg
         document.getElementById('stats-view')?.addEventListener('change', (e) => {
             document.getElementById('clinic-agg').style.display = e.target.value === 'clinic' ? '' : 'none';
         });
         document.getElementById('tame-import-btn')?.addEventListener('click', openTameImportModal);
-        document.getElementById('cleanup-old-ctnb-btn')?.addEventListener('click', cleanupOldCtnbTags);
-        document.getElementById('normalize-tags-btn')?.addEventListener('click', normalizeAllTags);
         document.getElementById('import-json-btn')?.addEventListener('click', openJsonImportModal);
         document.getElementById('json-import-cancel')?.addEventListener('click', closeJsonImportModal);
         document.getElementById('json-import-go')?.addEventListener('click', handleJsonImport);
@@ -4194,49 +4188,6 @@
         state.statsMatrix = { matrix, monthList, visibleRows, mainsGrand, rowTotals };
     }
 
-    // 掃所有 visit，依 plan 內容回填 procedure tag（用 detectTagsFromVisit；同時把舊 tag 名稱正規化）
-    async function migrateBackfillTags() {
-        const status = document.getElementById('stats-status');
-        if (!confirm('將掃描所有歷史 visit，依 plan 內容回填 procedure tag（CT NB / pRF / SONO / TAME / HA / PRP / MRI / 鬆）。\n\n規則：只「加」不刪；同時把舊 tag 名 (NB → CT NB, follow up → f/u) 正規化。\n\n確定執行？')) return;
-        status.textContent = '掃描中...';
-
-        const snap = await get(ref(fbDb, 'opd/visits'));
-        const allByDate = snap.val() || {};
-
-        const updates = {};
-        let scanned = 0, willUpdate = 0;
-
-        Object.keys(allByDate).forEach(dateStr => {
-            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
-                scanned++;
-                if (v.noShow) return;
-                const oldTags = (v.tags || []);
-                const normalized = oldTags.map(normalizeTag);
-                const detected = detectTagsFromVisit(v, dateStr);
-                const merged = new Set([...normalized, ...detected]);
-                const newTags = [...merged];
-                const oldStr = oldTags.join(' ');
-                const newStr = newTags.join(' ');
-                if (oldStr !== newStr) {
-                    updates[`opd/visits/${dateStr}/${recId}/tags`] = newTags;
-                    willUpdate++;
-                }
-            });
-        });
-
-        if (willUpdate === 0) {
-            status.textContent = `掃描 ${scanned} 個 visit，無需更新`;
-            return;
-        }
-        if (!confirm(`掃描 ${scanned} 個 visit，將更新 ${willUpdate} 個（補加偵測到的 tag）。\n\n執行？`)) {
-            status.textContent = '已取消';
-            return;
-        }
-        status.textContent = `寫入中... ${willUpdate} 個`;
-        await update(ref(fbDb), updates);
-        status.textContent = `✓ 完成，更新了 ${willUpdate} 個 visit。請重新計算統計。`;
-    }
-
     // 偵測單一 visit plan 內 procedure tag
     // scope：該次 visit 日期那行（或 [本次] anchor）→ 下次明確日期那行 之間
     // 規則：dash + DISCUSS 行跳；anchor `*` 與一般行掃 procedure keyword
@@ -4354,61 +4305,6 @@
         } catch (err) {
             status.textContent = `❌ 寫入失敗：${err.message}`;
         }
-    }
-
-    // 批次正規化所有 visit 的 tag 名稱（用 normalizeTag），不動 plan、不加新 tag
-    async function normalizeAllTags() {
-        if (!confirm(`將掃描所有 visit，把舊 tag 名稱換成新名（MRI→CT/MRI、NB→CT NB、follow up→f/u）。\n\n不會 parse plan、不會加新 tag、不會刪 tag。\n\n確定執行？`)) return;
-        const status = document.getElementById('stats-status');
-        status.textContent = '掃描中...';
-        const snap = await get(ref(fbDb, 'opd/visits'));
-        const allByDate = snap.val() || {};
-        const updates = {};
-        let count = 0;
-        Object.keys(allByDate).forEach(dateStr => {
-            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
-                const old = (v.tags || []);
-                if (!old.length) return;
-                // 正規化 + 去重
-                const normalized = [...new Set(old.map(normalizeTag))];
-                if (old.join(' ') !== normalized.join(' ')) {
-                    updates[`opd/visits/${dateStr}/${recId}/tags`] = normalized;
-                    count++;
-                }
-            });
-        });
-        if (count === 0) { status.textContent = '掃描完，無需轉換'; return; }
-        if (!confirm(`將更新 ${count} 個 visit 的 tag。執行？`)) { status.textContent = '已取消'; return; }
-        await update(ref(fbDb), updates);
-        status.textContent = `✓ 已轉換 ${count} 個 visit 的 tag`;
-    }
-
-    // 清除 2026-02 前所有 visit 的舊 procedure tag（CT NB / NB / 鬆 / f/u / follow up）
-    async function cleanupOldCtnbTags() {
-        const cutoff = '2026-02-01';
-        const TARGETS = ['CT NB', 'NB', '鬆', 'f/u', 'follow up'];
-        if (!confirm(`將從 ${cutoff} 之前所有 visit 移除：${TARGETS.join(' / ')}\n\n之後可用「🏷 回填 tag」重建。\n\n確定執行？`)) return;
-        const status = document.getElementById('stats-status');
-        status.textContent = '掃描中...';
-        const snap = await get(ref(fbDb, 'opd/visits'));
-        const allByDate = snap.val() || {};
-        const updates = {};
-        let count = 0;
-        Object.keys(allByDate).forEach(dateStr => {
-            if (dateStr >= cutoff) return;
-            Object.entries(allByDate[dateStr]).forEach(([recId, v]) => {
-                const tags = (v.tags || []);
-                const filtered = tags.filter(t => !TARGETS.includes(t));
-                if (filtered.length !== tags.length) {
-                    updates[`opd/visits/${dateStr}/${recId}/tags`] = filtered;
-                    count++;
-                }
-            });
-        });
-        if (count === 0) { status.textContent = `掃描完，無需清除`; return; }
-        if (!confirm(`將清除 ${count} 個 visit 的 ${TARGETS.join(' / ')} tag。執行？`)) { status.textContent = '已取消'; return; }
-        await update(ref(fbDb), updates);
-        status.textContent = `✓ 已清除 ${count} 個 visit 的舊 tag`;
     }
 
     // 本次門診 — 批次回填 tag（依 plan 偵測，只加不減）
