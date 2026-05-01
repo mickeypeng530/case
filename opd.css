@@ -598,43 +598,28 @@
             overflow-y: auto;
             scrollbar-width: thin;
         }
-        /* Exam：預設只顯示前 3 行；hover 或 expanded 顯示全部 */
-        .exam-content {
-            max-height: 60px;
-            overflow: hidden;
-            position: relative;
-            transition: max-height 0.15s;
-        }
-        .exam-content.expanded,
-        .exam-content:hover {
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        .exam-content::after {
-            content: '';
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 16px;
-            background: linear-gradient(transparent, var(--bg-secondary));
-            pointer-events: none;
-        }
-        .exam-content.expanded::after,
-        .exam-content:hover::after { display: none; }
-        .exam-content.short::after { display: none; }
-
-        /* 慢性病史欄展開 — 同 exam-content 行為 */
+        /* Exam / 慢性病史：hover 不再撐開 row（避免 layout shift 眼花）
+           - 預設 60px 限高 + ::before 漸層淡出
+           - hover：::after 浮 popover 顯全文（absolute，不撐 row）
+           - click：lock 展開（.expanded）
+           - .short：內容夠短，不需任何 popover/chip */
+        .exam-content,
         .visit-table tbody td.col-extra .extra-content {
             max-height: 60px;
             overflow: hidden;
             position: relative;
             transition: max-height 0.15s;
+            cursor: pointer;
         }
-        .visit-table tbody td.col-extra .extra-content.expanded,
-        .visit-table tbody td.col-extra .extra-content:hover {
+        .exam-content.expanded,
+        .visit-table tbody td.col-extra .extra-content.expanded {
             max-height: 500px;
             overflow-y: auto;
+            cursor: default;
         }
-        .visit-table tbody td.col-extra .extra-content::after {
+        /* 漸層淡出（用 ::before 取代原 ::after，把 ::after 留給 hover popover） */
+        .exam-content::before,
+        .visit-table tbody td.col-extra .extra-content::before {
             content: '';
             position: absolute;
             bottom: 0; left: 0; right: 0;
@@ -642,9 +627,41 @@
             background: linear-gradient(transparent, var(--bg-secondary));
             pointer-events: none;
         }
-        .visit-table tbody td.col-extra .extra-content.expanded::after,
-        .visit-table tbody td.col-extra .extra-content:hover::after { display: none; }
-        .visit-table tbody td.col-extra .extra-content.short::after { display: none; }
+        .exam-content.expanded::before,
+        .visit-table tbody td.col-extra .extra-content.expanded::before,
+        .exam-content.short::before,
+        .visit-table tbody td.col-extra .extra-content.short::before { display: none; }
+
+        /* hover popover —— 顯 data-full，不撐 row */
+        .exam-content:not(.short):not(.expanded):hover::after,
+        .visit-table tbody td.col-extra .extra-content:not(.short):not(.expanded):hover::after {
+            content: attr(data-full);
+            position: absolute;
+            top: 0;
+            left: 100%;
+            margin-left: 6px;
+            background: linear-gradient(135deg, #2e1d4d 0%, #1e1b3a 100%);
+            border: 1.5px solid #a855f7;
+            color: #f3e8ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            width: max-content;
+            max-width: 360px;
+            box-shadow: 0 6px 18px rgba(168,85,247,0.35);
+            font-size: 0.85rem;
+            font-weight: 400;
+            line-height: 1.45;
+            z-index: 100;
+            text-align: left;
+            pointer-events: none;
+        }
+        /* light mode popover 配色 */
+        :root[data-theme="light"] .exam-content:not(.short):not(.expanded):hover::after,
+        :root[data-theme="light"] .visit-table tbody td.col-extra .extra-content:not(.short):not(.expanded):hover::after {
+            background: linear-gradient(135deg, #4c1d95 0%, #2e1065 100%);
+            color: #f3e8ff;
+        }
         .exam-toggle {
             display: inline-block;
             margin-top: 2px;
