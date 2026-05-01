@@ -4283,11 +4283,21 @@
             });
         });
         Object.entries(patients).forEach(([rec, p]) => {
-            if (mode === 'skip' && existingPatients[rec]) return;
+            const existing = existingPatients[rec];
+            if (mode === 'skip' && existing) {
+                // skip 模式且 patient 已存在：仍要把 firstVisitDate 取較早值寫回
+                // （否則 2024 批次匯入時，2025 已存在的病人 firstVisitDate 不會回推 → 規律日下拉漏列）
+                if (p.firstVisitDate && (!existing.firstVisitDate || p.firstVisitDate < existing.firstVisitDate)) {
+                    updates[`opd/patients/${rec}/firstVisitDate`] = p.firstVisitDate;
+                }
+                return;
+            }
             updates[`opd/patients/${rec}`] = {
-                ...(mode === 'overwrite' ? (existingPatients[rec] || {}) : {}),
+                ...(mode === 'overwrite' ? (existing || {}) : {}),
                 ...p,
-                createdAt: existingPatients[rec]?.createdAt || now,
+                // firstVisitDate 永遠取較早值（不被既有值覆蓋）
+                firstVisitDate: [existing?.firstVisitDate, p.firstVisitDate].filter(Boolean).sort()[0] || null,
+                createdAt: existing?.createdAt || now,
                 updatedAt: now
             };
             writtenP++;
