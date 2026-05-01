@@ -421,7 +421,7 @@
         <div class="field">
             <label>Plan（本次 visit）</label>
             <textarea id="v-plan" style="min-height: 140px; font-family: 'Noto Sans TC', monospace;"></textarea>
-            <div id="v-future-dates-row" style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 0.74rem;"></div>
+            <div id="v-future-dates-row" style="margin-top: 4px; display: flex; gap: 3px; flex-wrap: nowrap; align-items: center; font-size: 0.72rem; overflow-x: auto; white-space: nowrap; padding-bottom: 2px;"></div>
             <div style="margin-top: 4px; font-size: 0.74rem; color: var(--text-muted);">點插入到游標位置：</div>
             <div style="margin-top: 2px; display: flex; gap: 3px; flex-wrap: wrap; align-items: center;" id="v-plan-insert-row">
                 <button type="button" data-insert="[本次]" class="plan-insert-btn" style="background: rgba(99,102,241,0.4); color: white; border: 1px solid #6366f1; padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer; font-weight: 600;">[本次]</button>
@@ -722,6 +722,25 @@
         bindClinicDayUI();
         bindImportUI();
         initClinicDateSelector();
+        // Deep-link：?date=YYYY-MM-DD&rec=XXXXXX → 自動切到該日 + 開 visit modal
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const dlDate = params.get('date');
+            const dlRec = params.get('rec');
+            if (dlDate && /^\d{4}-\d{2}-\d{2}$/.test(dlDate) && dlRec) {
+                state.pendingDeepLinkOpen = dlRec;
+                state.currentClinicDate = dlDate;
+                localStorage.setItem('opd:currentClinicDate', dlDate);
+                // 等 listener / selector 都備齊再切（無 race）
+                setTimeout(() => {
+                    activateTab('panel-clinic');
+                    renderClinicDateSelector();
+                    onClinicDateChanged(dlDate);
+                }, 200);
+                // 清掉 URL 參數，避免 reload 又 trigger
+                history.replaceState({}, '', window.location.pathname);
+            }
+        } catch (e) { console.warn('deep-link 解析失敗', e); }
     }
 
     // ========== Word 匯入 ==========
@@ -1378,6 +1397,16 @@
             };
             renderVisitList();
             updateClinicDateMeta();
+            // Deep-link：visits 載到後若有 pending 目標就開 modal
+            if (state.pendingDeepLinkOpen) {
+                const rec = state.pendingDeepLinkOpen;
+                state.pendingDeepLinkOpen = null;
+                // 給 patients listener 一點時間（loadPatients 可能還沒完成）
+                setTimeout(() => {
+                    if (state.visitsByDate?.[dateStr]?.[rec]) openVisitModal(rec);
+                    else alert(`找不到該日 (${dateStr}) 的病歷號 ${rec}`);
+                }, 300);
+            }
         });
         state.visitsListener = unsub;
     }
@@ -1730,12 +1759,13 @@
                     const acDrugs = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
                         ? p.anticoagulants.join(' / ') : '';
                     const parts = [];
-                    if (bs) parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`);
-                    if (acDrugs) parts.push(`<span style="color:#f87171;font-weight:600;font-size:0.72rem">🩸 抗凝:</span> ${escapeHtml(acDrugs)}`);
-                    if (ph) parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`);
+                    const plainParts = [];
+                    if (bs) { parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`); plainParts.push(`骨鬆: ${bs}`); }
+                    if (acDrugs) { parts.push(`<span style="color:#f87171;font-weight:600;font-size:0.72rem">🩸 抗凝:</span> ${escapeHtml(acDrugs)}`); plainParts.push(`🩸 抗凝: ${acDrugs}`); }
+                    if (ph) { parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`); plainParts.push(`PH: ${ph}`); }
                     const total = (bs + ph + acDrugs).length;
                     const cls = total < 60 ? 'short' : '';
-                    return `<div class="extra-content ${cls}" data-record="${escapeAttr(v.recordNumber)}">${parts.join('<br>')}</div>`;
+                    return `<div class="extra-content ${cls}" data-record="${escapeAttr(v.recordNumber)}" data-full="${escapeAttr(plainParts.join('\n'))}">${parts.join('<br>')}</div>`;
                 })()}</td>
                 <td class="col-exam">${(() => {
                     const needs = visitNeedsAnticoagCheck(v);
@@ -1782,7 +1812,7 @@
                     return `
                         ${acIcon ? `<div class="ac-line">${acIcon}</div>` : ''}
                         ${summaryPills ? `<div class="exam-summary">${summaryPills}</div>` : ''}
-                        <div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}">${escapeHtml(v.examEducation || '')}</div>
+                        <div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}" data-full="${escapeAttr(v.examEducation || '')}">${escapeHtml(v.examEducation || '')}</div>
                     `;
                 })()}</td>
                 <td class="col-plan">
@@ -2856,16 +2886,18 @@
         if (longTerm && !final.includes(longTerm)) final.push(longTerm);
 
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
-        row.innerHTML = '<span style="color:var(--text-muted);">📅 未來門診：</span>' + final.map((d, i) => {
+        row.innerHTML = '<span style="color:var(--text-muted); flex-shrink:0;" title="未來門診">📅</span>' + final.map((d, i) => {
             const dt = new Date(d + 'T00:00');
-            const md = d.slice(5).replace('-', '/');
+            // 緊湊格式：M/D（無前導 0、無星期），長期日加 🕐
+            const md = `${dt.getMonth() + 1}/${dt.getDate()}`;
             const wd = dayNames[dt.getDay()];
             const isLong = (i === final.length - 1 && longTerm && i >= 6);
             const yy = d.slice(2, 4);
             const insert = `${yy}/${d.slice(5, 7)}/${d.slice(8, 10)} RTC 回診 `;
             const bg = isLong ? 'rgba(168,85,247,0.5)' : 'rgba(99,102,241,0.4)';
-            const label = `${md}(${wd})${isLong ? ' ⏳26週' : ''}`;
-            return `<button type="button" class="future-date-btn plan-insert-btn" data-insert="${escapeAttr(insert)}" title="插入 ${escapeAttr(d)} RTC 到 plan" style="background: ${bg}; color: white; border: 1px solid #6366f1; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">${escapeHtml(label)}</button>`;
+            const label = isLong ? `🕐${md}` : md;
+            const titleSuffix = isLong ? '（≥26週）' : '';
+            return `<button type="button" class="future-date-btn plan-insert-btn" data-insert="${escapeAttr(insert)}" title="${escapeAttr(d)} (${wd})${titleSuffix} 插入到 plan" style="background: ${bg}; color: white; border: 1px solid #6366f1; padding: 1px 5px; border-radius: 3px; font-family: inherit; font-size: 0.72rem; cursor: pointer; flex-shrink: 0;">${escapeHtml(label)}</button>`;
         }).join('');
     }
 
@@ -4398,6 +4430,8 @@
         const unsub = onValue(ref(fbDb, 'opd/patients'), (snap) => {
             state.patients = snap.val() || {};
             renderPatientMaster();
+            // firstVisitDate 變動時，門診日下拉的規律日範圍也要跟著重算
+            if (typeof renderClinicDateSelector === 'function') renderClinicDateSelector();
             setStatus('connected', '已連線');
         }, (err) => {
             console.error('讀取病人資料失敗:', err);
