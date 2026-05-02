@@ -1056,31 +1056,56 @@
             box-sizing: border-box;
             font-family: inherit;
         }
-        #login-screen .login-dest-row {
+        #login-screen .dest-toggle {
             display: flex;
-            gap: 6px;
+            gap: 0;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+            margin-bottom: 14px;
             width: 100%;
+            box-sizing: border-box;
         }
-        #login-screen .login-dest-row button {
+        #login-screen .dest-toggle button {
             flex: 1;
-            padding: 9px 8px;
+            padding: 7px 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            border-radius: 5px;
+            font-size: 0.86rem;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+        #login-screen .dest-toggle button:hover {
+            color: var(--text-primary);
+        }
+        #login-screen .dest-toggle button.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        #login-screen .login-primary-btn {
+            width: 100%;
+            padding: 10px 14px;
             background: var(--color-info, #3b82f6);
             border: none;
             color: white;
             border-radius: 6px;
-            font-size: 0.86rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             font-family: inherit;
-            white-space: nowrap;
             transition: opacity 0.15s, transform 0.05s;
+            box-sizing: border-box;
         }
-        #login-screen .login-dest-row button:hover { opacity: 0.9; }
-        #login-screen .login-dest-row button:active { transform: scale(0.98); }
-        #login-screen .login-dest-row button[data-dest="case"] {
-            background: var(--color-warning, #fbbf24);
-            color: #1a1a2e;
-        }
+        #login-screen .login-primary-btn:hover { opacity: 0.9; }
+        #login-screen .login-primary-btn:active { transform: scale(0.99); }
         #login-screen .divider {
             display: flex;
             align-items: center;
@@ -1127,16 +1152,16 @@
     <!-- 密碼驗證畫面 -->
     <div id="login-screen">
         <div class="card">
-            <h2>🩺 OPD / 📋 案例排程</h2>
+            <div class="dest-toggle" id="dest-toggle">
+                <button type="button" data-dest="opd">🩺 OPD</button>
+                <button type="button" data-dest="case" class="active">📋 案例排程</button>
+            </div>
             <p class="hint">提示：intra</p>
             <div class="login-inputs">
                 <input type="email" id="email-input" placeholder="Email" autocomplete="username">
                 <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
             </div>
-            <div class="login-dest-row">
-                <button id="login-btn-opd" data-dest="opd">登入 → 🩺 OPD</button>
-                <button id="login-btn-case" data-dest="case">登入 → 📋 Case</button>
-            </div>
+            <button id="login-btn" class="login-primary-btn">登入</button>
 
             <div class="divider">
                 <div class="line"></div><span>或</span><div class="line"></div>
@@ -1422,6 +1447,9 @@
             info.style.display = 'none';
         }
 
+        // 目前選的 dest（toggle 控制）；預設 = case（因在 index.html）
+        let selectedDest = 'case';
+
         // 登入後依 dest 跳頁（'opd' / 'case'）；同頁不跳
         function redirectAfterLogin(dest) {
             if (dest === 'opd') window.location.href = 'opd.html';
@@ -1429,7 +1457,7 @@
         }
 
         // Email/Password：不持久（每次都要重新輸入）
-        async function loginWithEmailPassword(dest = 'case') {
+        async function loginWithEmailPassword(dest = selectedDest) {
             const emailInput = document.getElementById('email-input');
             const passwordInput = document.getElementById('password-input');
             const error = document.getElementById('login-error');
@@ -1477,6 +1505,7 @@
             try {
                 const provider = new GoogleAuthProvider();
                 await signInWithPopup(fbAuth, provider);
+                redirectAfterLogin(selectedDest);
             } catch (err) {
                 showLoginError(err);
             }
@@ -1519,11 +1548,17 @@
             });
 
             // Email/Password 登入按鈕
-            document.getElementById('login-btn-opd')?.addEventListener('click', () => loginWithEmailPassword('opd'));
-            document.getElementById('login-btn-case')?.addEventListener('click', () => loginWithEmailPassword('case'));
+            // dest toggle（OPD / Case 切換）
+            document.querySelectorAll('#dest-toggle button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectedDest = btn.dataset.dest;
+                    document.querySelectorAll('#dest-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+                });
+            });
+            document.getElementById('login-btn').addEventListener('click', () => loginWithEmailPassword());
 
             // Enter 鍵登入
-            const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword('case'); };
+            const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
             document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
             document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
 
