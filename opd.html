@@ -18,16 +18,16 @@
 <!-- 登入畫面 -->
 <div id="login-screen">
     <div class="card">
-        <h2>🩺 OPD / 📋 案例排程</h2>
+        <div class="dest-toggle" id="dest-toggle">
+            <button type="button" data-dest="opd" class="active">🩺 OPD</button>
+            <button type="button" data-dest="case">📋 案例排程</button>
+        </div>
         <p class="hint">提示：intra</p>
         <div class="login-inputs">
             <input type="email" id="email-input" placeholder="Email" autocomplete="username">
             <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
         </div>
-        <div class="login-dest-row">
-            <button id="login-btn-opd" data-dest="opd">登入 → 🩺 OPD</button>
-            <button id="login-btn-case" data-dest="case">登入 → 📋 Case</button>
-        </div>
+        <button id="login-btn" class="login-primary-btn">登入</button>
 
         <div class="divider">
             <div class="line"></div><span>或</span><div class="line"></div>
@@ -507,13 +507,16 @@
         info.style.display = 'none';
     }
 
+    // 目前選的 dest（toggle 控制）；預設 = opd（因在 opd.html）
+    let selectedDest = 'opd';
+
     // 登入後依 dest 跳頁（'opd' / 'case'）；同頁不跳
     function redirectAfterLogin(dest) {
         if (dest === 'case') window.location.href = 'index.html';
         // dest === 'opd' 時已在 opd.html，不動
     }
 
-    async function loginWithEmailPassword(dest = 'opd') {
+    async function loginWithEmailPassword(dest = selectedDest) {
         const emailInput = document.getElementById('email-input');
         const passwordInput = document.getElementById('password-input');
         const error = document.getElementById('login-error');
@@ -553,6 +556,7 @@
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(fbAuth, provider);
+            redirectAfterLogin(selectedDest);
         } catch (err) {
             showLoginError(err);
         }
@@ -641,8 +645,14 @@
         });
 
         // 登入按鈕
-        document.getElementById('login-btn-opd')?.addEventListener('click', () => loginWithEmailPassword('opd'));
-        document.getElementById('login-btn-case')?.addEventListener('click', () => loginWithEmailPassword('case'));
+        // dest toggle（OPD / Case 切換）
+        document.querySelectorAll('#dest-toggle button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedDest = btn.dataset.dest;
+                document.querySelectorAll('#dest-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+            });
+        });
+        document.getElementById('login-btn').addEventListener('click', () => loginWithEmailPassword());
         document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
         document.getElementById('logout-btn').addEventListener('click', () => {
             if (confirm('確定要登出嗎？')) logout();
@@ -686,7 +696,7 @@
             applyTheme(next);
             localStorage.setItem('opd:theme', next);
         });
-        const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword('opd'); };
+        const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
         document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
         document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
 
