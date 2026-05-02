@@ -648,20 +648,18 @@
                 height: 100vh;
                 border-radius: 0 !important;
                 margin: 0;
+                padding: 12px !important;
             }
-            .caselist-header h3 {
-                font-size: 0.92rem !important;
-            }
-            .caselist-header h3 span { display: none; }   /* 隱藏「拖移標題列」hint */
+            .caselist-header h3 { font-size: 0.95rem !important; }
+            .caselist-header h3 span { display: none; }
             .caselist-header > div { flex-wrap: wrap; gap: 4px; }
-            /* 隱藏編輯/同步按鈕，只留 filter / 關閉 */
             #caselist-add-btn,
             #caselist-sync-btn { display: none; }
 
-            /* Table → Cards */
+            /* === Cards 容器 === */
             .caselist-table {
                 table-layout: auto;
-                font-size: 0.88rem;
+                background: transparent;
             }
             .caselist-table thead { display: none; }
             .caselist-table,
@@ -670,39 +668,66 @@
                 display: block;
                 width: 100%;
             }
+
+            /* === 卡片：清晰 border + shadow === */
             .caselist-table tr {
                 background: var(--bg-secondary);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                padding: 10px 12px;
-                margin-bottom: 10px;
+                border: 1.5px solid var(--border);
+                border-left: 4px solid var(--border);
+                border-radius: 10px;
+                padding: 12px 14px;
+                margin-bottom: 12px;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+                position: relative;
             }
-            .caselist-table tr.row-mri { border-left: 3px solid #a78bfa; }
-            .caselist-table tr.row-arthro { border-left: 3px solid #eab308; }
-            .caselist-table tr.row-done { border-left: 3px solid #22c55e; }
-            .caselist-table tr.row-dc { opacity: 0.65; }
+            /* 類型/狀態用左側粗 border 標色，不再用整列背景 */
+            .caselist-table tr.row-done { border-left-color: #22c55e; }
+            .caselist-table tr.row-mri { border-left-color: #a78bfa; background: var(--bg-secondary); }
+            .caselist-table tr.row-arthro { border-left-color: #eab308; background: var(--bg-secondary); }
+            .caselist-table tr.row-dc { opacity: 0.55; border-left-color: #94a3b8; }
+            /* 還原其他 row 在 dark/light mode 的標準 bg（覆蓋 desktop 規則）*/
+            :root[data-theme="dark"] .caselist-table tr.row-mri td,
+            :root[data-theme="dark"] .caselist-table tr.row-arthro td,
+            .caselist-table tr.row-mri td,
+            .caselist-table tr.row-arthro td,
+            .caselist-table tr.row-done td,
+            .caselist-table tr.row-dc td {
+                background: transparent !important;
+                color: var(--text-primary) !important;
+            }
+
+            /* === td：統一 row 樣式 === */
             .caselist-table td {
-                display: block;
+                display: flex;
                 width: 100%;
-                padding: 3px 0;
+                padding: 5px 0;
                 border: none;
                 white-space: normal;
+                font-size: 0.95rem;
+                line-height: 1.4;
+                color: var(--text-primary);
+                align-items: baseline;
             }
+            /* Label：對齊整齊、易識別 */
             .caselist-table td::before {
                 content: attr(data-mlabel);
-                display: inline-block;
-                min-width: 60px;
-                font-size: 0.68rem;
+                flex: 0 0 64px;
+                font-size: 0.72rem;
+                font-weight: 600;
                 color: var(--text-muted);
                 text-transform: uppercase;
-                letter-spacing: 0.06em;
-                margin-right: 6px;
-                vertical-align: middle;
+                letter-spacing: 0.05em;
+                padding-top: 2px;
             }
-            /* 沒 data-mlabel 的 td（刪除欄）整個藏起來 */
+            /* 沒 data-mlabel 的 td（刪除欄）藏 */
             .caselist-table td:not([data-mlabel]) { display: none; }
 
-            /* 純閱讀模式：所有 input/select/button 不可互動，視覺像純文字 */
+            /* === 統一字級：所有值都 0.95rem === */
+            .caselist-table td .date-cell {
+                font-size: 0.95rem !important;
+                color: var(--text-primary) !important;
+                font-weight: 600;
+            }
             .caselist-table input,
             .caselist-table select {
                 pointer-events: none;
@@ -710,39 +735,60 @@
                 border: none !important;
                 padding: 0 !important;
                 color: var(--text-primary) !important;
-                font-size: 0.92rem;
+                font-size: 0.95rem !important;
+                font-weight: 500;
                 width: auto;
                 max-width: 100%;
                 appearance: none;
                 -webkit-appearance: none;
+                -moz-appearance: none;
+                line-height: 1.4;
             }
-            .caselist-table input::placeholder { color: var(--text-muted); opacity: 0.5; }
+            .caselist-table input::placeholder { color: var(--text-muted); opacity: 0.4; }
 
-            /* 狀態 badge 仍顯示但不可點 */
+            /* 狀態 badge：放大、圓角、清楚 */
             .caselist-table .status-btn {
                 pointer-events: none;
-                font-size: 0.78rem;
-                padding: 2px 8px;
+                font-size: 0.85rem;
+                padding: 4px 12px;
+                border-radius: 14px;
+                font-weight: 500;
             }
 
-            /* Plan textarea：唯讀多行顯示，自動展開到內容高度 */
-            .caselist-table .plan-cell { padding-top: 6px !important; }
+            /* === Plan section：與其他欄分開 === */
+            .caselist-table .plan-cell {
+                display: block !important;
+                margin-top: 10px;
+                padding: 10px 0 0 0 !important;
+                border-top: 1px dashed var(--border);
+            }
+            .caselist-table .plan-cell::before {
+                display: block;
+                flex: none;
+                margin: 0 0 6px 0;
+                color: var(--accent, #6366f1);
+                font-size: 0.74rem;
+            }
             .caselist-table textarea {
-                pointer-events: none;
+                pointer-events: none;        /* 純閱讀，避免點擊跳鍵盤 */
                 background: transparent !important;
                 border: none !important;
-                padding: 4px 0 !important;
+                padding: 0 !important;
                 color: var(--text-primary) !important;
-                font-size: 0.86rem;
-                line-height: 1.5;
+                font-size: 0.95rem;
+                line-height: 1.55;
+                font-family: 'Noto Sans TC', monospace;
                 width: 100%;
                 min-width: 0 !important;
                 resize: none;
-                min-height: 80px;
-                field-sizing: content;   /* Chrome 124+ / Safari 17+：自動長到內容高度 */
+                min-height: 60px;
+                field-sizing: content;   /* 自動展開到內容全高 */
                 overflow: visible;
             }
-            /* plan 欄底下 3 顆同步 button + delete + reset-type 全藏 */
+            /* 防 textarea 被 focus 跳鍵盤（純閱讀）*/
+            .caselist-table textarea:focus { outline: none; }
+
+            /* 全部 action button 藏 */
             .caselist-table .plan-row-actions,
             .caselist-table button[data-action="reset-type"],
             .caselist-table button[data-action="delete"],
