@@ -1019,40 +1019,137 @@
                 display: block;
             }
         }
+
+        /* ===== 登入畫面（與 opd.html 一致）===== */
+        #login-screen {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: var(--bg-primary);
+        }
+        #login-screen .card {
+            background: var(--bg-secondary);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            text-align: center;
+            width: 320px;
+            box-sizing: border-box;
+        }
+        #login-screen h2 { margin-bottom: 6px; font-size: 1.1rem; color: var(--text-primary); }
+        #login-screen .hint { margin-bottom: 14px; color: var(--text-muted); font-size: 0.78rem; }
+        #login-screen .login-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        #login-screen input {
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-size: 0.92rem;
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        #login-screen .login-dest-row {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+        }
+        #login-screen .login-dest-row button {
+            flex: 1;
+            padding: 9px 8px;
+            background: var(--color-info, #3b82f6);
+            border: none;
+            color: white;
+            border-radius: 6px;
+            font-size: 0.86rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: opacity 0.15s, transform 0.05s;
+        }
+        #login-screen .login-dest-row button:hover { opacity: 0.9; }
+        #login-screen .login-dest-row button:active { transform: scale(0.98); }
+        #login-screen .login-dest-row button[data-dest="case"] {
+            background: var(--color-warning, #fbbf24);
+            color: #1a1a2e;
+        }
+        #login-screen .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 14px 0;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+        }
+        #login-screen .divider .line { flex: 1; height: 1px; background: var(--border); }
+        #login-screen #google-login-btn {
+            padding: 9px 14px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.86rem;
+            font-weight: 400;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
+            width: 100%;
+            box-sizing: border-box;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        #login-screen #google-login-btn:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+        #login-screen #google-login-btn svg {
+            width: 14px;
+            height: 14px;
+            filter: saturate(0.7) opacity(0.9);
+        }
+        #login-error { color: var(--color-danger, #ef4444); margin-top: 15px; display: none; }
+        #login-info { color: var(--text-muted); margin-top: 15px; display: none; font-size: 0.85rem; }
     </style>
     <!-- docx.js for Word export -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 </head>
 <body>
     <!-- 密碼驗證畫面 -->
-    <div id="login-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg-primary);">
-        <div style="background: var(--bg-secondary); padding: 30px; border-radius: 12px; border: 1px solid var(--border); text-align: center; min-width: 280px;">
-            <h2 style="margin-bottom: 6px; color: var(--text-primary);">🔒 請登入</h2>
-            <p style="margin-bottom: 18px; color: var(--text-muted); font-size: 0.8rem;">提示：intra</p>
-
-            <!-- Email/Password（每次都要輸入） -->
-            <input type="email" id="email-input" placeholder="Email" style="padding: 10px 15px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; font-size: 0.95rem; width: 220px; margin-bottom: 10px;" autocomplete="username">
-            <br>
-            <input type="password" id="password-input" placeholder="密碼" style="padding: 10px 15px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; font-size: 0.95rem; width: 220px;" autocomplete="current-password">
-            <br><br>
-            <button id="login-btn" style="padding: 10px 25px; background: var(--color-ct-nb); border: none; color: #1a1a2e; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;">登入</button>
-
-            <!-- 分隔線 -->
-            <div style="display: flex; align-items: center; gap: 10px; margin: 18px 0; color: var(--text-muted); font-size: 0.8rem;">
-                <div style="flex: 1; height: 1px; background: var(--border);"></div>
-                <span>或</span>
-                <div style="flex: 1; height: 1px; background: var(--border);"></div>
+    <div id="login-screen">
+        <div class="card">
+            <h2>🩺 OPD / 📋 案例排程</h2>
+            <p class="hint">提示：intra</p>
+            <div class="login-inputs">
+                <input type="email" id="email-input" placeholder="Email" autocomplete="username">
+                <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
+            </div>
+            <div class="login-dest-row">
+                <button id="login-btn-opd" data-dest="opd">登入 → 🩺 OPD</button>
+                <button id="login-btn-case" data-dest="case">登入 → 📋 Case</button>
             </div>
 
-            <!-- Google 登入（持續登入直到登出） -->
-            <button id="google-login-btn" style="padding: 10px 18px; background: white; color: #3c4043; border: 1px solid #dadce0; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 10px;">
-                <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+            <div class="divider">
+                <div class="line"></div><span>或</span><div class="line"></div>
+            </div>
+
+            <button id="google-login-btn">
+                <svg viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
                 使用 Google 登入
             </button>
-            <p style="margin-top: 6px; color: var(--text-muted); font-size: 0.75rem;">（家裡或自己電腦使用，可持續登入）</p>
+            <p class="hint" style="margin-top: 6px;">（家裡或自己電腦使用，可持續登入）</p>
 
-            <p id="login-error" style="color: var(--color-blocked); margin-top: 15px; display: none;">登入失敗</p>
-            <p id="login-info" style="color: var(--text-muted); margin-top: 15px; display: none; font-size: 0.85rem;"></p>
+            <p id="login-error">登入失敗</p>
+            <p id="login-info"></p>
         </div>
     </div>
 
@@ -1325,8 +1422,14 @@
             info.style.display = 'none';
         }
 
+        // 登入後依 dest 跳頁（'opd' / 'case'）；同頁不跳
+        function redirectAfterLogin(dest) {
+            if (dest === 'opd') window.location.href = 'opd.html';
+            // dest === 'case' 時已在 index.html，不動
+        }
+
         // Email/Password：不持久（每次都要重新輸入）
-        async function loginWithEmailPassword() {
+        async function loginWithEmailPassword(dest = 'case') {
             const emailInput = document.getElementById('email-input');
             const passwordInput = document.getElementById('password-input');
             const error = document.getElementById('login-error');
@@ -1349,6 +1452,7 @@
                 // NONE：關閉/重新整理頁面就登出，每次都要重輸（適合診間共用電腦）
                 await setPersistence(fbAuth, inMemoryPersistence);
                 await signInWithEmailAndPassword(fbAuth, email, password);
+                redirectAfterLogin(dest);
             } catch (err) {
                 showLoginError(err);
                 passwordInput.value = '';
@@ -1415,10 +1519,11 @@
             });
 
             // Email/Password 登入按鈕
-            document.getElementById('login-btn').addEventListener('click', loginWithEmailPassword);
+            document.getElementById('login-btn-opd')?.addEventListener('click', () => loginWithEmailPassword('opd'));
+            document.getElementById('login-btn-case')?.addEventListener('click', () => loginWithEmailPassword('case'));
 
             // Enter 鍵登入
-            const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
+            const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword('case'); };
             document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
             document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
 
