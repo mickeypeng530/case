@@ -3779,6 +3779,7 @@
 
         // 抓所有 visit（用 cache，省下載量）
         const allByDate = await getCachedAllVisits(state._statsForceRefresh);
+        const todayStr = formatDate(new Date());
 
         // matrix[rowKey][bucketKey] = { count, visits: [...] }
         // rowKey: "CT NB" / "CT NB::pRF" / "SONO::HA" / "TAME" 等
@@ -4027,41 +4028,146 @@
             <div style="${cardStyle}">
                 <div style="${cardLabel}">全期累計</div>
                 <div style="${cardValue}">${grandAll}</div>
-                <div style="${cardSub}">${monthList.length} ${escapeHtml(granularity === 'm' ? '個月' : granularity === 'q' ? '季' : '年')}</div>
+                <div style="${cardSub}">${monthList.length} ${escapeHtml(granularity === 'm' ? '個月' : granularity === 'q' ? '季' : '年')} · 平均 ${monthList.length > 0 ? (grandAll / monthList.length).toFixed(1) : '0'}/期</div>
             </div>
             <div style="${cardStyle}">
                 <div style="${cardLabel}">DC 比例</div>
                 <div style="${cardValue}; color:${parseFloat(dcPct) > 8 ? '#ef4444' : 'var(--text-primary)'};">${dcPct}%</div>
                 <div style="${cardSub}">${totalDc} / ${totalCame + totalDc}</div>
             </div>
-            <div style="${cardStyle}">
-                <div style="${cardLabel}">最常 procedure</div>
-                <div style="${cardValue}">${top1 ? escapeHtml(top1.name) : '—'}</div>
-                <div style="${cardSub}">${top1 ? `${top1.total} 筆 · ${grandAll ? Math.round((top1.total / grandAll) * 100) : 0}%` : ''}</div>
-            </div>
-            <div style="${cardStyle}">
-                <div style="${cardLabel}">最常 sub-type</div>
-                <div style="${cardValue}; font-size:1.05rem;">${topSub ? escapeHtml(topSub.key.replace('::', ' / ')) : '—'}</div>
-                <div style="${cardSub}">${topSub ? `${topSub.total} 筆` : ''}</div>
-            </div>
         </div>`;
 
-        // === Phase B: 自然語言摘要 ===
-        const summaryParts = [];
-        if (lastTotal > 0 || isLastInProgress) {
-            let s = `📈 ${unitName} ${lastTotal} 筆 procedure`;
-            if (isLastInProgress) {
-                s += `（進行中）`;
-                if (deltaPct != null && compareLastBucket && comparePrevBucket) {
-                    s += `；參考：${compareLastBucket.label} 比 ${comparePrevBucket.label} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${comparePrevTotal} → ${compareLastTotal}）`;
-                }
-            } else if (deltaPct != null) {
-                s += `，比${lastUnitName} ${deltaPct >= 0 ? '增加' : '減少'} ${Math.abs(deltaPct)}%（${comparePrevTotal} → ${compareLastTotal}）`;
-            }
-            summaryParts.push(s + '。');
+        // === 🏆 紀錄牆 ===
+        // 分項紀錄：每個 main procedure 找單期最高 bucket
+        const recordsMain = {};
+        STATS_HIERARCHY.forEach(h => {
+            let max = 0, bk = null;
+            monthList.forEach(m => {
+                const c = matrix[h.main][m.key].count;
+                if (c > max) { max = c; bk = m; }
+            });
+            recordsMain[h.main] = { max, bucket: bk };
+        });
+        // 子類紀錄
+        const recordsSub = {};
+        STATS_HIERARCHY.forEach(h => h.subs.forEach(sub => {
+            const k = `${h.main}::${sub}`;
+            let max = 0, bk = null;
+            monthList.forEach(m => {
+                const c = matrix[k][m.key].count;
+                if (c > max) { max = c; bk = m; }
+            });
+            recordsSub[k] = { max, bucket: bk };
+        }));
+        // 全期單期最高（所有 procedure 加總）
+        let recordTotalMax = 0, recordTotalBk = null;
+        monthList.forEach(m => {
+            const t = STATS_HIERARCHY.reduce((s, h) => s + matrix[h.main][m.key].count, 0);
+            if (t > recordTotalMax) { recordTotalMax = t; recordTotalBk = m; }
+        });
+        // 單次門診 procedure 最多（掃 allByDate）
+        let recordClinicDate = null, recordClinicCount = 0;
+        Object.entries(allByDate || {}).forEach(([dateStr, dayVisits]) => {
+            if (dateStr < startStr || dateStr > todayStr) return;
+            // 含 procedure tag 的 visit 數
+            let procCount = 0;
+            Object.values(dayVisits || {}).forEach(v => {
+                if (v.noShow) return;
+                const tags = (v.tags || []).map(normalizeTag);
+                if (tags.some(t => ['CT NB','pRF','SONO','TAME','cTAME','sTAME','HA','PRP','BMA','鬆'].includes(t))) procCount++;
+            });
+            if (procCount > recordClinicCount) { recordClinicCount = procCount; recordClinicDate = dateStr; }
+        });
+        // 單期最多病人
+        const patientsByBucket = {};
+        Object.entries(allByDate || {}).forEach(([dateStr, dayVisits]) => {
+            if (dateStr < startStr || dateStr > todayStr) return;
+            const bk = bucketOf(dateStr);
+            if (!patientsByBucket[bk]) patientsByBucket[bk] = new Set();
+            Object.keys(dayVisits || {}).forEach(rec => {
+                if (!dayVisits[rec].noShow) patientsByBucket[bk].add(rec);
+            });
+        });
+        let recordPtBk = null, recordPtCount = 0;
+        Object.entries(patientsByBucket).forEach(([bk, set]) => {
+            if (set.size > recordPtCount) { recordPtCount = set.size; recordPtBk = bk; }
+        });
+        const bucketLabel = (bk) => {
+            const m = monthList.find(mm => mm.key === bk);
+            return m ? m.label : bk;
+        };
+        const fmtClinicDate = (d) => d ? `${d.slice(2,4)}/${d.slice(5,7)}/${d.slice(8,10)}` : '—';
+
+        // 本月 vs 紀錄（only when in progress）
+        let inProgressCompareHtml = '';
+        if (isLastInProgress && lastBucket && recordTotalMax > 0) {
+            const cur = lastTotal;
+            const recRatio = recordTotalMax > 0 ? Math.min(100, Math.round((cur / recordTotalMax) * 100)) : 0;
+            const p = bucketProgress(granularity);
+            inProgressCompareHtml = `
+                <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);">
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">📅 本月（進行中）vs 全期紀錄</div>
+                    <div style="font-size:0.86rem; color:var(--text-secondary); display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                        <span>Procedure</span>
+                        <span style="font-family:monospace; color:var(--text-primary);">${cur} / ${recordTotalMax}</span>
+                        <span style="flex:1; height:8px; background:var(--bg-primary); border-radius:4px; overflow:hidden;"><span style="display:block; height:100%; width:${recRatio}%; background:linear-gradient(90deg,#a855f7,#ec4899);"></span></span>
+                        <span style="color:var(--accent); min-width:40px; text-align:right;">${recRatio}%</span>
+                    </div>
+                    <div style="font-size:0.74rem; color:var(--text-muted);">本期已過 ${p.elapsed}/${p.total} ${p.unit}（${Math.round(p.elapsed/p.total*100)}%）</div>
+                </div>
+            `;
         }
-        if (top1 && top1.total > 0) summaryParts.push(`最常做 ${top1.name}（${top1.total} 筆，全期占 ${grandAll ? Math.round((top1.total / grandAll) * 100) : 0}%）。`);
-        if (topSub) summaryParts.push(`次分類 top：${topSub.key.replace('::', ' / ')}（${topSub.total} 筆）。`);
+
+        const recordWallHtml = `
+            <details class="record-wall" style="margin-bottom:14px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:0;">
+                <summary style="padding:10px 14px; cursor:pointer; font-size:0.92rem; color:var(--text-primary); user-select:none;">
+                    🏆 紀錄牆
+                    <span style="color:var(--text-muted); font-size:0.78rem; margin-left:6px;">全期單期最高 / 分項紀錄 / 單次門診紀錄</span>
+                </summary>
+                <div style="padding:0 14px 12px;">
+                    <!-- 全期紀錄 -->
+                    <div style="font-size:0.78rem; color:var(--text-muted); letter-spacing:0.06em; margin:6px 0 4px;">全期紀錄</div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px;">
+                        <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                            <div style="font-size:0.72rem; color:var(--text-muted);">單期最多 procedure</div>
+                            <div style="font-size:1.2rem; font-weight:700; color:var(--text-primary);">${recordTotalMax} <span style="font-size:0.78rem; color:var(--text-muted);">${recordTotalBk ? `· ${escapeHtml(recordTotalBk.label)}` : ''}</span></div>
+                        </div>
+                        <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                            <div style="font-size:0.72rem; color:var(--text-muted);">單期最多病人</div>
+                            <div style="font-size:1.2rem; font-weight:700; color:var(--text-primary);">${recordPtCount} <span style="font-size:0.78rem; color:var(--text-muted);">${recordPtBk ? `· ${escapeHtml(bucketLabel(recordPtBk))}` : ''}</span></div>
+                        </div>
+                        <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:8px 10px;">
+                            <div style="font-size:0.72rem; color:var(--text-muted);">單次門診最多 procedure</div>
+                            <div style="font-size:1.2rem; font-weight:700; color:var(--text-primary);">${recordClinicCount} <span style="font-size:0.78rem; color:var(--text-muted);">· ${escapeHtml(fmtClinicDate(recordClinicDate))}</span></div>
+                        </div>
+                    </div>
+                    <!-- 分項紀錄 -->
+                    <div style="font-size:0.78rem; color:var(--text-muted); letter-spacing:0.06em; margin:12px 0 4px;">分項紀錄（單期最高）</div>
+                    <div style="display:flex; flex-direction:column; gap:3px;">
+                        ${STATS_HIERARCHY.filter(h => recordsMain[h.main].max > 0).map(h => {
+                            const r = recordsMain[h.main];
+                            const subStr = h.subs.map(sub => {
+                                const sr = recordsSub[`${h.main}::${sub}`];
+                                if (!sr || sr.max === 0) return null;
+                                return `${escapeHtml(sub)} ${sr.max} (${escapeHtml(sr.bucket?.label || '—')})`;
+                            }).filter(Boolean).join(' · ');
+                            return `<div style="display:flex; align-items:baseline; gap:8px; padding:3px 0; border-top:1px dashed var(--border); font-size:0.86rem;">
+                                <span style="font-weight:600; color:var(--text-primary); min-width:60px;">${escapeHtml(h.main)}</span>
+                                <span style="color:#fde68a; font-variant-numeric:tabular-nums;">${r.max}</span>
+                                <span style="color:var(--text-muted);">${escapeHtml(r.bucket?.label || '—')}</span>
+                                ${subStr ? `<span style="flex:1; color:var(--text-secondary); font-size:0.78rem;">— ${subStr}</span>` : '<span style="flex:1;"></span>'}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    ${inProgressCompareHtml}
+                </div>
+            </details>
+        `;
+
+
+        // === 摘要：只保留唯一獨特的「近 3 期 vs 前 3 期」 ===
+        // 其他資訊（本月數、最常 procedure / sub-type）已在 dashboard cards / 紀錄牆顯示
+        const summaryParts = [];
         // 趨勢（最近 3 期 vs 之前 3 期）— 排除進行中那期，避免半期比整期失真
         const completedList = isLastInProgress ? monthList.slice(0, -1) : monthList;
         if (completedList.length >= 6) {
@@ -4085,7 +4191,7 @@
             rowStats[key] = { mean, sd };
         });
 
-        let html = dashboardHtml + summaryHtml;
+        let html = dashboardHtml + recordWallHtml + summaryHtml;
         html += '<table class="stats-table"><thead><tr><th>Procedure</th>';
         monthList.forEach(m => html += `<th>${escapeHtml(m.label)}</th>`);
         html += '<th style="width:100px;">趨勢</th><th>合計</th></tr></thead><tbody>';
