@@ -638,9 +638,15 @@
         .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
         .caselist-table .src-cell { color: var(--text-muted); }
 
-        /* === caselist 手機版：純閱讀卡片排版 === */
+        /* === Mobile（V4 設計，純閱讀） === */
+        .caselist-desktop { display: block; }
+        .caselist-mobile { display: none; }
         @media (max-width: 768px) {
-            /* Modal 全螢幕 */
+            .caselist-desktop { display: none !important; }
+            .caselist-mobile { display: block; }
+            #caselist-table-wrap { padding: 0; }
+
+            /* Modal 全螢幕 + header 緊湊 */
             .modal.caselist-modal {
                 width: 100% !important;
                 max-width: 100% !important;
@@ -648,155 +654,236 @@
                 height: 100vh;
                 border-radius: 0 !important;
                 margin: 0;
-                padding: 12px !important;
+                padding: 10px 6px !important;
             }
             .caselist-header h3 { font-size: 0.95rem !important; }
             .caselist-header h3 span { display: none; }
             .caselist-header > div { flex-wrap: wrap; gap: 4px; }
             #caselist-add-btn,
-            #caselist-sync-btn { display: none; }
+            #caselist-sync-btn,
+            #caselist-status { display: none; }
 
-            /* === Cards 容器 === */
-            .caselist-table {
-                table-layout: auto;
-                background: transparent;
-            }
-            .caselist-table thead { display: none; }
-            .caselist-table,
-            .caselist-table tbody,
-            .caselist-table tr {
-                display: block;
-                width: 100%;
-            }
-
-            /* === 卡片：清晰 border + shadow === */
-            .caselist-table tr {
-                background: var(--bg-secondary);
-                border: 1.5px solid var(--border);
-                border-left: 4px solid var(--border);
-                border-radius: 10px;
-                padding: 12px 14px;
-                margin-bottom: 12px;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-                position: relative;
-            }
-            /* 類型/狀態用左側粗 border 標色，不再用整列背景 */
-            .caselist-table tr.row-done { border-left-color: #22c55e; }
-            .caselist-table tr.row-mri { border-left-color: #a78bfa; background: var(--bg-secondary); }
-            .caselist-table tr.row-arthro { border-left-color: #eab308; background: var(--bg-secondary); }
-            .caselist-table tr.row-dc { opacity: 0.55; border-left-color: #94a3b8; }
-            /* 還原其他 row 在 dark/light mode 的標準 bg（覆蓋 desktop 規則）*/
-            :root[data-theme="dark"] .caselist-table tr.row-mri td,
-            :root[data-theme="dark"] .caselist-table tr.row-arthro td,
-            .caselist-table tr.row-mri td,
-            .caselist-table tr.row-arthro td,
-            .caselist-table tr.row-done td,
-            .caselist-table tr.row-dc td {
-                background: transparent !important;
-                color: var(--text-primary) !important;
-            }
-
-            /* === td：統一 row 樣式 === */
-            .caselist-table td {
+            /* V4 — date group sticky header */
+            .v4-date-header {
+                padding: 10px 14px 6px;
                 display: flex;
-                width: 100%;
-                padding: 5px 0;
-                border: none;
-                white-space: normal;
-                font-size: 0.95rem;
-                line-height: 1.4;
-                color: var(--text-primary);
                 align-items: baseline;
+                gap: 10px;
+                position: sticky;
+                top: 0;
+                background: var(--bg-primary);
+                border-bottom: 1px solid var(--border);
+                z-index: 3;
             }
-            /* Label：對齊整齊、易識別 */
-            .caselist-table td::before {
-                content: attr(data-mlabel);
-                flex: 0 0 64px;
-                font-size: 0.72rem;
-                font-weight: 600;
-                color: var(--text-muted);
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                padding-top: 2px;
-            }
-            /* 沒 data-mlabel 的 td（刪除欄）藏 */
-            .caselist-table td:not([data-mlabel]) { display: none; }
-
-            /* === 統一字級：所有值都 0.95rem === */
-            .caselist-table td .date-cell {
-                font-size: 0.95rem !important;
-                color: var(--text-primary) !important;
-                font-weight: 600;
-            }
-            .caselist-table input,
-            .caselist-table select {
-                pointer-events: none;
-                background: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-                color: var(--text-primary) !important;
-                font-size: 0.95rem !important;
-                font-weight: 500;
-                width: auto;
-                max-width: 100%;
-                appearance: none;
-                -webkit-appearance: none;
-                -moz-appearance: none;
-                line-height: 1.4;
-            }
-            .caselist-table input::placeholder { color: var(--text-muted); opacity: 0.4; }
-
-            /* 狀態 badge：放大、圓角、清楚 */
-            .caselist-table .status-btn {
-                pointer-events: none;
-                font-size: 0.85rem;
-                padding: 4px 12px;
-                border-radius: 14px;
-                font-weight: 500;
-            }
-
-            /* === Plan section：與其他欄分開 === */
-            .caselist-table .plan-cell {
-                display: block !important;
-                margin-top: 10px;
-                padding: 10px 0 0 0 !important;
-                border-top: 1px dashed var(--border);
-            }
-            .caselist-table .plan-cell::before {
-                display: block;
-                flex: none;
-                margin: 0 0 6px 0;
-                color: var(--accent, #6366f1);
-                font-size: 0.74rem;
-            }
-            .caselist-table textarea {
-                pointer-events: none;        /* 純閱讀，避免點擊跳鍵盤 */
-                background: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-                color: var(--text-primary) !important;
+            .v4-date-big {
                 font-size: 0.95rem;
-                line-height: 1.55;
-                font-family: 'Noto Sans TC', monospace;
-                width: 100%;
-                min-width: 0 !important;
-                resize: none;
-                min-height: 60px;
-                field-sizing: content;   /* 自動展開到內容全高 */
-                overflow: visible;
+                font-weight: 600;
+                color: var(--text-primary);
+                font-variant-numeric: tabular-nums;
             }
-            /* 防 textarea 被 focus 跳鍵盤（純閱讀）*/
-            .caselist-table textarea:focus { outline: none; }
+            .v4-date-count {
+                font-size: 0.72rem;
+                color: var(--text-muted);
+            }
+            .v4-cards { padding: 0 12px 8px; }
 
-            /* 全部 action button 藏 */
-            .caselist-table .plan-row-actions,
-            .caselist-table button[data-action="reset-type"],
-            .caselist-table button[data-action="delete"],
-            .caselist-table button[data-action="load-plan"],
-            .caselist-table button[data-action="goto-b"],
-            .caselist-table button[data-action="append-b"] {
-                display: none !important;
+            /* V4 — pending card */
+            .v4-card {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 9px 12px 10px;
+                margin-top: 8px;
             }
+            .v4-top {
+                display: flex;
+                align-items: baseline;
+                gap: 7px;
+                flex-wrap: wrap;
+            }
+            .v4-hourglass { font-size: 0.92rem; filter: saturate(0.8); }
+            .v4-time-big {
+                font-size: 1rem;
+                font-weight: 600;
+                color: var(--text-primary);
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.01em;
+            }
+            .v4-rec {
+                font-size: 0.92rem;
+                font-weight: 500;
+                color: var(--text-primary);
+                letter-spacing: 0.01em;
+            }
+            .v4-muted {
+                font-size: 0.78rem;
+                color: var(--text-secondary);
+            }
+            .v4-type-chip,
+            .v4-type-chip-sm {
+                font-weight: 500;
+                border-radius: 4px;
+                border: 1px solid;
+                margin-left: auto;
+                background: rgba(148,163,184,0.16);
+                color: #cbd5e1;
+                border-color: rgba(148,163,184,0.32);
+            }
+            .v4-type-chip { font-size: 0.72rem; padding: 1px 8px; }
+            .v4-type-chip-sm { font-size: 0.7rem; padding: 0 6px; border-radius: 3px; }
+            /* type 配色 */
+            .v4-type-chip[data-type="sono"],
+            .v4-type-chip-sm[data-type="sono"] {
+                background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.4);
+            }
+            .v4-type-chip[data-type="mri"],
+            .v4-type-chip-sm[data-type="mri"] {
+                background: rgba(168,85,247,0.18); color: #d8b4fe; border-color: rgba(168,85,247,0.45);
+            }
+            .v4-type-chip[data-type="arthro"],
+            .v4-type-chip-sm[data-type="arthro"] {
+                background: rgba(34,197,94,0.18); color: #86efac; border-color: rgba(34,197,94,0.4);
+            }
+            .v4-type-chip[data-type="ct-nb"],
+            .v4-type-chip-sm[data-type="ct-nb"],
+            .v4-type-chip[data-type="ct-nb-prf"],
+            .v4-type-chip-sm[data-type="ct-nb-prf"] {
+                background: rgba(245,158,11,0.18); color: #fde68a; border-color: rgba(245,158,11,0.4);
+            }
+            .v4-type-chip[data-type="stame"],
+            .v4-type-chip-sm[data-type="stame"],
+            .v4-type-chip[data-type="ctame"],
+            .v4-type-chip-sm[data-type="ctame"] {
+                background: rgba(59,130,246,0.18); color: #93c5fd; border-color: rgba(59,130,246,0.4);
+            }
+
+            .v4-rtc-row { margin-top: 6px; }
+            .v4-rtc-chip {
+                display: inline-block;
+                font-size: 0.74rem;
+                color: #a5b4fc;
+                background: rgba(99,102,241,0.14);
+                border: 1px solid rgba(99,102,241,0.4);
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-variant-numeric: tabular-nums;
+                font-weight: 500;
+            }
+            .v4-plan-block {
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px dashed rgba(255,255,255,0.07);
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .v4-plan-line {
+                font-size: 0.84rem;
+                color: var(--text-secondary);
+                line-height: 1.45;
+                display: flex;
+                gap: 6px;
+            }
+            .v4-bullet { color: var(--text-muted); flex-shrink: 0; }
+
+            /* Arthro 結構化 tokens */
+            .v4-arthro-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .v4-arthro-region {
+                font-size: 0.86rem;
+                color: var(--text-primary);
+                font-weight: 500;
+            }
+            .v4-weight-chip {
+                font-size: 0.72rem;
+                color: var(--text-secondary);
+                background: rgba(148,163,184,0.12);
+                border: 1px solid rgba(148,163,184,0.25);
+                padding: 1px 6px;
+                border-radius: 4px;
+                font-variant-numeric: tabular-nums;
+            }
+            .v4-mri-time {
+                font-size: 0.84rem;
+                color: var(--text-primary);
+                font-variant-numeric: tabular-nums;
+                font-weight: 500;
+            }
+            .v4-contrast-row {
+                display: flex;
+                gap: 10px;
+                margin-top: 2px;
+            }
+            .v4-contrast-item {
+                font-size: 0.78rem;
+                color: var(--text-secondary);
+                font-variant-numeric: tabular-nums;
+            }
+            .v4-contrast-label {
+                font-size: 0.66rem;
+                color: var(--text-muted);
+                letter-spacing: 0.06em;
+                margin-right: 3px;
+                text-transform: uppercase;
+            }
+
+            /* DC 列：紅色 ✗ */
+            .v4-x { color: #ef4444 !important; }
+
+            /* Page header */
+            .v4-page-header {
+                padding: 10px 14px 8px;
+                border-bottom: 1px solid var(--border);
+            }
+            .v4-page-title {
+                font-size: 1rem;
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+            .v4-page-sub {
+                font-size: 0.72rem;
+                color: var(--text-muted);
+                margin-top: 3px;
+                font-variant-numeric: tabular-nums;
+            }
+
+            /* V4 — done row（壓縮）*/
+            .v4-done-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                margin-top: 4px;
+                background: rgba(255,255,255,0.015);
+                border: 1px solid var(--border);
+                border-radius: 7px;
+                font-size: 0.8rem;
+                opacity: 0.55;
+            }
+            .v4-check {
+                color: #22c55e;
+                font-weight: 600;
+                font-size: 0.85rem;
+            }
+            .v4-time {
+                font-variant-numeric: tabular-nums;
+                color: var(--text-secondary);
+                min-width: 38px;
+            }
+
+            .v4-empty {
+                padding: 30px 14px;
+                text-align: center;
+                color: var(--text-muted);
+            }
+
+            /* light mode bullet/border 色微調 */
+            :root[data-theme="light"] .v4-plan-block { border-top-color: rgba(0,0,0,0.08); }
+            :root[data-theme="light"] .v4-done-row { background: rgba(0,0,0,0.02); }
         }
 
         .reading-list-modal {
@@ -2458,7 +2545,7 @@
             const list = getCaselistFor(tab.id);
             if (!list[id]) return;
             // chartNo / ageSex 等文字欄位 trim，避免比對失敗
-            if (typeof value === 'string' && ['chartNo','ageSex','time','otherSubtype','date'].includes(field)) {
+            if (typeof value === 'string' && ['chartNo','ageSex','time','otherSubtype','date','arthroRegion','arthroWeight','arthroMriTime','arthroContrast'].includes(field)) {
                 value = value.trim();
             }
             list[id][field] = value;
@@ -2630,10 +2717,18 @@
             const done = inRangeAll.filter(c => c.status === 'done').length;
             const dc = inRangeAll.filter(c => c.status === 'dc').length;
             const pending = inRangeAll.filter(c => c.status === 'pending').length;
+            // V4 mobile 用：procedure 計數排除 arthro 與 mri
+            const isProcType = (t) => t && t !== 'arthro' && t !== 'mri';
+            const isArthroType = (t) => t === 'arthro';
+            const procPending = inRangeAll.filter(c => isProcType(c.type) && c.status === 'pending').length;
+            const procDone = inRangeAll.filter(c => isProcType(c.type) && c.status === 'done').length;
+            const procDc = inRangeAll.filter(c => isProcType(c.type) && c.status === 'dc').length;
+            const procTotal = procPending + procDone + procDc;
+            const arthroN = inRangeAll.filter(c => isArthroType(c.type)).length;
             document.getElementById('caselist-status').textContent = `（${startStr} ~ ${endStr}）共 ${total} 筆 · 待做 ${pending} · 已完成 ${done} · DC ${dc}`;
 
             if (items.length === 0) {
-                wrap.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div>';
+                wrap.innerHTML = `<div class="caselist-desktop"><div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div></div><div class="caselist-mobile"><div class="v4-empty">無資料</div></div>`;
                 return;
             }
             const esc = (s) => (s == null ? '' : String(s)).replace(/"/g, '&quot;');
@@ -2645,19 +2740,34 @@
                 else if (c.type === 'arthro') rowCls = 'row-arthro';
                 const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'dc' ? 'status-dc' : 'status-pending');
                 const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'dc' ? '⊘ DC' : '⏳ 待做');
-                // 簡化型（mri/arthro）：plan 一行 + 不顯三 button
-                const isImaging = c.type === 'mri' || c.type === 'arthro';
+                const isMri = c.type === 'mri';
+                const isArthro = c.type === 'arthro';
                 const dateAMd = c.date ? `${parseInt(c.date.slice(5,7))}/${parseInt(c.date.slice(8,10))}` : 'A';
-                const planCellHtml = isImaging
-                    ? `<textarea data-field="planScratch" rows="1" placeholder="${esc(CASELIST_TYPE_LABEL[c.type] || '')} — 簡述" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea><span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; margin-left:6px;">${c.source === 'manual' ? '✏️' : '🔗'}</span>`
-                    : `<textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
+                const srcIconHtml = `<span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; margin-left:auto;">${c.source === 'manual' ? '✏️' : '🔗'}</span>`;
+                // Arthro：4 個結構化欄位（部位/體重/MRI/藥量）取代 textarea
+                let planCellHtml;
+                if (isArthro) {
+                    const inputStyle = 'background:var(--bg-primary); border:1px dashed var(--border); color:var(--text-primary); border-radius:3px; padding:3px 5px; font-family:inherit; font-size:0.82rem;';
+                    const labelStyle = 'display:inline-flex; align-items:center; gap:4px; font-size:0.72rem; color:var(--text-muted);';
+                    planCellHtml = `<div class="arthro-fields" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:2px 0;">
+                            <label style="${labelStyle}">部位<input type="text" data-field="arthroRegion" value="${esc(c.arthroRegion || '')}" placeholder="L shoulder" style="${inputStyle} width:96px;"></label>
+                            <label style="${labelStyle}">體重<input type="text" data-field="arthroWeight" value="${esc(c.arthroWeight != null ? c.arthroWeight : '')}" placeholder="51" style="${inputStyle} width:48px; text-align:center;">kg</label>
+                            <label style="${labelStyle}">MRI<input type="text" data-field="arthroMriTime" value="${esc(c.arthroMriTime || '')}" placeholder="10:00" style="${inputStyle} width:62px; text-align:center;"></label>
+                            <label style="${labelStyle}">藥量<input type="text" data-field="arthroContrast" value="${esc(c.arthroContrast || '')}" placeholder="2.5+7.5" style="${inputStyle} width:88px;"></label>
+                            ${srcIconHtml}
+                        </div>`;
+                } else if (isMri) {
+                    planCellHtml = `<textarea data-field="planScratch" rows="1" placeholder="MRI — 簡述" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>${srcIconHtml.replace('margin-left:auto', 'margin-left:6px')}`;
+                } else {
+                    planCellHtml = `<textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
                         <div class="plan-row-actions" style="display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; align-items:center;">
                             <button type="button" data-action="load-plan" title="載入 ${esc(c.date || '')} plan（覆蓋）" style="padding:2px 6px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 載入 ${esc(dateAMd)}</button>
                             <button type="button" data-action="goto-b" title="跳到下次回診 OPD 編輯頁" style="padding:2px 6px; background:var(--color-info); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">🔗 → ?</button>
                             <button type="button" data-action="append-b" title="追加到下次回診 plan（不覆蓋）" style="padding:2px 6px; background:var(--color-stame); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 追加 ?</button>
                             <span class="plan-status" style="font-size:0.7rem; color:var(--text-muted);"></span>
-                            <span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="margin-left:auto; font-size:0.78rem;">${c.source === 'manual' ? '✏️' : '🔗'}</span>
+                            ${srcIconHtml}
                         </div>`;
+                }
                 return `<tr class="${rowCls}" data-id="${c.id}">
                     <td data-mlabel="日期"><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
                     <td data-mlabel="時間"><input type="text" data-field="time" value="${esc(c.time)}" placeholder="13:00" pattern="[0-9]{1,2}:[0-9]{2}" maxlength="5" style="text-align:center;"></td>
@@ -2674,7 +2784,8 @@
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
                 </tr>`;
             }).join('');
-            wrap.innerHTML = `<table class="caselist-table">
+            // === 桌面 table HTML ===
+            const desktopHtml = `<table class="caselist-table">
                 <thead><tr>
                     <th style="width:78px;">日期</th>
                     <th style="width:62px;">時間</th>
@@ -2687,6 +2798,77 @@
                 </tr></thead>
                 <tbody>${rows}</tbody>
             </table>`;
+
+            // === Mobile V4 cards HTML（純閱讀，按日期 group）===
+            const renderV4Pending = (c) => {
+                const typeKey = c.type || '';
+                const typeLabel = typeKey === 'other' ? (c.otherSubtype || 'Other') : (CASELIST_TYPE_LABEL[typeKey] || typeKey || '—');
+                const planLines = (c.planScratch || '').split('\n').map(l => l.trim()).filter(Boolean);
+                const rtcLine = planLines.find(l => /\bRTC\b/i.test(l));
+                const rtcDate = rtcLine
+                    ? ((rtcLine.match(/(\d{1,2}\/\d{1,2})\s*RTC/i) || rtcLine.match(/RTC\s*(\d{1,2}\/\d{1,2})/i) || [])[1])
+                    : null;
+                const otherLines = planLines.filter(l => l !== rtcLine);
+                let planContent = '';
+                if (c.type === 'arthro') {
+                    const region = c.arthroRegion || '?';
+                    const weight = (c.arthroWeight !== '' && c.arthroWeight != null) ? String(c.arthroWeight) : '?';
+                    const mriTime = c.arthroMriTime || '?';
+                    const contrast = c.arthroContrast || '?';
+                    planContent = `<div class="v4-plan-block">
+                        <div class="v4-arthro-row">
+                            <span class="v4-arthro-region">${esc(region)}</span>
+                            <span class="v4-weight-chip">${esc(weight)}${weight !== '?' ? 'kg' : ''}</span>
+                        </div>
+                        <div class="v4-arthro-row"><span class="v4-mri-time">MRI ${esc(mriTime)}</span></div>
+                        <div class="v4-contrast-row"><span class="v4-contrast-item"><span class="v4-contrast-label">藥量</span> ${esc(contrast)}</span></div>
+                    </div>`;
+                } else if (otherLines.length > 0) {
+                    planContent = `<div class="v4-plan-block">${otherLines.map(l => `<div class="v4-plan-line"><span class="v4-bullet">·</span><span>${esc(l.replace(/^[-*]\s*/, ''))}</span></div>`).join('')}</div>`;
+                }
+                return `<div class="v4-card">
+                    <div class="v4-top">
+                        <span class="v4-hourglass">⏳</span>
+                        <span class="v4-time-big">${esc(c.time || '')}</span>
+                        <span class="v4-rec">${esc(c.chartNo || '')}</span>
+                        ${c.ageSex ? `<span class="v4-muted">${esc(c.ageSex)}</span>` : ''}
+                        <span class="v4-type-chip" data-type="${esc(typeKey)}">${esc(typeLabel)}</span>
+                    </div>
+                    ${rtcDate ? `<div class="v4-rtc-row"><span class="v4-rtc-chip">↻ RTC ${esc(rtcDate)}</span></div>` : ''}
+                    ${planContent}
+                </div>`;
+            };
+            const renderV4Closed = (c) => {
+                const typeKey = c.type || '';
+                const typeLabel = typeKey === 'other' ? (c.otherSubtype || 'Other') : (CASELIST_TYPE_LABEL[typeKey] || typeKey || '—');
+                const isDc = c.status === 'dc';
+                return `<div class="v4-done-row${isDc ? ' v4-dc-row' : ''}">
+                    <span class="v4-check ${isDc ? 'v4-x' : ''}">${isDc ? '✗' : '✓'}</span>
+                    <span class="v4-time">${esc(c.time || '')}</span>
+                    <span class="v4-rec">${esc(c.chartNo || '')}</span>
+                    ${c.ageSex ? `<span class="v4-muted">${esc(c.ageSex)}</span>` : ''}
+                    <span class="v4-type-chip-sm" data-type="${esc(typeKey)}">${esc(typeLabel)}</span>
+                </div>`;
+            };
+            const byDate = {};
+            items.forEach(c => { (byDate[c.date] = byDate[c.date] || []).push(c); });
+            const dateKeys = Object.keys(byDate).sort();
+            const mobileGroups = dateKeys.map(date => {
+                const dateShort = date.slice(5);
+                return `<div class="v4-date-group">
+                    <div class="v4-date-header"><span class="v4-date-big">${esc(dateShort)}</span></div>
+                    <div class="v4-cards">${byDate[date].map(c => c.status === 'pending' ? renderV4Pending(c) : renderV4Closed(c)).join('')}</div>
+                </div>`;
+            }).join('');
+            const procDcStr = procDc ? ` · ${procDc} DC` : '';
+            const arthroStr = arthroN ? ` · +${arthroN} Arthro` : '';
+            const mobileHeaderSub = `${esc(startStr.slice(5))} ~ ${esc(endStr.slice(5))} · ${procTotal} 筆 · ${procPending} 待 / ${procDone} 已${procDcStr}${arthroStr}`;
+            const mobileHtml = `<div class="v4-page-header">
+                <div class="v4-page-title">線上 Case List</div>
+                <div class="v4-page-sub">${mobileHeaderSub}</div>
+            </div>${mobileGroups}`;
+
+            wrap.innerHTML = `<div class="caselist-desktop">${desktopHtml}</div><div class="caselist-mobile">${mobileHtml}</div>`;
             // 綁事件（mutate state + saveToStorage）
             wrap.querySelectorAll('tr[data-id]').forEach(tr => {
                 const id = tr.dataset.id;
