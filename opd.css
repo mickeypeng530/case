@@ -379,32 +379,58 @@
             box-sizing: border-box;
             font-family: inherit;
         }
-        /* 兩顆登入按鈕並排，總寬 = input 寬 */
-        #login-screen .login-dest-row {
+        /* 目的地 toggle（最上方兩顆切換）*/
+        #login-screen .dest-toggle {
             display: flex;
-            gap: 6px;
+            gap: 0;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+            margin-bottom: 14px;
             width: 100%;
+            box-sizing: border-box;
         }
-        #login-screen .login-dest-row button {
+        #login-screen .dest-toggle button {
             flex: 1;
-            padding: 9px 8px;
+            padding: 7px 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            border-radius: 5px;
+            font-size: 0.86rem;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+        #login-screen .dest-toggle button:hover {
+            color: var(--text-primary);
+        }
+        #login-screen .dest-toggle button.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        /* 主登入按鈕（單顆，跳當前 dest）*/
+        #login-screen .login-primary-btn {
+            width: 100%;
+            padding: 10px 14px;
             background: var(--color-info);
             border: none;
             color: white;
             border-radius: 6px;
-            font-size: 0.86rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             font-family: inherit;
-            white-space: nowrap;
             transition: opacity 0.15s, transform 0.05s;
+            box-sizing: border-box;
         }
-        #login-screen .login-dest-row button:hover { opacity: 0.9; }
-        #login-screen .login-dest-row button:active { transform: scale(0.98); }
-        #login-screen .login-dest-row button[data-dest="case"] {
-            background: var(--color-warning);
-            color: #1a1a2e;
-        }
+        #login-screen .login-primary-btn:hover { opacity: 0.9; }
+        #login-screen .login-primary-btn:active { transform: scale(0.99); }
         #login-screen .divider {
             display: flex;
             align-items: center;
