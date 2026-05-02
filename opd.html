@@ -18,12 +18,16 @@
 <!-- 登入畫面 -->
 <div id="login-screen">
     <div class="card">
-        <h2>🩺 OPD 系統</h2>
+        <h2>🩺 OPD / 📋 案例排程</h2>
         <p class="hint">提示：intra</p>
-        <input type="email" id="email-input" placeholder="Email" autocomplete="username">
-        <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
-        <br>
-        <button id="login-btn">登入</button>
+        <div class="login-inputs">
+            <input type="email" id="email-input" placeholder="Email" autocomplete="username">
+            <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
+        </div>
+        <div class="login-dest-row">
+            <button id="login-btn-opd" data-dest="opd">登入 → 🩺 OPD</button>
+            <button id="login-btn-case" data-dest="case">登入 → 📋 Case</button>
+        </div>
 
         <div class="divider">
             <div class="line"></div><span>或</span><div class="line"></div>
@@ -33,7 +37,7 @@
             <svg viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
             使用 Google 登入
         </button>
-        <p style="margin-top: 6px; color: var(--text-muted); font-size: 0.75rem;">（家裡或自己電腦使用，可持續登入）</p>
+        <p class="hint" style="margin-top: 6px;">（家裡或自己電腦使用，可持續登入）</p>
 
         <p id="login-error">登入失敗</p>
         <p id="login-info"></p>
@@ -503,7 +507,13 @@
         info.style.display = 'none';
     }
 
-    async function loginWithEmailPassword() {
+    // 登入後依 dest 跳頁（'opd' / 'case'）；同頁不跳
+    function redirectAfterLogin(dest) {
+        if (dest === 'case') window.location.href = 'index.html';
+        // dest === 'opd' 時已在 opd.html，不動
+    }
+
+    async function loginWithEmailPassword(dest = 'opd') {
         const emailInput = document.getElementById('email-input');
         const passwordInput = document.getElementById('password-input');
         const error = document.getElementById('login-error');
@@ -521,6 +531,7 @@
         try {
             await setPersistence(fbAuth, inMemoryPersistence);
             await signInWithEmailAndPassword(fbAuth, email, password);
+            redirectAfterLogin(dest);
         } catch (err) {
             showLoginError(err);
             passwordInput.value = '';
@@ -630,7 +641,8 @@
         });
 
         // 登入按鈕
-        document.getElementById('login-btn').addEventListener('click', loginWithEmailPassword);
+        document.getElementById('login-btn-opd')?.addEventListener('click', () => loginWithEmailPassword('opd'));
+        document.getElementById('login-btn-case')?.addEventListener('click', () => loginWithEmailPassword('case'));
         document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
         document.getElementById('logout-btn').addEventListener('click', () => {
             if (confirm('確定要登出嗎？')) logout();
@@ -674,7 +686,7 @@
             applyTheme(next);
             localStorage.setItem('opd:theme', next);
         });
-        const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
+        const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword('opd'); };
         document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
         document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
 
