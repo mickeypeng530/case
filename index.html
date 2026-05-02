@@ -638,6 +638,121 @@
         .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
         .caselist-table .src-cell { color: var(--text-muted); }
 
+        /* === caselist 手機版：純閱讀卡片排版 === */
+        @media (max-width: 768px) {
+            /* Modal 全螢幕 */
+            .modal.caselist-modal {
+                width: 100% !important;
+                max-width: 100% !important;
+                max-height: 100% !important;
+                height: 100vh;
+                border-radius: 0 !important;
+                margin: 0;
+            }
+            .caselist-header h3 {
+                font-size: 0.92rem !important;
+            }
+            .caselist-header h3 span { display: none; }   /* 隱藏「拖移標題列」hint */
+            .caselist-header > div { flex-wrap: wrap; gap: 4px; }
+            /* 隱藏編輯/同步按鈕，只留 filter / 關閉 */
+            #caselist-add-btn,
+            #caselist-sync-btn { display: none; }
+
+            /* Table → Cards */
+            .caselist-table {
+                table-layout: auto;
+                font-size: 0.88rem;
+            }
+            .caselist-table thead { display: none; }
+            .caselist-table,
+            .caselist-table tbody,
+            .caselist-table tr {
+                display: block;
+                width: 100%;
+            }
+            .caselist-table tr {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 10px 12px;
+                margin-bottom: 10px;
+            }
+            .caselist-table tr.row-mri { border-left: 3px solid #a78bfa; }
+            .caselist-table tr.row-arthro { border-left: 3px solid #eab308; }
+            .caselist-table tr.row-done { border-left: 3px solid #22c55e; }
+            .caselist-table tr.row-dc { opacity: 0.65; }
+            .caselist-table td {
+                display: block;
+                width: 100%;
+                padding: 3px 0;
+                border: none;
+                white-space: normal;
+            }
+            .caselist-table td::before {
+                content: attr(data-mlabel);
+                display: inline-block;
+                min-width: 60px;
+                font-size: 0.68rem;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                margin-right: 6px;
+                vertical-align: middle;
+            }
+            /* 沒 data-mlabel 的 td（刪除欄）整個藏起來 */
+            .caselist-table td:not([data-mlabel]) { display: none; }
+
+            /* 純閱讀模式：所有 input/select/button 不可互動，視覺像純文字 */
+            .caselist-table input,
+            .caselist-table select {
+                pointer-events: none;
+                background: transparent !important;
+                border: none !important;
+                padding: 0 !important;
+                color: var(--text-primary) !important;
+                font-size: 0.92rem;
+                width: auto;
+                max-width: 100%;
+                appearance: none;
+                -webkit-appearance: none;
+            }
+            .caselist-table input::placeholder { color: var(--text-muted); opacity: 0.5; }
+
+            /* 狀態 badge 仍顯示但不可點 */
+            .caselist-table .status-btn {
+                pointer-events: none;
+                font-size: 0.78rem;
+                padding: 2px 8px;
+            }
+
+            /* Plan textarea：唯讀多行顯示，自動展開到內容高度 */
+            .caselist-table .plan-cell { padding-top: 6px !important; }
+            .caselist-table textarea {
+                pointer-events: none;
+                background: transparent !important;
+                border: none !important;
+                padding: 4px 0 !important;
+                color: var(--text-primary) !important;
+                font-size: 0.86rem;
+                line-height: 1.5;
+                width: 100%;
+                min-width: 0 !important;
+                resize: none;
+                min-height: 80px;
+                field-sizing: content;   /* Chrome 124+ / Safari 17+：自動長到內容高度 */
+                overflow: visible;
+            }
+            /* plan 欄底下 3 顆同步 button + delete + reset-type 全藏 */
+            .caselist-table .plan-row-actions,
+            .caselist-table button[data-action="reset-type"],
+            .caselist-table button[data-action="delete"],
+            .caselist-table button[data-action="load-plan"],
+            .caselist-table button[data-action="goto-b"],
+            .caselist-table button[data-action="append-b"] {
+                display: none !important;
+            }
+        }
+
         .reading-list-modal {
             width: 90%;
             max-width: 450px;
@@ -2498,18 +2613,18 @@
                             <span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="margin-left:auto; font-size:0.78rem;">${c.source === 'manual' ? '✏️' : '🔗'}</span>
                         </div>`;
                 return `<tr class="${rowCls}" data-id="${c.id}">
-                    <td><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
-                    <td><input type="text" data-field="time" value="${esc(c.time)}" placeholder="13:00" pattern="[0-9]{1,2}:[0-9]{2}" maxlength="5" style="text-align:center;"></td>
-                    <td><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
-                    <td><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
-                    <td style="white-space: nowrap;">
+                    <td data-mlabel="日期"><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
+                    <td data-mlabel="時間"><input type="text" data-field="time" value="${esc(c.time)}" placeholder="13:00" pattern="[0-9]{1,2}:[0-9]{2}" maxlength="5" style="text-align:center;"></td>
+                    <td data-mlabel="病歷號"><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
+                    <td data-mlabel="年/性"><input type="text" data-field="ageSex" value="${esc(c.ageSex)}" placeholder="年齡/性別"></td>
+                    <td data-mlabel="類型" style="white-space: nowrap;">
                         ${c.type === 'other'
                             ? `<input type="text" data-field="otherSubtype" value="${esc(c.otherSubtype)}" placeholder="細項" style="width:auto; max-width:90px;"><button type="button" data-action="reset-type" title="改類型" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:0 4px; font-size:0.85rem;">↻</button>`
                             : `<select data-field="type" style="width:100%;"><option value="">—</option>${CASELIST_TYPES.map(t => `<option value="${t}"${c.type === t ? ' selected' : ''}>${CASELIST_TYPE_LABEL[t]}</option>`).join('')}</select>`
                         }
                     </td>
-                    <td><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
-                    <td class="plan-cell" style="white-space:normal;">${planCellHtml}</td>
+                    <td data-mlabel="狀態"><button type="button" class="status-btn ${statusCls}" data-action="cycle-status">${statusLabel}</button></td>
+                    <td data-mlabel="Plan" class="plan-cell" style="white-space:normal;">${planCellHtml}</td>
                     <td><button type="button" class="row-delete" data-action="delete" title="刪除">🗑</button></td>
                 </tr>`;
             }).join('');
