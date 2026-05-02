@@ -4038,6 +4038,8 @@
         </div>`;
 
         // === 🏆 紀錄牆 ===
+        let recordWallHtml = '';
+        try {
         // 分項紀錄：每個 main procedure 找單期最高 bucket
         const recordsMain = {};
         STATS_HIERARCHY.forEach(h => {
@@ -4118,7 +4120,7 @@
             `;
         }
 
-        const recordWallHtml = `
+        recordWallHtml = `
             <details class="record-wall" style="margin-bottom:14px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:0;">
                 <summary style="padding:10px 14px; cursor:pointer; font-size:0.92rem; color:var(--text-primary); user-select:none;">
                     🏆 紀錄牆
@@ -4163,6 +4165,10 @@
                 </div>
             </details>
         `;
+        } catch (recordWallErr) {
+            console.error('紀錄牆 error:', recordWallErr);
+            recordWallHtml = `<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.4); padding:10px 14px; border-radius:8px; margin-bottom:14px; color:#fca5a5; font-size:0.85rem;">紀錄牆計算失敗：${escapeHtml(recordWallErr.message)}</div>`;
+        }
 
 
         // === 摘要：只保留唯一獨特的「近 3 期 vs 前 3 期」 ===
