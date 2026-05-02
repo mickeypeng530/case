@@ -357,32 +357,53 @@
             border-radius: 12px;
             border: 1px solid var(--border);
             text-align: center;
-            min-width: 280px;
+            width: 320px;
+            box-sizing: border-box;
         }
-        #login-screen h2 { margin-bottom: 6px; }
-        #login-screen .hint { margin-bottom: 18px; color: var(--text-muted); font-size: 0.8rem; }
+        #login-screen h2 { margin-bottom: 6px; font-size: 1.1rem; }
+        #login-screen .hint { margin-bottom: 14px; color: var(--text-muted); font-size: 0.78rem; }
+        #login-screen .login-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
         #login-screen input {
-            padding: 10px 15px;
+            padding: 9px 12px;
             border: 1px solid var(--border);
             background: var(--bg-primary);
             color: var(--text-primary);
             border-radius: 6px;
-            font-size: 0.95rem;
-            width: 220px;
+            font-size: 0.92rem;
+            width: 100%;
+            box-sizing: border-box;
             font-family: inherit;
         }
-        #login-screen input + input { margin-top: 10px; }
-        #login-screen button#login-btn {
-            margin-top: 14px;
-            padding: 10px 25px;
-            background: var(--color-warning);
+        /* 兩顆登入按鈕並排，總寬 = input 寬 */
+        #login-screen .login-dest-row {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+        }
+        #login-screen .login-dest-row button {
+            flex: 1;
+            padding: 9px 8px;
+            background: var(--color-info);
             border: none;
-            color: #1a1a2e;
+            color: white;
             border-radius: 6px;
-            font-size: 1rem;
+            font-size: 0.86rem;
             font-weight: 600;
             cursor: pointer;
             font-family: inherit;
+            white-space: nowrap;
+            transition: opacity 0.15s, transform 0.05s;
+        }
+        #login-screen .login-dest-row button:hover { opacity: 0.9; }
+        #login-screen .login-dest-row button:active { transform: scale(0.98); }
+        #login-screen .login-dest-row button[data-dest="case"] {
+            background: var(--color-warning);
+            color: #1a1a2e;
         }
         #login-screen .divider {
             display: flex;
@@ -394,18 +415,21 @@
         }
         #login-screen .divider .line { flex: 1; height: 1px; background: var(--border); }
         #login-screen #google-login-btn {
-            padding: 8px 14px;
+            padding: 9px 14px;
             background: transparent;
             color: var(--text-secondary);
             border: 1px solid var(--border);
             border-radius: 6px;
-            font-size: 0.85rem;
+            font-size: 0.86rem;
             font-weight: 400;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
             font-family: inherit;
+            width: 100%;
+            box-sizing: border-box;
             transition: border-color 0.15s, color 0.15s;
         }
         #login-screen #google-login-btn:hover {
