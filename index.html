@@ -2874,19 +2874,15 @@
                 const typeKey = c.type || '';
                 const typeLabel = typeKey === 'other' ? (c.otherSubtype || 'Other') : (CASELIST_TYPE_LABEL[typeKey] || typeKey || '—');
                 const planLines = (c.planScratch || '').split('\n').map(l => l.trim()).filter(Boolean);
-                const rtcLine = planLines.find(l => /\bRTC\b/i.test(l));
-                const rtcDate = rtcLine
-                    ? ((rtcLine.match(/(\d{1,2}\/\d{1,2})\s*RTC/i) || rtcLine.match(/RTC\s*(\d{1,2}\/\d{1,2})/i) || [])[1])
+                // 看診日 / 回診日：兩行都有 RTC 字樣（電腦版 plan 第 1 行 = 看診、第 3 行 = 回診）
+                const rtcLines = planLines.filter(l => /\bRTC\b/i.test(l));
+                const extractDate = (line) => line
+                    ? ((line.match(/(\d{1,2}\/\d{1,2})\s*RTC/i) || line.match(/RTC\s*(\d{1,2}\/\d{1,2})/i) || line.match(/(\d{1,2}\/\d{1,2})/) || [])[1])
                     : null;
-                // 看診日期：plan 第一個非 RTC、非 dash bullet 的純日期行（通常是 plan 第 1 行）
-                let visitDate = null;
-                for (const line of planLines) {
-                    if (line === rtcLine) continue;
-                    // 抓 MM/DD（含可選 YY/）；行首可能有 -/* 前綴
-                    const m = line.match(/^[-*]?\s*(?:\d{2}\/)?(\d{1,2}\/\d{1,2})\b/);
-                    if (m) { visitDate = m[1]; break; }
-                }
-                const otherLines = planLines.filter(l => l !== rtcLine);
+                const visitDate = extractDate(rtcLines[0]);
+                const rtcDate = extractDate(rtcLines[1]);
+                // 把兩個 RTC line 都從 plan 顯示中移掉
+                const otherLines = planLines.filter(l => !rtcLines.includes(l));
                 let planContent = '';
                 if (c.type === 'arthro') {
                     const region = c.arthroRegion || '?';
