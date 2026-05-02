@@ -637,6 +637,13 @@
         .caselist-table .row-delete:hover { color: var(--color-danger); }
         .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
         .caselist-table .src-cell { color: var(--text-muted); }
+        /* 點 plan textarea 編輯時自動擴張到 5 行（桌機）*/
+        .caselist-table textarea[data-field="planScratch"] {
+            transition: min-height 0.15s ease;
+        }
+        .caselist-table textarea[data-field="planScratch"]:focus {
+            min-height: 110px;
+        }
 
         /* === Mobile（V4 設計，純閱讀） === */
         .caselist-desktop { display: block; }
