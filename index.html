@@ -2590,30 +2590,46 @@
 
         // ========== caselist plan 同步（visit A → visit B）==========
         // 找該 case 的 visit A（plan 來源）：
-        //   優先 caseDate 那天有 visit（門診日=執行日的場合）
-        //   否則找 patientVisitIndex 中 ≤ caseDate 的最近一筆（procedure 後續執行）
-        async function caselistFindVisitA(rec, caseDate) {
-            try {
-                const exactSnap = await get(ref(fbDb, `opd/visits/${caseDate}/${rec}`));
-                if (exactSnap.exists()) return caseDate;
-                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${rec}`));
-                const all = Object.keys(idxSnap.val() || {}).filter(d => d <= caseDate).sort();
-                return all[all.length - 1] || null;
-            } catch (e) { console.warn('findVisitA', e); return null; }
+        //   1. caseDate 那天有 visit（門診日=執行日）
+        //   2. patientVisitIndex 中 ≤ caseDate 的最近一筆
+        //   3. fallback：嘗試 leading-0 的 rec 變體（052158 ↔ 52158）
+        // rec 變體：嘗試 leading-0 add/remove 對應
+        function recVariants(rec) {
+            const list = [rec];
+            if (/^0\d/.test(rec)) list.push(rec.replace(/^0+/, ''));
+            else if (/^\d/.test(rec)) list.push('0' + rec);
+            return list;
         }
 
-        // 找該 case 的 visit B（下次回診）：優先讀 visit A.propagatedTo，否則查 patientVisitIndex
+        async function caselistFindVisitA(rec, caseDate) {
+            const variants = recVariants(rec);
+            const tried = [];
+            try {
+                for (const r of variants) {
+                    const exactSnap = await get(ref(fbDb, `opd/visits/${caseDate}/${r}`));
+                    if (exactSnap.exists()) return { date: caseDate, rec: r, tried };
+                    const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${r}`));
+                    const idxKeys = Object.keys(idxSnap.val() || {});
+                    tried.push(`${r}(${idxKeys.length}筆)`);
+                    const matches = idxKeys.filter(d => d <= caseDate).sort();
+                    if (matches.length > 0) return { date: matches[matches.length - 1], rec: r, tried };
+                }
+                return { found: false, tried };
+            } catch (e) { console.warn('findVisitA error', e); return { found: false, tried, error: e.message }; }
+        }
+
         async function caselistFindVisitB(rec, dateA) {
             try {
-                // 1. visit A 的 propagatedTo
-                const vaSnap = await get(ref(fbDb, `opd/visits/${dateA}/${rec}/propagatedTo`));
-                const tgt = vaSnap.val();
-                if (tgt && /^\d{4}-\d{2}-\d{2}$/.test(tgt)) return tgt;
-                // 2. patientVisitIndex 找 > dateA 最早一筆
-                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${rec}`));
-                const all = Object.keys(idxSnap.val() || {}).filter(d => d > dateA).sort();
-                return all[0] || null;
-            } catch (e) { console.warn('findVisitB', e); return null; }
+                for (const r of recVariants(rec)) {
+                    const vaSnap = await get(ref(fbDb, `opd/visits/${dateA}/${r}/propagatedTo`));
+                    const tgt = vaSnap.val();
+                    if (tgt && /^\d{4}-\d{2}-\d{2}$/.test(tgt)) return { date: tgt, rec: r };
+                    const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${r}`));
+                    const all = Object.keys(idxSnap.val() || {}).filter(d => d > dateA).sort();
+                    if (all.length > 0) return { date: all[0], rec: r };
+                }
+                return null;
+            } catch (e) { console.warn('findVisitB error', e); return null; }
         }
 
         async function caselistLoadVisitAPlan(rec, dateA, statusEl) {
@@ -2942,17 +2958,20 @@
                     const tab = getActiveTab(); if (!tab) return null;
                     return getCaselistFor(tab.id)[id] || null;
                 };
-                // 載入 visit A plan（用 caselistFindVisitA 解析實際 visit 日期）
+                // 載入 visit A plan（用 caselistFindVisitA 解析實際 visit 日期 + rec 變體）
                 tr.querySelector('[data-action="load-plan"]')?.addEventListener('click', async (ev) => {
                     const c = getCaseRow();
                     if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
                     let dateA = ev.currentTarget.dataset.dateA;
+                    let usedRec = ev.currentTarget.dataset.recA || c.chartNo.trim();
                     if (!dateA) {
                         statusEl.textContent = '查詢 visit A...';
-                        dateA = await caselistFindVisitA(c.chartNo.trim(), c.date);
+                        const res = await caselistFindVisitA(c.chartNo.trim(), c.date);
+                        if (res?.date) { dateA = res.date; usedRec = res.rec; }
+                        else if (res?.tried) { statusEl.textContent = `找不到 visit A：${res.tried.join(' / ')}`; return; }
                     }
-                    if (!dateA) { statusEl.textContent = '找不到 visit A（無 ≤ 此日期的 OPD visit）'; return; }
-                    const plan = await caselistLoadVisitAPlan(c.chartNo.trim(), dateA, statusEl);
+                    if (!dateA) { statusEl.textContent = '找不到 visit A'; return; }
+                    const plan = await caselistLoadVisitAPlan(usedRec, dateA, statusEl);
                     if (plan != null) {
                         ta.value = plan;
                         caselistUpdateField(id, 'planScratch', plan);
@@ -2963,13 +2982,15 @@
                     const c = getCaseRow();
                     if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
                     let dateB = ev.currentTarget.dataset.dateB;
+                    let usedRec = ev.currentTarget.dataset.recB || c.chartNo.trim();
                     if (!dateB) {
                         statusEl.textContent = '查詢 visit B...';
-                        dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                        const res = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                        if (res) { dateB = res.date; usedRec = res.rec; }
                     }
                     if (!dateB) { statusEl.textContent = '找不到下次回診'; return; }
                     statusEl.textContent = `→ 跳到 ${dateB}`;
-                    window.location.href = `opd.html?date=${dateB}&rec=${encodeURIComponent(c.chartNo.trim())}`;
+                    window.location.href = `opd.html?date=${dateB}&rec=${encodeURIComponent(usedRec)}`;
                 });
                 // 追加 textarea 到 visit B plan 末尾
                 tr.querySelector('[data-action="append-b"]')?.addEventListener('click', async (ev) => {
@@ -2978,25 +2999,27 @@
                     const content = ta.value || '';
                     if (!content.trim()) { statusEl.textContent = 'plan 內容為空'; return; }
                     let dateB = ev.currentTarget.dataset.dateB;
+                    let usedRec = ev.currentTarget.dataset.recB || c.chartNo.trim();
                     if (!dateB) {
                         statusEl.textContent = '查詢 visit B...';
-                        dateB = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                        const res = await caselistFindVisitB(c.chartNo.trim(), c.date);
+                        if (res) { dateB = res.date; usedRec = res.rec; }
                     }
                     if (!dateB) { statusEl.textContent = '找不到下次回診'; return; }
                     if (!confirm(`確定把目前 plan 追加到 visit B (${dateB}) 末尾？\n\n（不覆蓋既有內容）`)) {
                         statusEl.textContent = '已取消'; return;
                     }
-                    await caselistAppendToVisitB(c.chartNo.trim(), dateB, content, c.date, statusEl);
+                    await caselistAppendToVisitB(usedRec, dateB, content, c.date, statusEl);
                 });
                 // 非 imaging row（有 goto-b button 才預讀 visit B 日期更新 button label）
                 if (tr.querySelector('[data-action="goto-b"]')) {
                     const c0 = getCaseRow();
                     if (c0?.chartNo && c0?.date) {
-                        caselistFindVisitB(c0.chartNo.trim(), c0.date).then(dateB => {
+                        caselistFindVisitB(c0.chartNo.trim(), c0.date).then(res => {
                             const btnGoto = tr.querySelector('[data-action="goto-b"]');
                             const btnAppend = tr.querySelector('[data-action="append-b"]');
                             if (!btnGoto || !btnAppend) return;
-                            if (!dateB) {
+                            if (!res) {
                                 btnGoto.textContent = '🔗 → 無';
                                 btnAppend.textContent = '⬇ 無 B';
                                 btnGoto.disabled = btnAppend.disabled = true;
@@ -3004,11 +3027,13 @@
                                 btnGoto.title = btnAppend.title = '找不到下次回診';
                                 return;
                             }
-                            const md = `${parseInt(dateB.slice(5,7))}/${parseInt(dateB.slice(8,10))}`;
+                            const md = `${parseInt(res.date.slice(5,7))}/${parseInt(res.date.slice(8,10))}`;
                             btnGoto.textContent = `🔗 → ${md}`;
                             btnAppend.textContent = `⬇ 追加 ${md}`;
-                            btnGoto.dataset.dateB = dateB;
-                            btnAppend.dataset.dateB = dateB;
+                            btnGoto.dataset.dateB = res.date;
+                            btnAppend.dataset.dateB = res.date;
+                            btnGoto.dataset.recB = res.rec;
+                            btnAppend.dataset.recB = res.rec;
                         }).catch(()=>{});
                     }
                 }
@@ -3016,19 +3041,20 @@
                 if (tr.querySelector('[data-action="load-plan"]')) {
                     const c0 = getCaseRow();
                     if (c0?.chartNo && c0?.date) {
-                        caselistFindVisitA(c0.chartNo.trim(), c0.date).then(dateA => {
+                        caselistFindVisitA(c0.chartNo.trim(), c0.date).then(res => {
                             const btn = tr.querySelector('[data-action="load-plan"]');
                             if (!btn) return;
-                            if (!dateA) {
+                            if (!res?.date) {
                                 btn.textContent = '⬇ 載入 ?';
-                                btn.title = '找不到對應 OPD visit（無 ≤ 此日期的 visit）';
+                                btn.title = res?.tried ? `找不到 visit A（已試 ${res.tried.join(' / ')}）` : '找不到對應 OPD visit';
                                 btn.style.opacity = '0.5';
                                 return;
                             }
-                            const md = `${parseInt(dateA.slice(5,7))}/${parseInt(dateA.slice(8,10))}`;
+                            const md = `${parseInt(res.date.slice(5,7))}/${parseInt(res.date.slice(8,10))}`;
                             btn.textContent = `⬇ 載入 ${md}`;
-                            btn.dataset.dateA = dateA;
-                            btn.title = `載入 ${dateA} plan（覆蓋 textarea）`;
+                            btn.dataset.dateA = res.date;
+                            btn.dataset.recA = res.rec;
+                            btn.title = `載入 ${res.date} plan（rec=${res.rec}）`;
                         }).catch(()=>{});
                     }
                 }
