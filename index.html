@@ -622,10 +622,11 @@
         .caselist-table tr.row-done td { background: rgba(34,197,94,0.18); }
         .caselist-table tr.row-dc td   { background: rgba(148,163,184,0.25); color: var(--text-muted); }
         /* MRI / Arthro 類型色：永遠覆蓋 done / dc 的 row 色（status 由「狀態」欄按鈕顯示）*/
-        .caselist-table tr.row-mri td  { background: #E6E6FA !important; color: #1a1a2e; }
-        .caselist-table tr.row-arthro td { background: #FFFACD !important; color: #1a1a2e; }
-        :root[data-theme="dark"] .caselist-table tr.row-mri td { background: rgba(196,181,253,0.25) !important; color: var(--text-primary); }
-        :root[data-theme="dark"] .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18) !important; color: var(--text-primary); }
+        /* index.html 預設是 dark theme，所以用透明色當 default；light theme 才換實色 */
+        .caselist-table tr.row-mri td  { background: rgba(196,181,253,0.25) !important; color: var(--text-primary); }
+        .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18) !important; color: var(--text-primary); }
+        :root[data-theme="light"] .caselist-table tr.row-mri td { background: #E6E6FA !important; color: #1a1a2e; }
+        :root[data-theme="light"] .caselist-table tr.row-arthro td { background: #FFFACD !important; color: #1a1a2e; }
         /* MRI / Arthro 在 done / dc 時稍微淡化（提示狀態，但仍保留類型色）*/
         .caselist-table tr.row-mri.row-done td,
         .caselist-table tr.row-mri.row-dc td,
@@ -3738,28 +3739,11 @@
                 }
             });
 
-            // Keyboard
+            // Keyboard：只保留 Escape（關 modal）；數字/字母快捷鍵已停用（user 不用，且會誤觸 caselist 輸入）
             document.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT') return;
                 if (e.key === 'Escape') {
                     hideTypePopup();
                     document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
-                    return;
-                }
-                if (!state.selectedCell) return;
-
-                const keyMap = {
-                    '1': 'ct-nb', '2': 'stame', '3': 'ctame', '4': 'sono', '5': 'mri', '6': 'arthro',
-                    'p': 'ct-nb-prf', 'P': 'ct-nb-prf',
-                    'x': 'blocked', 'X': 'blocked', 'n': 'note', 'N': 'note'
-                };
-
-                const type = keyMap[e.key];
-                if (type) {
-                    e.preventDefault();
-                    hideTypePopup();
-                    if (type === 'blocked') showBlockedModal();
-                    else showCaseModal(type);
                 }
             });
 
