@@ -653,6 +653,20 @@
         .caselist-table textarea[data-field="planScratch"]:focus {
             min-height: 110px;
         }
+        /* Arthro 4 欄位：未填 vs 已填視覺對比強化 */
+        .arthro-fields input::placeholder {
+            color: var(--text-muted);
+            opacity: 0.45;
+            font-style: italic;
+        }
+        /* 已填（不是 placeholder 在顯示）→ 實線邊框 + 高亮文字 + 淡藍底 */
+        .arthro-fields input:not(:placeholder-shown):not(:focus) {
+            border-style: solid !important;
+            border-color: rgba(99,102,241,0.5) !important;
+            background: rgba(99,102,241,0.08) !important;
+            color: #c7d2fe !important;
+            font-weight: 600;
+        }
 
         /* === Mobile（V4 設計，純閱讀） === */
         .caselist-desktop { display: block; }
@@ -714,27 +728,32 @@
             .v4-top {
                 display: flex;
                 align-items: baseline;
-                gap: 7px;
-                flex-wrap: wrap;
+                gap: 6px;
+                flex-wrap: nowrap;
+                overflow: hidden;
             }
-            .v4-hourglass { font-size: 0.92rem; filter: saturate(0.8); }
+            .v4-hourglass { font-size: 0.85rem; filter: saturate(0.8); flex-shrink: 0; }
             .v4-time-big {
-                font-size: 1rem;
+                font-size: 0.92rem;
                 font-weight: 600;
                 color: var(--text-primary);
                 font-variant-numeric: tabular-nums;
                 letter-spacing: 0.01em;
+                flex-shrink: 0;
             }
             .v4-rec {
-                font-size: 0.92rem;
+                font-size: 0.85rem;
                 font-weight: 500;
                 color: var(--text-primary);
                 letter-spacing: 0.01em;
+                flex-shrink: 0;
             }
             .v4-muted {
-                font-size: 0.78rem;
+                font-size: 0.74rem;
                 color: var(--text-secondary);
+                flex-shrink: 0;
             }
+            .v4-type-chip { flex-shrink: 0; }
             .v4-type-chip,
             .v4-type-chip-sm {
                 font-weight: 500;
@@ -775,15 +794,21 @@
 
             .v4-rtc-row { margin-top: 6px; }
             .v4-rtc-chip {
-                display: inline-block;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
                 font-size: 0.74rem;
                 color: #a5b4fc;
                 background: rgba(99,102,241,0.14);
                 border: 1px solid rgba(99,102,241,0.4);
-                padding: 2px 8px;
+                padding: 3px 10px;
                 border-radius: 4px;
                 font-variant-numeric: tabular-nums;
                 font-weight: 500;
+            }
+            .v4-rtc-sep {
+                color: rgba(99,102,241,0.45);
+                font-weight: 400;
             }
             .v4-plan-block {
                 margin-top: 8px;
@@ -2853,6 +2878,14 @@
                 const rtcDate = rtcLine
                     ? ((rtcLine.match(/(\d{1,2}\/\d{1,2})\s*RTC/i) || rtcLine.match(/RTC\s*(\d{1,2}\/\d{1,2})/i) || [])[1])
                     : null;
+                // 看診日期：plan 第一個非 RTC、非 dash bullet 的純日期行（通常是 plan 第 1 行）
+                let visitDate = null;
+                for (const line of planLines) {
+                    if (line === rtcLine) continue;
+                    // 抓 MM/DD（含可選 YY/）；行首可能有 -/* 前綴
+                    const m = line.match(/^[-*]?\s*(?:\d{2}\/)?(\d{1,2}\/\d{1,2})\b/);
+                    if (m) { visitDate = m[1]; break; }
+                }
                 const otherLines = planLines.filter(l => l !== rtcLine);
                 let planContent = '';
                 if (c.type === 'arthro') {
@@ -2871,6 +2904,7 @@
                 } else if (otherLines.length > 0) {
                     planContent = `<div class="v4-plan-block">${otherLines.map(l => `<div class="v4-plan-line"><span class="v4-bullet">·</span><span>${esc(l.replace(/^[-*]\s*/, ''))}</span></div>`).join('')}</div>`;
                 }
+                const rtcChip = (visitDate || rtcDate) ? `<div class="v4-rtc-row"><span class="v4-rtc-chip">${visitDate ? `📅 看診 ${esc(visitDate)}` : ''}${visitDate && rtcDate ? '<span class="v4-rtc-sep">·</span>' : ''}${rtcDate ? `↻ 回診 ${esc(rtcDate)}` : ''}</span></div>` : '';
                 return `<div class="v4-card">
                     <div class="v4-top">
                         <span class="v4-hourglass">⏳</span>
@@ -2879,7 +2913,7 @@
                         ${c.ageSex ? `<span class="v4-muted">${esc(c.ageSex)}</span>` : ''}
                         <span class="v4-type-chip" data-type="${esc(typeKey)}">${esc(typeLabel)}</span>
                     </div>
-                    ${rtcDate ? `<div class="v4-rtc-row"><span class="v4-rtc-chip">↻ RTC ${esc(rtcDate)}</span></div>` : ''}
+                    ${rtcChip}
                     ${planContent}
                 </div>`;
             };
