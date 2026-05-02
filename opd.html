@@ -50,7 +50,7 @@
     <header>
         <h1>🩺 OPD 系統</h1>
         <div class="header-right">
-            <a href="index.html" class="nav-link" title="切換到排程系統">→ <span class="label">排程</span></a>
+            <a href="index.html" class="nav-link" title="切換到排程系統">📋<span class="label"> 排程</span></a>
             <span class="status-pill">
                 <span class="status-dot" id="status-dot"></span>
                 <span id="status-text">連線中</span>
@@ -4129,7 +4129,7 @@
                 }
                 let display = c || '·';
                 if (isRegen && c > 0) {
-                    const ratio = cell.bma > 0 ? `${cell.prp}:${cell.bma}` : `${cell.prp}`;
+                    const ratio = `${cell.prp || 0}:${cell.bma || 0}`;
                     display = `${c}<span style="color:var(--text-muted);font-size:0.72rem;"> (P:B ${ratio})</span>`;
                 }
                 html += `<td class="${cellCls}" data-rowkey="${escapeAttr(key)}" data-bucket="${escapeAttr(m.key)}">${display}</td>`;
@@ -4204,22 +4204,38 @@
                 return { rec, n, surname, ageSex };
             });
 
+        // === B 軸：期內到診次數（永遠有效）===
+        const multiVisitCount = repeatVisitorCount;     // ≥ 2 次到診
+        const oneVisitCount = totalUniquePt - multiVisitCount;
+        const oneVisitPct = totalUniquePt > 0 ? Math.round((oneVisitCount / totalUniquePt) * 100) : 0;
+        const multiVisitPct = totalUniquePt > 0 ? Math.round((multiVisitCount / totalUniquePt) * 100) : 0;
+        const avgVisitsPerPt = totalUniquePt > 0 ? (totalCame / totalUniquePt).toFixed(2) : '0';
+        const dcPctOverall = (totalCame + totalDc) > 0 ? ((totalDc / (totalCame + totalDc)) * 100).toFixed(1) : '0';
+        // 全時間 view 提示：既有 = 0 是正常
+        const isAllTime = rangeVal === 'all';
+
         let extrasHtml = `<div style="display:flex; gap:14px; margin-top:18px; flex-wrap:wrap;">
             <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
                 <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">📊 病人結構（區間內）</div>
-                <div style="font-size:1.1rem; color:var(--text-primary); margin-bottom:4px;">
-                    共 <strong>${totalUniquePt}</strong> 位獨立病人
+                <div style="font-size:1.0rem; color:var(--text-primary); margin-bottom:8px;">
+                    共 <strong>${totalUniquePt}</strong> 位獨立病人 · ${totalCame} 次到診 · 平均 <strong>${avgVisitsPerPt}</strong> 次/人
                 </div>
-                <div style="font-size:0.88rem; color:var(--text-secondary); line-height:1.6;">
-                    新病人 <span style="color:#22c55e;font-weight:600;">${newPtCount}</span> (${newPct}%) ·
-                    回診 <span style="color:#3b82f6;font-weight:600;">${returnPtCount}</span> (${unknownPtCount > 0 ? Math.round(((totalUniquePt - newPtCount - unknownPtCount) / totalUniquePt) * 100) : 100 - newPct}%)
+                <!-- A 軸：流入結構 -->
+                <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:6px;">
+                    <span style="color:var(--text-muted); font-size:0.74rem; letter-spacing:0.06em; margin-right:4px;">流入</span>
+                    🆕 首診 <span style="color:#22c55e;font-weight:600;">${newPtCount}</span> (${newPct}%) ·
+                    🔁 既有 <span style="color:#3b82f6;font-weight:600;">${returnPtCount}</span> (${100 - newPct - (unknownPtCount > 0 ? Math.round((unknownPtCount / totalUniquePt) * 100) : 0)}%)
                     ${unknownPtCount > 0 ? ` · 未知 <span style="color:var(--text-muted);">${unknownPtCount}</span>` : ''}
-                    <br>
-                    重複到診 <span style="color:#a855f7;font-weight:600;">${repeatVisitorCount}</span> (${repeatPct}%)
-                    <span style="color:var(--text-muted);font-size:0.78rem;">（區間內來 ≥ 2 次）</span>
+                    ${isAllTime ? '<div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">※ 「全時間」view 下既有=0 為正常</div>' : ''}
                 </div>
-                <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
-                    Visits: ${totalCame} · DC: ${totalDc}
+                <!-- B 軸：黏著（期內次數）-->
+                <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:6px;">
+                    <span style="color:var(--text-muted); font-size:0.74rem; letter-spacing:0.06em; margin-right:4px;">黏著</span>
+                    1️⃣ 單次 <span style="color:var(--text-primary);font-weight:600;">${oneVisitCount}</span> (${oneVisitPct}%) ·
+                    🔂 多次≥2 <span style="color:#a855f7;font-weight:600;">${multiVisitCount}</span> (${multiVisitPct}%)
+                </div>
+                <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px; padding-top:6px; border-top:1px dashed var(--border);">
+                    DC: ${totalDc} (${dcPctOverall}%) · 共 ${totalCame + totalDc} 個 visit
                 </div>
             </div>
             <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
