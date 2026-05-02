@@ -4070,7 +4070,7 @@
         // 單次門診 procedure 最多（掃 allByDate）
         let recordClinicDate = null, recordClinicCount = 0;
         Object.entries(allByDate || {}).forEach(([dateStr, dayVisits]) => {
-            if (dateStr < startStr || dateStr > todayStr) return;
+            if (dateStr < startKey || dateStr > todayStr) return;
             // 含 procedure tag 的 visit 數
             let procCount = 0;
             Object.values(dayVisits || {}).forEach(v => {
@@ -4083,7 +4083,7 @@
         // 單期最多病人
         const patientsByBucket = {};
         Object.entries(allByDate || {}).forEach(([dateStr, dayVisits]) => {
-            if (dateStr < startStr || dateStr > todayStr) return;
+            if (dateStr < startKey || dateStr > todayStr) return;
             const bk = bucketOf(dateStr);
             if (!patientsByBucket[bk]) patientsByBucket[bk] = new Set();
             Object.keys(dayVisits || {}).forEach(rec => {
