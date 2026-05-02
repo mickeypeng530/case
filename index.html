@@ -621,10 +621,18 @@
         .caselist-table select, .caselist-table input { white-space: nowrap; }
         .caselist-table tr.row-done td { background: rgba(34,197,94,0.18); }
         .caselist-table tr.row-dc td   { background: rgba(148,163,184,0.25); color: var(--text-muted); }
-        .caselist-table tr.row-mri td  { background: #E6E6FA; color: #1a1a2e; }
-        .caselist-table tr.row-arthro td { background: #FFFACD; color: #1a1a2e; }
-        :root[data-theme="dark"] .caselist-table tr.row-mri td { background: rgba(196,181,253,0.25); color: var(--text-primary); }
-        :root[data-theme="dark"] .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18); color: var(--text-primary); }
+        /* MRI / Arthro 類型色：永遠覆蓋 done / dc 的 row 色（status 由「狀態」欄按鈕顯示）*/
+        .caselist-table tr.row-mri td  { background: #E6E6FA !important; color: #1a1a2e; }
+        .caselist-table tr.row-arthro td { background: #FFFACD !important; color: #1a1a2e; }
+        :root[data-theme="dark"] .caselist-table tr.row-mri td { background: rgba(196,181,253,0.25) !important; color: var(--text-primary); }
+        :root[data-theme="dark"] .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18) !important; color: var(--text-primary); }
+        /* MRI / Arthro 在 done / dc 時稍微淡化（提示狀態，但仍保留類型色）*/
+        .caselist-table tr.row-mri.row-done td,
+        .caselist-table tr.row-mri.row-dc td,
+        .caselist-table tr.row-arthro.row-done td,
+        .caselist-table tr.row-arthro.row-dc td {
+            opacity: 0.7;
+        }
         .caselist-table tr:hover td { filter: brightness(1.08); }
         .caselist-table input, .caselist-table select { width: 100%; background: transparent; border: 1px dashed transparent; color: inherit; font-family: inherit; font-size: inherit; padding: 2px 4px; box-sizing: border-box; }
         .caselist-table input:focus, .caselist-table select:focus { background: var(--bg-primary); border-color: var(--color-info); outline: none; }
@@ -2580,6 +2588,19 @@
         }
 
         // ========== caselist plan 同步（visit A → visit B）==========
+        // 找該 case 的 visit A（plan 來源）：
+        //   優先 caseDate 那天有 visit（門診日=執行日的場合）
+        //   否則找 patientVisitIndex 中 ≤ caseDate 的最近一筆（procedure 後續執行）
+        async function caselistFindVisitA(rec, caseDate) {
+            try {
+                const exactSnap = await get(ref(fbDb, `opd/visits/${caseDate}/${rec}`));
+                if (exactSnap.exists()) return caseDate;
+                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${rec}`));
+                const all = Object.keys(idxSnap.val() || {}).filter(d => d <= caseDate).sort();
+                return all[all.length - 1] || null;
+            } catch (e) { console.warn('findVisitA', e); return null; }
+        }
+
         // 找該 case 的 visit B（下次回診）：優先讀 visit A.propagatedTo，否則查 patientVisitIndex
         async function caselistFindVisitB(rec, dateA) {
             try {
@@ -2740,11 +2761,11 @@
             }
             const esc = (s) => (s == null ? '' : String(s)).replace(/"/g, '&quot;');
             const rows = items.map(c => {
-                let rowCls = '';
-                if (c.status === 'done') rowCls = 'row-done';
-                else if (c.status === 'dc') rowCls = 'row-dc';
-                else if (c.type === 'mri') rowCls = 'row-mri';
-                else if (c.type === 'arthro') rowCls = 'row-arthro';
+                // 類型 class（永遠掛 → MRI/Arthro 顏色不被 done/dc 覆蓋）
+                // 狀態 class 也掛上，CSS 用 .row-mri.row-done 等組合微調 opacity
+                const typeCls = c.type === 'mri' ? 'row-mri' : (c.type === 'arthro' ? 'row-arthro' : '');
+                const statusCls2 = c.status === 'done' ? 'row-done' : (c.status === 'dc' ? 'row-dc' : '');
+                const rowCls = [typeCls, statusCls2].filter(Boolean).join(' ');
                 const statusCls = c.status === 'done' ? 'status-done' : (c.status === 'dc' ? 'status-dc' : 'status-pending');
                 const statusLabel = c.status === 'done' ? '✅ 完成' : (c.status === 'dc' ? '⊘ DC' : '⏳ 待做');
                 const isMri = c.type === 'mri';
@@ -2883,7 +2904,16 @@
                     const handler = () => {
                         const field = inp.dataset.field;
                         if (!field) return;
-                        caselistUpdateField(id, field, inp.value);
+                        let value = inp.value;
+                        // 時間欄位：純數字輸入自動補冒號 0950→09:50 / 1000→10:00 / 9→09:00
+                        if ((field === 'time' || field === 'arthroMriTime') && value && !value.includes(':')) {
+                            const formatted = formatTimeInput(value);
+                            if (formatted !== value) {
+                                inp.value = formatted;
+                                value = formatted;
+                            }
+                        }
+                        caselistUpdateField(id, field, value);
                         // type 改變 / chartNo blur：需 re-render 或 auto-fill
                         if (field === 'type') renderCaselist();
                         if (field === 'chartNo' && inp.dataset.triggerFill === '1') {
@@ -2911,11 +2941,17 @@
                     const tab = getActiveTab(); if (!tab) return null;
                     return getCaselistFor(tab.id)[id] || null;
                 };
-                // 載入 visit A plan（覆蓋 textarea）
-                tr.querySelector('[data-action="load-plan"]')?.addEventListener('click', async () => {
+                // 載入 visit A plan（用 caselistFindVisitA 解析實際 visit 日期）
+                tr.querySelector('[data-action="load-plan"]')?.addEventListener('click', async (ev) => {
                     const c = getCaseRow();
                     if (!c?.chartNo || !c?.date) { statusEl.textContent = '需先填病歷號與日期'; return; }
-                    const plan = await caselistLoadVisitAPlan(c.chartNo.trim(), c.date, statusEl);
+                    let dateA = ev.currentTarget.dataset.dateA;
+                    if (!dateA) {
+                        statusEl.textContent = '查詢 visit A...';
+                        dateA = await caselistFindVisitA(c.chartNo.trim(), c.date);
+                    }
+                    if (!dateA) { statusEl.textContent = '找不到 visit A（無 ≤ 此日期的 OPD visit）'; return; }
+                    const plan = await caselistLoadVisitAPlan(c.chartNo.trim(), dateA, statusEl);
                     if (plan != null) {
                         ta.value = plan;
                         caselistUpdateField(id, 'planScratch', plan);
@@ -2972,6 +3008,26 @@
                             btnAppend.textContent = `⬇ 追加 ${md}`;
                             btnGoto.dataset.dateB = dateB;
                             btnAppend.dataset.dateB = dateB;
+                        }).catch(()=>{});
+                    }
+                }
+                // 預讀 visit A 日期 → 更新「載入」按鈕 label
+                if (tr.querySelector('[data-action="load-plan"]')) {
+                    const c0 = getCaseRow();
+                    if (c0?.chartNo && c0?.date) {
+                        caselistFindVisitA(c0.chartNo.trim(), c0.date).then(dateA => {
+                            const btn = tr.querySelector('[data-action="load-plan"]');
+                            if (!btn) return;
+                            if (!dateA) {
+                                btn.textContent = '⬇ 載入 ?';
+                                btn.title = '找不到對應 OPD visit（無 ≤ 此日期的 visit）';
+                                btn.style.opacity = '0.5';
+                                return;
+                            }
+                            const md = `${parseInt(dateA.slice(5,7))}/${parseInt(dateA.slice(8,10))}`;
+                            btn.textContent = `⬇ 載入 ${md}`;
+                            btn.dataset.dateA = dateA;
+                            btn.title = `載入 ${dateA} plan（覆蓋 textarea）`;
                         }).catch(()=>{});
                     }
                 }
@@ -3775,7 +3831,7 @@
                 statusField.style.display = 'none';
             } else if (type === 'mri') {
                 title.textContent = existingData ? '編輯 MRI' : '新增 MRI 時段';
-                chartField.style.display = 'none';
+                chartField.style.display = 'block';   // 也填病歷號 → caselist 才有
                 noteField.style.display = 'none';
                 statusField.style.display = 'block';
             } else if (type === 'other') {
