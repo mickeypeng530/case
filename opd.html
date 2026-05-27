@@ -1626,6 +1626,8 @@
     // ========== Visit table 渲染 ==========
     function renderVisitList() {
         const wrap = document.getElementById('visit-list');
+        // 編輯模式正在打字 → 跳過重畫（避免 Firebase listener echo 清掉 textarea / 游標）
+        if (state.planEditMode && document.activeElement?.classList?.contains('plan-edit')) return;
         const date = state.currentClinicDate;
         if (!date) {
             wrap.innerHTML = `<div class="empty-hint">請選擇門診日期</div>`;
@@ -1778,6 +1780,7 @@
                 <span class="stat-divider"></span>
                 <span>已準備 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
                 ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}${rtcChip ? ' ' + rtcChip : ''}</span>` : (rtcChip ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${rtcChip}</span>` : '')}
+                <button id="plan-edit-toggle" class="plan-edit-toggle${state.planEditMode ? ' active' : ''}" title="整頁 Plan 直接編輯（失焦自動存）">${state.planEditMode ? '✓ 編輯 Plan 中' : '✏️ 編輯 Plan'}</button>
             </div>
             ${statTagPanelHtml}
             ${rtcPanelHtml}
@@ -1901,7 +1904,7 @@
                         <div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}" data-full="${escapeAttr(v.examEducation || '')}">${escapeHtml(v.examEducation || '')}</div>
                     `;
                 })()}</td>
-                <td class="col-plan">
+                <td class="col-plan">${state.planEditMode ? `<textarea class="plan-edit" data-record="${escapeAttr(v.recordNumber)}" data-date="${escapeAttr(date)}" rows="${Math.max(3, planLines.length)}" spellcheck="false">${escapeHtml(v.plan || '')}</textarea>` : `
                     <div class="plan-body">${
                         (v.propagatedFrom ? `<span class="jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← 回診 ${escapeHtml(v.propagatedFrom.slice(5))}</span><br>` : '')
                     }${showLines.map(line => {
@@ -1912,7 +1915,7 @@
                         }
                         return html;
                     }).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
-                </td>
+                `}</td>
                 <td class="col-tags tag-edit-trigger" data-record="${escapeAttr(v.recordNumber)}" title="雙擊編輯標籤"><div class="visit-tags">${tagChips}${jumpChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
@@ -2749,6 +2752,13 @@
             openTagEditPopover(cell);
         });
         document.getElementById('visit-list').addEventListener('click', (e) => {
+            // 整頁 Plan 編輯模式切換
+            const planToggle = e.target.closest('#plan-edit-toggle');
+            if (planToggle) {
+                state.planEditMode = !state.planEditMode;
+                renderVisitList();
+                return;
+            }
             const statTag = e.target.closest('[data-stat-tag]');
             if (statTag) {
                 const t = statTag.dataset.statTag;
@@ -2830,6 +2840,20 @@
             else if (action === 'copy-plan') copyPlanToClipboard(rec);
             else if (action === 'edit') openVisitModal(rec);
             else if (action === 'toggle-dc') toggleNoShow(rec);
+        });
+
+        // 整頁 Plan 編輯：失焦自動存（race-guard：只 partial 更新 plan 欄位）
+        document.getElementById('visit-list').addEventListener('focusout', (e) => {
+            const ta = e.target.closest('textarea.plan-edit');
+            if (!ta) return;
+            saveInlinePlan(ta.dataset.date, ta.dataset.record, ta.value);
+        });
+        // 輸入時自動長高
+        document.getElementById('visit-list').addEventListener('input', (e) => {
+            const ta = e.target.closest('textarea.plan-edit');
+            if (!ta) return;
+            ta.style.height = 'auto';
+            ta.style.height = ta.scrollHeight + 'px';
         });
 
         // Visit modal 綁定
@@ -3126,6 +3150,20 @@
         fillIfEmpty('v-egfr', p.eGFR);
         fillIfEmpty('v-inr', p.INR);
         fillIfEmpty('v-extra', p.extra);
+    }
+
+    // 整頁編輯模式：inline 存 plan。只 partial 更新 plan 欄位，
+    // 不碰 tags/status/prepared（避免蓋掉跨裝置或同頁其他操作）。
+    // 註：[本次] anchor 的 RTC 自動傳遞仍走 modal「確認」，inline 編輯只更新文字。
+    async function saveInlinePlan(date, rec, value) {
+        if (!fbDb || !date || !rec) return;
+        const cur = state.visitsByDate?.[date]?.[rec];
+        if (cur && (cur.plan || '') === value) return; // 沒變更不寫
+        try {
+            await update(ref(fbDb), { [`opd/visits/${date}/${rec}/plan`]: value });
+        } catch (err) {
+            alert('Plan 儲存失敗：' + err.message);
+        }
     }
 
     async function handleVisitSave() {
