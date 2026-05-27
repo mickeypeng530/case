@@ -1307,10 +1307,10 @@
             }
         }
 
-        /* 在窄螢幕降低欄寬 */
+        /* 在窄螢幕降低欄寬，把空間讓給 Plan（col-plan 無寬度，table-layout:fixed 自動吃剩餘） */
         @media (max-width: 1280px) {
-            .col-extra { width: 160px; }
-            .col-exam { width: 150px; }
+            .col-extra { width: 120px; }  /* 慢性病史：摘要 chip + 點擊展開全文 */
+            .col-exam { width: 120px; }   /* 本次概況：pills + 點擊展開全文 */
             .col-tags { width: 54px; }   /* 對齊寬螢幕的窄標籤欄（原 100px 太寬） */
             .visit-table { font-size: 0.8rem; }
         }
