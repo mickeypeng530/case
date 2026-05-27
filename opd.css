@@ -769,6 +769,48 @@
             gap: 4px;
             flex-wrap: wrap;
         }
+        /* 整頁 Plan 編輯模式切換鈕 */
+        .plan-edit-toggle {
+            margin-left: auto;
+            padding: 4px 12px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .plan-edit-toggle:hover { color: var(--text-primary); }
+        .plan-edit-toggle.active {
+            background: var(--color-info, #6366f1);
+            border-color: var(--color-info, #6366f1);
+            color: #fff;
+            font-weight: 600;
+        }
+        /* 編輯模式的 plan textarea */
+        .col-plan textarea.plan-edit {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 60px;
+            background: var(--bg-primary);
+            border: 1px solid var(--color-info, #6366f1);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: 'Noto Sans TC', monospace;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            padding: 6px 8px;
+            resize: vertical;
+            white-space: pre-wrap;
+        }
+        .col-plan textarea.plan-edit:focus {
+            outline: none;
+            border-color: var(--text-primary);
+            background: var(--bg-secondary);
+        }
+
         .stats-bar .stat-tags .tag-chip { cursor: pointer; }
         .stats-bar .stat-tags .tag-chip.active {
             outline: 2px solid var(--text-primary);
@@ -1269,7 +1311,7 @@
         @media (max-width: 1280px) {
             .col-extra { width: 160px; }
             .col-exam { width: 150px; }
-            .col-tags { width: 100px; }
+            .col-tags { width: 54px; }   /* 對齊寬螢幕的窄標籤欄（原 100px 太寬） */
             .visit-table { font-size: 0.8rem; }
         }
 
