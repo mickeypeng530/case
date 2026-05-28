@@ -699,6 +699,7 @@
             #caselist-add-btn,
             #caselist-sync-btn,
             #caselist-bulk-load-plan-btn,
+            #caselist-expand-plans-btn,
             #caselist-clean-orphan-btn,
             #caselist-status { display: none; }
 
@@ -1684,6 +1685,7 @@
                     <button id="caselist-add-btn" style="padding:5px 10px; background:var(--color-info); border:none; color:white; border-radius:4px; cursor:pointer; font-size:0.82rem;">+ 新增</button>
                     <button id="caselist-sync-btn" title="從目前排程拉新案例（不會刪 list 既有的）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🔄 同步排程</button>
                     <button id="caselist-bulk-load-plan-btn" title="一次把區間內所有待做且 planScratch 為空的 row 都載入 visit A plan" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">⬇ 全部載入 plan</button>
+                    <button id="caselist-expand-plans-btn" title="一鍵把所有 plan 輸入框展開到完整高度，方便一次編輯（再按收合）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">📝 全部展開</button>
                     <button id="caselist-clean-orphan-btn" title="一鍵刪除所有「⚠ 排程已移走」row" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🗑 清 orphan</button>
                     <button id="caselist-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">✕ 關閉</button>
                 </div>
@@ -1958,7 +1960,11 @@
                         renderTabs();
                         renderTabContent();
                         if (document.getElementById('caselist-modal')?.classList.contains('show')) {
-                            renderCaselist();
+                            // 編輯中（焦點在 caselist 某欄位）→ 跳過重畫，避免自己存檔的 echo 把畫面閃掉 / 跳焦點
+                            const ae = document.activeElement;
+                            const editingCaselist = ae && ae.closest && ae.closest('#caselist-table-wrap')
+                                && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+                            if (!editingCaselist) renderCaselist();
                         }
                     }
                     showStatus('已同步', false);
@@ -2434,6 +2440,27 @@
         }
 
         let caselistDragInited = false;
+        let caselistPlansExpanded = false;  // 「📝 全部展開」狀態（桌面）
+
+        // 把所有 plan textarea 撐到內容高度（展開模式 on）或還原（off）
+        function applyCaselistPlanExpand() {
+            const wrap = document.getElementById('caselist-table-wrap');
+            if (!wrap) return;
+            wrap.querySelectorAll('.caselist-desktop textarea[data-field="planScratch"]').forEach(ta => {
+                if (caselistPlansExpanded) {
+                    ta.style.height = 'auto';
+                    ta.style.height = Math.max(ta.scrollHeight, 44) + 'px';
+                } else {
+                    ta.style.height = '';
+                }
+            });
+            const btn = document.getElementById('caselist-expand-plans-btn');
+            if (btn) {
+                btn.textContent = caselistPlansExpanded ? '📕 收合 plan' : '📝 全部展開';
+                btn.style.background = caselistPlansExpanded ? 'var(--color-info)' : 'var(--bg-tertiary)';
+                btn.style.color = caselistPlansExpanded ? '#fff' : 'var(--text-primary)';
+            }
+        }
         async function openCaselist() {
             const tab = getActiveTab();
             if (!tab) { alert('請先選擇分頁'); return; }
@@ -2642,45 +2669,48 @@
             const unmatchedSched = new Set(schedCases.map((_, i) => i));
             let added = 0, reconciled = 0, orphans = 0;
 
-            // 3. 對每個 cellRow 嘗試 match scheduler case：
-            //    優先 (sourceCellKey + chartNo + type) 完全 match → 不動
-            //    其次 chartNo + type match（搬到新位置）→ update date/period/cellKey
+            // 3. 對每個 cellRow 嘗試 match scheduler case，優先序：
+            //    P0 穩定 case id（cellCaseId）— 搬格 / 改時間 / 改病歷號都不會斷（最穩）
+            //    P1 (sourceCellKey + chartNo + type) 完全 match — 舊 row 無 cellCaseId 用
+            //    P2 chartNo + type match（搬到新位置）— 再 fallback
             //    都不 match → 標 orphan
+            // 把排程位置/時間套到 row，回傳是否真的有改（避免無變動也 saveToStorage 造成多餘 echo）
+            const applySched = (row, s) => {
+                let ch = false;
+                if (row.date !== s.date) { row.date = s.date; ch = true; }
+                if (row.period !== s.period) { row.period = s.period; ch = true; }
+                if (row.sourceCellKey !== s.cellKey) { row.sourceCellKey = s.cellKey; ch = true; }
+                if (s.time && row.time !== s.time) { row.time = s.time; ch = true; }
+                if (row.orphan) { delete row.orphan; ch = true; }
+                if (s.cellId && row.cellCaseId !== s.cellId) { row.cellCaseId = s.cellId; ch = true; }
+                // 註：不覆蓋 row.chartNo（user 可能修過 leading-0 / 大小寫）
+                return ch;
+            };
             cellRows.forEach(([rowId, row]) => {
-                // 找完全 match（同 cellKey 還有此案例）
-                let exactIdx = -1;
-                for (const i of unmatchedSched) {
-                    const s = schedCases[i];
-                    if (s.cellKey === row.sourceCellKey && s.chartNo === (row.chartNo || '').trim() && s.type === row.type) {
-                        exactIdx = i; break;
+                let mIdx = -1;
+                // P0：穩定 id
+                if (row.cellCaseId) {
+                    for (const i of unmatchedSched) {
+                        if (schedCases[i].cellId && schedCases[i].cellId === row.cellCaseId) { mIdx = i; break; }
                     }
                 }
-                if (exactIdx >= 0) {
-                    unmatchedSched.delete(exactIdx);
-                    // 同步 time（user 可能在 scheduler 改了時間）
-                    const s = schedCases[exactIdx];
-                    if (s.time && row.time !== s.time) row.time = s.time;
-                    // 清掉 orphan flag（如果之前有）
-                    if (row.orphan) { delete row.orphan; reconciled++; }
-                    return;
-                }
-                // 找 chartNo + type match（搬到別 cell）
-                let moveIdx = -1;
-                for (const i of unmatchedSched) {
-                    const s = schedCases[i];
-                    if (s.chartNo === (row.chartNo || '').trim() && s.chartNo && s.type === row.type) {
-                        moveIdx = i; break;
+                // P1：cellKey + chartNo + type
+                if (mIdx < 0) {
+                    for (const i of unmatchedSched) {
+                        const s = schedCases[i];
+                        if (s.cellKey === row.sourceCellKey && s.chartNo === (row.chartNo || '').trim() && s.type === row.type) { mIdx = i; break; }
                     }
                 }
-                if (moveIdx >= 0) {
-                    const s = schedCases[moveIdx];
-                    row.date = s.date;
-                    row.period = s.period;
-                    row.time = s.time || row.time;
-                    row.sourceCellKey = s.cellKey;
-                    if (row.orphan) delete row.orphan;
-                    unmatchedSched.delete(moveIdx);
-                    reconciled++;
+                // P2：chartNo + type（搬到別 cell）
+                if (mIdx < 0) {
+                    for (const i of unmatchedSched) {
+                        const s = schedCases[i];
+                        if (s.chartNo && s.chartNo === (row.chartNo || '').trim() && s.type === row.type) { mIdx = i; break; }
+                    }
+                }
+                if (mIdx >= 0) {
+                    if (applySched(row, schedCases[mIdx])) reconciled++;
+                    unmatchedSched.delete(mIdx);
                     return;
                 }
                 // 找不到 match → 標 orphan
@@ -2691,20 +2721,17 @@
             unmatchedSched.forEach(i => {
                 const s = schedCases[i];
                 const id = `cell_${s.cellKey}_${s.cellId || s.idx}`;
+                const newRow = {
+                    date: s.date, period: s.period, time: s.time,
+                    chartNo: s.chartNo, ageSex: '', type: s.type, otherSubtype: s.otherSubtype,
+                    status: 'pending', source: 'cell', sourceCellKey: s.cellKey,
+                    cellCaseId: s.cellId || null, createdAt: Date.now()
+                };
                 if (list[id]) {
                     // ID 衝突（罕見）：給個新 unique ID
-                    const altId = `cell_${s.cellKey}_${s.idx}_${Date.now()}`;
-                    list[altId] = {
-                        date: s.date, period: s.period, time: s.time,
-                        chartNo: s.chartNo, ageSex: '', type: s.type, otherSubtype: s.otherSubtype,
-                        status: 'pending', source: 'cell', sourceCellKey: s.cellKey, createdAt: Date.now()
-                    };
+                    list[`cell_${s.cellKey}_${s.idx}_${Date.now()}`] = newRow;
                 } else {
-                    list[id] = {
-                        date: s.date, period: s.period, time: s.time,
-                        chartNo: s.chartNo, ageSex: '', type: s.type, otherSubtype: s.otherSubtype,
-                        status: 'pending', source: 'cell', sourceCellKey: s.cellKey, createdAt: Date.now()
-                    };
+                    list[id] = newRow;
                 }
                 added++;
             });
@@ -3199,6 +3226,8 @@
             </div>${mobileGroups}`;
 
             wrap.innerHTML = `<div class="caselist-desktop">${desktopHtml}</div><div class="caselist-mobile">${mobileHtml}</div>`;
+            // 重畫後若處於展開模式，重新撐高所有 plan textarea
+            applyCaselistPlanExpand();
             // 綁事件（mutate state + saveToStorage）
             wrap.querySelectorAll('tr[data-id]').forEach(tr => {
                 const id = tr.dataset.id;
@@ -3938,6 +3967,10 @@
             document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
             document.getElementById('caselist-sync-btn')?.addEventListener('click', () => { syncCaselistFromCells(false); renderCaselist(); });
             document.getElementById('caselist-bulk-load-plan-btn')?.addEventListener('click', bulkLoadCaselistPlans);
+            document.getElementById('caselist-expand-plans-btn')?.addEventListener('click', () => {
+                caselistPlansExpanded = !caselistPlansExpanded;
+                applyCaselistPlanExpand();
+            });
             document.getElementById('caselist-clean-orphan-btn')?.addEventListener('click', cleanCaselistOrphans);
             document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
             
