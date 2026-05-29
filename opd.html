@@ -5188,12 +5188,16 @@
 
         const recMatch = lines[recIdx].match(RECORD_PATTERN);
         const ageSex = lines[recIdx + 1] || '';
-        const eGFR = lines[recIdx + 2] || '';
+        // eGFR 欄位驗證：filter(Boolean) 已清掉空行，若該病人沒填 eGFR，
+        // recIdx+2 其實是 referrer/PH（例 "Buo"）。只有「像 eGFR 數值」才採用，
+        // 否則 eGFR 留空、那行歸回 extra（讓 extractReferrer / extractLabs 處理），避免欄位整排位移。
+        const c2 = (lines[recIdx + 2] || '').trim();
+        const hasEGFR = isValidEGFR(c2);
+        const eGFR = hasEGFR ? c2 : '';
 
-        // 從 recIdx+3 起，收集 extra 直到偵測到 Exam-like 或 Plan-like 行
-        // 簡化：偵測到 Plan-like 行（日期開頭）就停
+        // 收集 extra 直到偵測到 Exam-like 或 Plan-like 行（日期開頭）就停
         const extraLines = [];
-        let i = recIdx + 3;
+        let i = hasEGFR ? recIdx + 3 : recIdx + 2;
         let examLine = '';
         while (i < lines.length) {
             const line = lines[i];
