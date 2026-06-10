@@ -66,14 +66,25 @@
                         <button id="font-up-btn" class="header-btn" title="放大字體">A+</button>
                     </div>
                     <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">主題</div>
-                    <div style="display: flex; gap: 6px;">
+                    <div style="display: flex; gap: 6px; margin-bottom: 12px;">
                         <button id="theme-toggle-btn" class="header-btn" style="flex:1;">💡 切換亮 / 暗</button>
                     </div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">資料備份</div>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="backup-btn" class="header-btn" style="flex:1;" title="下載 opd + scheduler + readings 全部資料為 JSON（存到本地/雲端）">💾 下載備份 JSON</button>
+                    </div>
+                    <div id="backup-status" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;"></div>
                 </div>
             </div>
             <button id="logout-btn" class="header-btn" title="登出">🚪<span class="btn-text"> 登出</span></button>
         </div>
     </header>
+
+    <div id="backup-reminder" style="display:none; align-items:center; gap:10px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:var(--text-primary); padding:8px 14px; margin:8px 12px 0; border-radius:6px; font-size:0.85rem;">
+        <span class="br-text" style="flex:1;">⚠ 建議備份資料</span>
+        <button id="backup-reminder-do" class="header-btn" style="white-space:nowrap;">💾 立即備份</button>
+        <button id="backup-reminder-dismiss" class="header-btn" title="稍後再說">✕</button>
+    </div>
 
     <div class="tabs">
         <button class="tab active" data-panel="panel-clinic">📅 門診日</button>
@@ -570,6 +581,66 @@
         location.reload();
     }
 
+    // ========== 資料備份（防單點故障）==========
+    // 讀 opd + scheduler + readings 全樹 → 下載成 JSON。
+    // 用現有登入 session（rules 只允許讀這三個節點，root 讀不到，故分開抓）。
+    async function downloadBackup(silent = false) {
+        const statusEl = document.getElementById('backup-status');
+        const setMsg = (m) => { if (statusEl) statusEl.textContent = m; };
+        if (!fbDb) { setMsg('⚠ 尚未連線'); return false; }
+        try {
+            setMsg('讀取中…');
+            const nodes = ['opd', 'scheduler', 'readings'];
+            const out = { _meta: { exportedAt: new Date().toISOString(), app: 'OPD', nodes } };
+            for (const n of nodes) {
+                try {
+                    const snap = await get(ref(fbDb, n));
+                    out[n] = snap.val();
+                } catch (e) {
+                    out[n] = null;
+                    out._meta[`${n}_error`] = e.message;
+                }
+            }
+            const json = JSON.stringify(out, null, 2);
+            const sizeKB = Math.round(json.length / 1024);
+            // 檔名：opd-backup-YYYY-MM-DD-HHMM.json
+            const d = new Date();
+            const pad = (x) => String(x).padStart(2, '0');
+            const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `opd-backup-${stamp}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            localStorage.setItem('opd:lastBackup', d.toISOString());
+            setMsg(`✓ 已下載 opd-backup-${stamp}.json（${sizeKB} KB）— 記得丟進雲端資料夾`);
+            return true;
+        } catch (err) {
+            setMsg('❌ 備份失敗：' + err.message);
+            return false;
+        }
+    }
+
+    // 逾期提醒：登入後若距上次備份 > 7 天 → 提示（不強制）
+    function checkBackupStaleness() {
+        const last = localStorage.getItem('opd:lastBackup');
+        const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
+        if (days < 7) return;
+        const statusEl = document.getElementById('backup-status');
+        const banner = document.getElementById('backup-reminder');
+        if (banner) {
+            banner.style.display = 'flex';
+            const txt = banner.querySelector('.br-text');
+            if (txt) txt.textContent = last
+                ? `⚠ 上次備份是 ${Math.floor(days)} 天前，建議下載一份`
+                : `⚠ 尚未備份過資料，建議下載一份存本地/雲端`;
+        }
+    }
+
     function initFirebase() {
         setStatus('connected', '已連線');
     }
@@ -640,6 +711,8 @@
                 }
                 console.log('已登入:', user.email, '| UID:', user.uid);
                 onUserReady();
+                // 登入後檢查備份是否逾期（> 7 天提醒）
+                setTimeout(() => { try { checkBackupStaleness(); } catch (e) {} }, 1500);
             } else {
                 currentUser = null;
                 document.getElementById('login-screen').style.display = 'flex';
@@ -659,6 +732,14 @@
         document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
         document.getElementById('logout-btn').addEventListener('click', () => {
             if (confirm('確定要登出嗎？')) logout();
+        });
+        document.getElementById('backup-btn')?.addEventListener('click', () => downloadBackup());
+        document.getElementById('backup-reminder-do')?.addEventListener('click', async () => {
+            const ok = await downloadBackup();
+            if (ok) document.getElementById('backup-reminder').style.display = 'none';
+        });
+        document.getElementById('backup-reminder-dismiss')?.addEventListener('click', () => {
+            document.getElementById('backup-reminder').style.display = 'none';
         });
         document.getElementById('font-up-btn')?.addEventListener('click', () => adjustFontSize(1));
         document.getElementById('font-down-btn')?.addEventListener('click', () => adjustFontSize(-1));
@@ -1789,7 +1870,58 @@
         // 排序：came / dc 已在 stats 區排好，DC 顯示用 noShow 變數
         const noShow = dc;
 
-        const renderRow = (v) => {
+        const renderRow = (v) => renderVisitRow(v, date);
+
+        const dcDivider = noShow.length > 0 ? `
+          <tr class="dc-divider"><td colspan="8">─── D C ───  共 ${noShow.length} 位未到</td></tr>
+        ` : '';
+
+        wrap.innerHTML = `
+          ${statsHtml}
+          <div class="visit-table-wrapper">
+            <table class="visit-table">
+              <colgroup>
+                <col class="col-num"><col class="col-record"><col class="col-labs">
+                <col class="col-extra"><col class="col-exam"><col class="col-plan">
+                <col class="col-tags"><col class="col-actions">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th class="col-record">病人</th>
+                  <th class="col-labs">抽血</th>
+                  <th class="col-extra">慢性病史</th>
+                  <th class="col-exam">本次概況</th>
+                  <th class="col-plan">Plan</th>
+                  <th class="col-tags">標籤</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${came.map(renderRow).join('')}
+                ${dcDivider}
+                ${noShow.map(renderRow).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        // 跳轉後 scroll 到目標 row
+        if (state.scrollToRecord) {
+            const tgt = state.scrollToRecord;
+            state.scrollToRecord = null;
+            requestAnimationFrame(() => {
+                const row = wrap.querySelector(`tr[data-record="${CSS.escape(tgt)}"]`);
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('jump-flash');
+                    setTimeout(() => row.classList.remove('jump-flash'), 1800);
+                }
+            });
+        }
+    }
+
+    // 單列渲染：從 renderVisitList 抽出的純函數（輸入 v + date，無其他閉包依賴）
+    function renderVisitRow(v, date) {
             const p = state.patients[v.recordNumber] || {};
             const summary = summarizePlan(v.plan, date);
             const planLines = (v.plan || '').split(/\r?\n/);
@@ -1930,54 +2062,6 @@
                 </td>
               </tr>
             `;
-        };
-
-        const dcDivider = noShow.length > 0 ? `
-          <tr class="dc-divider"><td colspan="8">─── D C ───  共 ${noShow.length} 位未到</td></tr>
-        ` : '';
-
-        wrap.innerHTML = `
-          ${statsHtml}
-          <div class="visit-table-wrapper">
-            <table class="visit-table">
-              <colgroup>
-                <col class="col-num"><col class="col-record"><col class="col-labs">
-                <col class="col-extra"><col class="col-exam"><col class="col-plan">
-                <col class="col-tags"><col class="col-actions">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th class="col-num">#</th>
-                  <th class="col-record">病人</th>
-                  <th class="col-labs">抽血</th>
-                  <th class="col-extra">慢性病史</th>
-                  <th class="col-exam">本次概況</th>
-                  <th class="col-plan">Plan</th>
-                  <th class="col-tags">標籤</th>
-                  <th class="col-actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${came.map(renderRow).join('')}
-                ${dcDivider}
-                ${noShow.map(renderRow).join('')}
-              </tbody>
-            </table>
-          </div>
-        `;
-        // 跳轉後 scroll 到目標 row
-        if (state.scrollToRecord) {
-            const tgt = state.scrollToRecord;
-            state.scrollToRecord = null;
-            requestAnimationFrame(() => {
-                const row = wrap.querySelector(`tr[data-record="${CSS.escape(tgt)}"]`);
-                if (row) {
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    row.classList.add('jump-flash');
-                    setTimeout(() => row.classList.remove('jump-flash'), 1800);
-                }
-            });
-        }
     }
 
     function renderHeaderNotes() {

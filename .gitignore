@@ -21,6 +21,25 @@ source/
 # Python parser scripts（不需要 push）
 parse_*.py
 
+# Firebase 備份（含真實病歷號 + plan，絕對不上 GitHub）
+opd-backup-*.json
+backups/
+serviceAccountKey.json
+*firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+node_modules/
+package-lock.json
+package.json
+# 備份 ops 工具（本地用，含個人路徑，不需 public）
+backup_firebase.js
+BACKUP_SETUP.md
+
+# 整理後的本地資料夾（來源素材 / 教材 / 歷史產物，含 PHI 與截圖，皆不上 GitHub）
+archive/
+reference/
+Source/
+extracted_images/
+
 # 設計探索 / demo 資料（含 cases-data.jsx 的範例 chartNo）
 cases-data.jsx
 cases-app.jsx
