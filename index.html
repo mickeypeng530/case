@@ -363,12 +363,16 @@
         .med-strip {
             position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
             border-radius: 4px 0 0 4px; cursor: pointer; z-index: 3;
-            background: rgba(75,80,96,0.9);             /* 一般 */
-            box-shadow: 1px 0 0 0 rgba(0,0,0,0.55);    /* 右緣分隔線：跟同色 case 框分離 */
+            background: transparent;                   /* 一般：透明，case 顯原色 */
         }
-        .med-strip.med-pending   { background: #d97706; }  /* 未領：深琥珀（跟 CT NB 黃區隔） */
-        .med-strip.med-collected { background: #4ade80; }  /* 已領：亮綠（靠分隔線 + 亮度與 SONO 框區隔） */
-        .med-strip:hover { width: 9px; filter: brightness(1.35); }
+        /* 分隔線只在「有標記」時出現，跟同色框分離 */
+        .med-strip.med-pending,
+        .med-strip.med-collected { box-shadow: 1px 0 0 0 rgba(0,0,0,0.55); }
+        .med-strip.med-pending   { background: #ea580c; }  /* 未領：琥珀偏紅 */
+        .med-strip.med-collected { background: #4ade80; }  /* 已領：亮綠 */
+        /* hover 提示：有色的微亮；一般（透明）的給淡白提示可點 */
+        .med-strip.med-pending:hover, .med-strip.med-collected:hover { filter: brightness(1.2); }
+        .med-strip:not(.med-pending):not(.med-collected):hover { background: rgba(255,255,255,0.22); }
 
         .case-tag.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
         .case-tag.ct-nb-prf { background: var(--color-ct-nb); color: #1a1a2e; }
