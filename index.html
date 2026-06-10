@@ -361,13 +361,14 @@
         /* 領藥狀態左條（三態：一般灰 → 未領琥珀 → 已領綠，點擊循環） */
         .case-tag.has-med { padding-left: 11px; }
         .med-strip {
-            position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+            position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
             border-radius: 4px 0 0 4px; cursor: pointer; z-index: 3;
-            background: rgba(120,124,140,0.4);          /* 一般 */
+            background: rgba(75,80,96,0.9);             /* 一般 */
+            box-shadow: 1px 0 0 0 rgba(0,0,0,0.55);    /* 右緣分隔線：跟同色 case 框分離 */
         }
-        .med-strip.med-pending   { background: #f59e0b; }  /* 未領：琥珀 */
-        .med-strip.med-collected { background: #22c55e; }  /* 已領：綠 */
-        .med-strip:hover { width: 8px; filter: brightness(1.25); }
+        .med-strip.med-pending   { background: #d97706; }  /* 未領：深琥珀（跟 CT NB 黃區隔） */
+        .med-strip.med-collected { background: #15803d; }  /* 已領：深綠（跟 SONO 綠區隔） */
+        .med-strip:hover { width: 9px; filter: brightness(1.35); }
 
         .case-tag.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
         .case-tag.ct-nb-prf { background: var(--color-ct-nb); color: #1a1a2e; }
