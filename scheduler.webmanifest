@@ -1,0 +1,13 @@
+{
+    "name": "案例排程表",
+    "short_name": "排程",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "icons": [
+        { "src": "icons/sched-192.png", "sizes": "192x192", "type": "image/png" },
+        { "src": "icons/sched-512.png", "sizes": "512x512", "type": "image/png" }
+    ]
+}

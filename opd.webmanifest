@@ -1,0 +1,13 @@
+{
+    "name": "OPD 疼痛門診系統",
+    "short_name": "OPD",
+    "start_url": "./opd.html",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "icons": [
+        { "src": "icons/opd-192.png", "sizes": "192x192", "type": "image/png" },
+        { "src": "icons/opd-512.png", "sizes": "512x512", "type": "image/png" }
+    ]
+}

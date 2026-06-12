@@ -69,6 +69,10 @@ self intro.txt
 extracted_images/
 build_docx*.py
 .claude/
+check_syntax.js
+tmp_gen_icons.py
+tmp_*.py
+tmp_*.js
 
 # OS / IDE
 ~$*
