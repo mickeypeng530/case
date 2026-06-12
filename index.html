@@ -641,8 +641,50 @@
         /* index.html 預設是 dark theme，所以用透明色當 default；light theme 才換實色 */
         .caselist-table tr.row-mri td  { background: rgba(196,181,253,0.25) !important; color: var(--text-primary); }
         .caselist-table tr.row-arthro td { background: rgba(253,224,71,0.18) !important; color: var(--text-primary); }
-        :root[data-theme="light"] .caselist-table tr.row-mri td { background: #E6E6FA !important; color: #1a1a2e; }
-        :root[data-theme="light"] .caselist-table tr.row-arthro td { background: #FFFACD !important; color: #1a1a2e; }
+
+        /* === caselist 亮色主題（🌙/☀️ toggle，localStorage caselist:theme）=== */
+        /* 變數在 modal 層重定義 → 內部所有 var() 引用（含 inline style）自動跟著換 */
+        .caselist-modal.caselist-light {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f1f5f9;
+            --bg-tertiary: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --border: #cbd5e1;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        /* literal 色逐項覆寫（暗色版用的淺字在白底會看不見） */
+        .caselist-light .caselist-table tr:hover td { filter: brightness(0.96); }
+        .caselist-light .caselist-table tr.row-mri td { background: #E6E6FA !important; color: #1a1a2e; }
+        .caselist-light .caselist-table tr.row-arthro td { background: #FFFACD !important; color: #1a1a2e; }
+        .caselist-light .caselist-table tr.row-done td { background: rgba(34,197,94,0.14); }
+        .caselist-light .caselist-table .status-pending { background: rgba(99,102,241,0.14); color: #4338ca; }
+        .caselist-light .caselist-table .status-done { background: rgba(34,197,94,0.22); color: #166534; }
+        .caselist-light .caselist-table .status-dc { background: rgba(148,163,184,0.35); color: #475569; }
+        .caselist-light .arthro-fields input:not(:placeholder-shown):not(:focus) { color: #4338ca !important; }
+        /* mobile V4 cards */
+        .caselist-light .v4-type-chip,
+        .caselist-light .v4-type-chip-sm { background: rgba(100,116,139,0.12); color: #475569; border-color: rgba(100,116,139,0.35); }
+        .caselist-light .v4-type-chip[data-type="sono"],
+        .caselist-light .v4-type-chip-sm[data-type="sono"] { background: rgba(99,102,241,0.12); color: #4338ca; border-color: rgba(99,102,241,0.4); }
+        .caselist-light .v4-type-chip[data-type="mri"],
+        .caselist-light .v4-type-chip-sm[data-type="mri"] { background: rgba(168,85,247,0.12); color: #7e22ce; border-color: rgba(168,85,247,0.4); }
+        .caselist-light .v4-type-chip[data-type="arthro"],
+        .caselist-light .v4-type-chip-sm[data-type="arthro"] { background: rgba(34,197,94,0.12); color: #166534; border-color: rgba(34,197,94,0.4); }
+        .caselist-light .v4-type-chip[data-type="ct-nb"],
+        .caselist-light .v4-type-chip-sm[data-type="ct-nb"],
+        .caselist-light .v4-type-chip[data-type="ct-nb-prf"],
+        .caselist-light .v4-type-chip-sm[data-type="ct-nb-prf"] { background: rgba(245,158,11,0.14); color: #92400e; border-color: rgba(245,158,11,0.45); }
+        .caselist-light .v4-type-chip[data-type="stame"],
+        .caselist-light .v4-type-chip-sm[data-type="stame"],
+        .caselist-light .v4-type-chip[data-type="ctame"],
+        .caselist-light .v4-type-chip-sm[data-type="ctame"] { background: rgba(59,130,246,0.12); color: #1d4ed8; border-color: rgba(59,130,246,0.4); }
+        .caselist-light .v4-rtc-chip { color: #4338ca; background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.35); }
+        .caselist-light .v4-rtc-sep { color: rgba(99,102,241,0.5); }
+        .caselist-light .v4-plan-block { border-top-color: rgba(0,0,0,0.1); }
+        .caselist-light .v4-done-row { background: rgba(0,0,0,0.03); }
         /* MRI / Arthro 在 done / dc 時稍微淡化（提示狀態，但仍保留類型色）*/
         .caselist-table tr.row-mri.row-done td,
         .caselist-table tr.row-mri.row-dc td,
@@ -949,8 +991,7 @@
             }
 
             /* light mode bullet/border 色微調 */
-            :root[data-theme="light"] .v4-plan-block { border-top-color: rgba(0,0,0,0.08); }
-            :root[data-theme="light"] .v4-done-row { background: rgba(0,0,0,0.02); }
+            /* （亮色 V4 覆寫統一放在 .caselist-light 區塊，media query 外） */
         }
 
         .reading-list-modal {
@@ -1703,6 +1744,7 @@
                     <button id="caselist-bulk-load-plan-btn" title="一次把區間內所有待做且 planScratch 為空的 row 都載入 visit A plan" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">⬇ 全部載入 plan</button>
                     <button id="caselist-expand-plans-btn" title="一鍵把所有 plan 輸入框展開到完整高度，方便一次編輯（再按收合）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">📝 全部展開</button>
                     <button id="caselist-clean-orphan-btn" title="一鍵刪除所有「⚠ 排程已移走」row" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🗑 清 orphan</button>
+                    <button id="caselist-theme-btn" title="切換 caselist 亮/暗主題" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🌙</button>
                     <button id="caselist-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">✕ 關閉</button>
                 </div>
             </div>
@@ -4033,6 +4075,19 @@
             });
             document.getElementById('caselist-clean-orphan-btn')?.addEventListener('click', cleanCaselistOrphans);
             document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
+            // caselist 亮/暗主題（只影響 caselist modal，排程頁維持 dark）
+            const applyCaselistTheme = () => {
+                const light = localStorage.getItem('caselist:theme') === 'light';
+                document.querySelector('.modal.caselist-modal')?.classList.toggle('caselist-light', light);
+                const b = document.getElementById('caselist-theme-btn');
+                if (b) { b.textContent = light ? '☀️' : '🌙'; b.title = light ? '切回暗色' : '切到亮色'; }
+            };
+            document.getElementById('caselist-theme-btn')?.addEventListener('click', () => {
+                const cur = localStorage.getItem('caselist:theme') === 'light';
+                localStorage.setItem('caselist:theme', cur ? 'dark' : 'light');
+                applyCaselistTheme();
+            });
+            applyCaselistTheme();
             
             // 統計欄點擊事件
             document.getElementById('stats-bar').addEventListener('click', (e) => {
