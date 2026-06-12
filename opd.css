@@ -1394,8 +1394,12 @@
         /* 空心色圈 = 此 row 治療的成效（之後回診評的，唯讀視覺） */
         .tx-dot.hollow { border: 2.5px solid; background: transparent; }
         .tx-dot.hollow.tx-improve { border-color: #22c55e; }
-        .tx-dot.hollow.tx-mild    { border-color: #eab308; }
         .tx-dot.hollow.tx-nohelp  { border-color: #ef4444; }
+        .tx-dot.hollow.tx-mild    { border-color: #eab308; }
+        /* 手機不顯示（小目標難點，桌面門診工作流才用） */
+        @media (max-width: 768px) {
+            .tx-dot { display: none; }
+        }
         .status-dot.saving {
             background: var(--color-warning);
             animation: pulse 1s infinite;
