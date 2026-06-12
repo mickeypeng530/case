@@ -488,16 +488,34 @@
         const yyM = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);
         if (yyM) {
             const mo = parseInt(yyM[2], 10), dd = parseInt(yyM[3], 10);
-            if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+            if (!isRealDate(2000 + parseInt(yyM[1], 10), mo, dd)) return null;
             return `20${yyM[1]}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
         }
         const mdM = line.match(/\b(\d{1,2})\/(\d{1,2})\b/);
         if (mdM) {
             const mo = parseInt(mdM[1], 10), dd = parseInt(mdM[2], 10);
-            if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+            if (!isRealDate(parseInt(referenceDate.slice(0, 4), 10), mo, dd)) return null;
             return `${referenceDate.slice(0, 4)}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
         }
         return null;
+    }
+    // 真實日曆驗證：擋 2/30、4/31 這種「格式對但不存在」的日期
+    function isRealDate(y, mo, dd) {
+        const dt = new Date(y, mo - 1, dd);
+        return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === dd;
+    }
+    // 掃整行日期 token，有任何「不存在的日期」回 true（plan 行顯紅 ⚠ 用）
+    // 無年份的 MM/DD 用閏年驗（2/29 容忍，避免跨年誤判）
+    function lineHasInvalidDate(line) {
+        // 前後排除數字/小數點/斜線，避免 lab 值（9.5/0.8）或三碼數字（130/85）誤判
+        const re = /(^|[^\d./])(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})(?![\d./])/g;
+        let m;
+        while ((m = re.exec(line)) !== null) {
+            const mo = parseInt(m[3], 10), dd = parseInt(m[4], 10);
+            const y = m[2] ? (m[2].length === 2 ? 2000 + parseInt(m[2], 10) : parseInt(m[2], 10)) : 2024;
+            if (!isRealDate(y, mo, dd)) return true;
+        }
+        return false;
     }
     function escapeHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1602,6 +1620,7 @@
             while ((m = re.exec(line)) !== null) {
                 let yy = m[1];
                 if (yy.length === 2) yy = '20' + yy;
+                if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) continue; // 4/31 等不收
                 explicitDates.push(`${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
             }
             const hasExplicitFuture = explicitDates.some(d => d > today);
@@ -1642,6 +1661,7 @@
         const futureRTC = [];
         rtcMatches.forEach(m => {
             const yy = m[1] ? `20${m[1]}` : new Date(today).getFullYear().toString();
+            if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) return; // 不存在的日期不進 RTC 候選
             const mm = m[2].padStart(2, '0');
             const dd = m[3].padStart(2, '0');
             const dateStr = `${yy}-${mm}-${dd}`;
@@ -1676,6 +1696,10 @@
             const cls = pickBadgeClass(c);
             return `<span class="inline-badge ${cls}">${escapeHtml(c)}</span>`;
         });
+        // 不存在的日期（4/31、2/30）→ 整行紅波浪線 + ⚠，提醒 RTC 不會傳遞
+        if (lineHasInvalidDate(trimmed)) {
+            return `<span class="${cls} date-invalid" title="此行含不存在的日期（如 4/31），不會被當作 RTC / 排程日期">⚠ ${withBadges}</span>`;
+        }
         return `<span class="${cls}">${withBadges}</span>`;
     }
 
@@ -2224,6 +2248,7 @@
             const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
             if (!m) continue;
             const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
+            if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) continue; // 4/31 不能當傳遞目標
             const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
             if (cand > date) {
                 nextRTC = cand;
