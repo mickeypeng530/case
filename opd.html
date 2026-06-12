@@ -661,6 +661,8 @@
 
     // 逾期提醒：登入後若距上次備份 > 7 天 → 提示（不強制）
     function checkBackupStaleness() {
+        // 手機不提醒：備份是桌機 node 腳本的事，手機看到也做不了什麼
+        if (window.matchMedia('(max-width: 768px)').matches) return;
         const last = localStorage.getItem('opd:lastBackup');
         const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
         if (days < 7) return;
