@@ -2076,6 +2076,12 @@
             return new Date(date).toISOString().split('T')[0];
         }
 
+        // HTML 跳脫（跟 opd.html 同款）：所有 user 輸入進 template literal 前必過這層
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
         // 排程 case 穩定 id：取代「物件參考比對」(c === oldCase)，跨 Firebase 同步也不會斷
         function genCaseId() {
             return 'cs_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -2407,8 +2413,8 @@
                         <div class="stats-detail-item">
                             <span class="date">${dateStr} (${dayName}) ${c.period}</span>
                             <span class="time">${c.time || '--:--'}</span>
-                            <span class="type-label" style="color: var(--color-ct-nb); min-width: 70px;">${typeLabel}</span>
-                            <span class="chart">${c.chartNo || '-'}</span>
+                            <span class="type-label" style="color: var(--color-ct-nb); min-width: 70px;">${escapeHtml(typeLabel)}</span>
+                            <span class="chart">${escapeHtml(c.chartNo || '-')}</span>
                             <span class="status ${statusClass}">${statusText}</span>
                         </div>
                     `;
@@ -3098,7 +3104,7 @@
                 wrap.innerHTML = `<div class="caselist-desktop"><div style="padding:30px; text-align:center; color:var(--text-muted);">無資料 · 點「+ 新增」或「🔄 同步排程」</div></div><div class="caselist-mobile"><div class="v4-empty">無資料</div></div>`;
                 return;
             }
-            const esc = (s) => (s == null ? '' : String(s)).replace(/"/g, '&quot;');
+            const esc = escapeHtml; // 全實體跳脫（舊版只跳雙引號，可被 > 等繞過）
             const rows = items.map(c => {
                 // 類型 class（永遠掛 → MRI/Arthro 顏色不被 done/dc 覆蓋）
                 // 狀態 class 也掛上，CSS 用 .row-mri.row-done 等組合微調 opacity
@@ -3827,7 +3833,7 @@
 
             const casesHTML = displayCases.map((c, i) => createCaseTagHTML(c, cellKey, i, onlyMRI)).join('');
             const blockedClass = cellData.blocked ? 'blocked' : '';
-            const blockedNote = cellData.blocked && cellData.blockedReason ? `<div class="blocked-note">${cellData.blockedReason}</div>` : '';
+            const blockedNote = cellData.blocked && cellData.blockedReason ? `<div class="blocked-note">${escapeHtml(cellData.blockedReason)}</div>` : '';
             
             // 判斷是否為過去的日期
             const today = new Date();
@@ -3888,7 +3894,7 @@
             // 週六 MRI 點擊整個標籤來編輯，不用小按鈕
             return `
                 <div class="case-tag mri saturday-mri ${tentativeClass}" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false" data-saturday="true" style="cursor: pointer;">
-                    <span style="font-size: 0.55rem;">${time}</span>
+                    <span style="font-size: 0.55rem;">${escapeHtml(time)}</span>
                 </div>
             `;
         }
@@ -3945,7 +3951,7 @@
                      data-is-empty="${isEmpty}">
                     ${medStripHTML}
                     <div class="case-info">
-                        <span class="case-detail" data-mobile="${mobileText}">${isEmpty ? '＋' : displayText}</span>
+                        <span class="case-detail" data-mobile="${escapeHtml(mobileText)}">${isEmpty ? '＋' : escapeHtml(displayText)}</span>
                     </div>
                     ${actionsHTML}
                 </div>
@@ -4743,12 +4749,12 @@
             itemsContainer.innerHTML = readingList.map(item => `
                 <div class="reading-item" data-id="${item.id}">
                     <div class="reading-item-content">
-                        <div class="reading-item-title">${item.title || item.url}</div>
-                        <div class="reading-item-url">${item.url}</div>
+                        <div class="reading-item-title">${escapeHtml(item.title || item.url)}</div>
+                        <div class="reading-item-url">${escapeHtml(item.url)}</div>
                         <div class="reading-item-time">${formatTimeAgo(item.createdAt)}</div>
                     </div>
                     <div class="reading-item-actions">
-                        <button type="button" class="reading-item-btn open" data-url="${item.url}">開啟</button>
+                        <button type="button" class="reading-item-btn open" data-url="${escapeHtml(item.url)}">開啟</button>
                         <button type="button" class="reading-item-btn delete" data-id="${item.id}">刪除</button>
                     </div>
                 </div>
