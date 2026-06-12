@@ -3270,6 +3270,13 @@
         if (!fbDb || !date || !rec) return;
         const cur = state.visitsByDate?.[date]?.[rec];
         if (cur && (cur.plan || '') === value) return; // 沒變更不寫
+        // 防誤清：原 plan 有料（>50 字）但新值全空 → confirm（Ctrl+A+Delete+失焦無法復原）
+        if (cur && (cur.plan || '').length > 50 && value.trim() === '') {
+            if (!confirm(`確定清空這格 plan？\n\n原內容 ${cur.plan.length} 字，清空後無法復原。`)) {
+                renderVisitList(); // 還原顯示（focus 已離開 textarea，guard 不會擋）
+                return;
+            }
+        }
         try {
             await update(ref(fbDb), { [`opd/visits/${date}/${rec}/plan`]: value });
         } catch (err) {
