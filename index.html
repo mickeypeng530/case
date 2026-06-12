@@ -2043,6 +2043,34 @@
             }
         }
 
+        // ===== 欄位級寫入（高頻路徑用）=====
+        // 只寫動到的 caselist row / cell，不整包 set scheduler 節點：
+        // ① 兩裝置同開時不再互蓋整包 ② 寫入量從 ~54KB 縮到 ~1KB
+        // 結構性操作（tab 增刪、sync reconcile、dedup、批次填補）仍走 saveToStorage()
+        function savePartial(updates) {
+            showStatus('儲存中...', true);
+            saveToLocalStorage(); // 本地仍整包（單機快取，無互蓋問題）
+            if (firebaseReady && fbDb) {
+                updates['scheduler/lastUpdated'] = new Date().toISOString();
+                update(ref(fbDb), updates).then(() => {
+                    showStatus('已同步', false);
+                }).catch((error) => {
+                    console.error('同步失敗:', error);
+                    showStatus('❌ 同步失敗', false);
+                });
+            } else {
+                showStatus('離線模式', false);
+            }
+        }
+        function saveCaselistRow(tabId, rowId) {
+            const row = (state.caseList?.[tabId] || {})[rowId];
+            savePartial({ [`scheduler/caseList/${tabId}/${rowId}`]: row ?? null }); // 不存在 → 寫 null = 刪除
+        }
+        function saveCell(cellKey) {
+            const cell = state.cellData?.[cellKey];
+            savePartial({ [`scheduler/cellData/${cellKey}`]: cell ?? null });
+        }
+
         function showStatus(text, isSaving) {
             const dot = document.getElementById('storage-dot');
             const textEl = document.getElementById('storage-text');
@@ -2811,7 +2839,7 @@
                 type: '', otherSubtype: '',
                 status: 'pending', source: 'manual', createdAt: Date.now()
             };
-            saveToStorage();
+            saveCaselistRow(tab.id, id);
             renderCaselist();
         }
 
@@ -2825,7 +2853,7 @@
                 value = value.trim();
             }
             list[id][field] = value;
-            saveToStorage();
+            saveCaselistRow(tab.id, id);
         }
 
         function caselistDeleteRow(id) {
@@ -2833,7 +2861,7 @@
             if (!tab) return;
             const list = getCaselistFor(tab.id);
             delete list[id];
-            saveToStorage();
+            saveCaselistRow(tab.id, id); // row 已刪 → 寫 null
             renderCaselist();
         }
 
@@ -2844,7 +2872,7 @@
             if (!list[id]) return;
             const cur = list[id].status || 'pending';
             list[id].status = cur === 'pending' ? 'done' : (cur === 'done' ? 'dc' : 'pending');
-            saveToStorage();
+            saveCaselistRow(tab.id, id);
             renderCaselist();
         }
 
@@ -3056,7 +3084,7 @@
                 return;
             }
             Object.assign(cur, fill);
-            saveToStorage();
+            saveCaselistRow(tab.id, currentId);
             const s = document.getElementById('caselist-status');
             if (s) {
                 s.textContent = `✓ 已從 ${sources.join(' + ')} 填補：${Object.keys(fill).join(', ')}`;
@@ -4616,7 +4644,7 @@
             
             state.cellData[state.selectedCell].cases = realCases;
 
-            saveToStorage();
+            saveCell(state.selectedCell);
             renderTabContent();
             state.selectedSlotIndex = null;
 
@@ -4635,7 +4663,7 @@
             cellData.blocked = !cellData.blocked;
             cellData.blockedReason = cellData.blocked ? reason : '';
 
-            saveToStorage();
+            saveCell(state.selectedCell);
             renderTabContent();
             document.getElementById('blocked-modal').classList.remove('show');
         }
@@ -4652,7 +4680,7 @@
             const idx = cases.findIndex(c => c && c.id === id);
             if (idx !== -1) {
                 cases.splice(idx, 1);
-                saveToStorage();
+                saveCell(cellKey);
                 renderTabContent();
             }
         }
@@ -4672,7 +4700,7 @@
             const next = { undefined: 'pending', pending: 'collected', collected: undefined };
             const nv = next[c.medState];
             if (nv === undefined) delete c.medState; else c.medState = nv;
-            saveToStorage();
+            saveCell(cellKey);
             renderTabContent();
         }
 
@@ -4697,7 +4725,7 @@
             const originalIndex = cases.findIndex(c => c === caseToDelete);
             if (originalIndex !== -1) {
                 cases.splice(originalIndex, 1);
-                saveToStorage();
+                saveCell(cellKey);
                 renderTabContent();
             }
         }
@@ -4957,7 +4985,11 @@
             
             toCases.push(caseData);
 
-            saveToStorage();
+            // 一次寫 from + to 兩個 cell（同一筆 update，原子性 OK）
+            savePartial({
+                [`scheduler/cellData/${fromCellKey}`]: state.cellData[fromCellKey] ?? null,
+                [`scheduler/cellData/${toCellKey}`]: state.cellData[toCellKey] ?? null
+            });
             renderTabContent();
         }
 
