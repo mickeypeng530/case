@@ -487,6 +487,16 @@
         if (t === 'MRI') return 'CT/MRI';
         return t;
     }
+    // ===== 治療成效追蹤（B 模型）=====
+    // 點「回診當天 row」的 tx-dot → 系統自動歸因：找上次（< 今天）含 trackable tag 的 visit，
+    // 把成效寫在那筆 visit 的 txOutcome（per-procedure 統計用），同時在今天 visit 存 txAssess 鏡像（顯示+當日統計用）
+    const TX_TRACKABLE_TAGS = ['SONO', 'CT NB', 'pRF', 'PRP', 'BMA', 'cTAME', 'sTAME'];
+    const TX_OUTCOME_SEQ = ['improve', 'mild', 'nohelp']; // 點擊循環：無 → improve → mild → nohelp → 無
+    const TX_OUTCOME_META = {
+        improve: { label: 'improve', icon: '🟢' },
+        mild:    { label: 'mild improve/stationary', icon: '🟡' },
+        nohelp:  { label: 'no help', icon: '🔴' }
+    };
     // 從一行文字抽日期 → 'YYYY-MM-DD' 或 null（共用，避免重複實作）
     // 若無年份 → 用 referenceDate 的年補
     function parseLineDate(line, referenceDate) {
@@ -1981,6 +1991,20 @@
             const normalizedTags = [...new Set((v.tags || []).map(normalizeTag))];
             const tagChips = normalizedTags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
 
+            // 治療成效 dot（標籤區左緣）：實心 = 本日評估上次治療；空心色圈 = 此次治療的成效（之後回診評的）
+            const txDot = (() => {
+                const a = v.txAssess;
+                if (a && TX_OUTCOME_META[a.outcome]) {
+                    const m = TX_OUTCOME_META[a.outcome];
+                    return `<span class="tx-dot solid tx-${a.outcome}" data-tx-record="${escapeAttr(v.recordNumber)}" title="上次治療 ${escapeAttr((a.srcDate || '?').slice(5))} ${escapeAttr((a.tags || []).join('+'))}：${escapeAttr(m.label)}（點擊循環）"></span>`;
+                }
+                if (TX_OUTCOME_META[v.txOutcome]) {
+                    const m = TX_OUTCOME_META[v.txOutcome];
+                    return `<span class="tx-dot hollow tx-${v.txOutcome}" data-tx-record="${escapeAttr(v.recordNumber)}" title="此次治療成效：${escapeAttr(m.label)}（${escapeAttr((v.txOutcomeOn || '?').slice(5))} 回診評估）"></span>`;
+                }
+                return `<span class="tx-dot empty" data-tx-record="${escapeAttr(v.recordNumber)}" title="記錄上次治療成效：點擊循環 🟢 improve → 🟡 mild/stationary → 🔴 no help → 清除"></span>`;
+            })();
+
             const statusBadges = [
                 v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
                 p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
@@ -2085,7 +2109,7 @@
                         return html;
                     }).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 `}</td>
-                <td class="col-tags tag-edit-trigger" data-record="${escapeAttr(v.recordNumber)}" title="雙擊編輯標籤"><div class="visit-tags">${tagChips}${jumpChips}</div></td>
+                <td class="col-tags tag-edit-trigger" data-record="${escapeAttr(v.recordNumber)}" title="雙擊編輯標籤"><div class="visit-tags">${txDot}${tagChips}${jumpChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
                         <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">✏️ 編輯</button>
@@ -2744,6 +2768,49 @@
         } catch (err) { reportWriteError(err, '備藥狀態'); }
     }
 
+    // 治療成效循環（B 模型）：
+    // 1) 今天 visit 已有 txAssess → 直接用記住的 srcDate 循環
+    // 2) 沒有 → 查 patientVisitIndex 找 < 今天最近一筆含 trackable tag 的 visit（最多往回 8 筆）
+    // 3) 雙寫：srcDate visit 的 txOutcome/txOutcomeOn（per-procedure 統計）+ 今天 visit 的 txAssess 鏡像（顯示/當日統計）
+    async function cycleTxOutcome(recordNumber) {
+        const date = state.currentClinicDate;
+        if (!date || !recordNumber || !fbDb) return;
+        try {
+            // race guard：抓 Firebase 最新 txAssess（state 可能落後）
+            const curSnap = await get(ref(fbDb, `opd/visits/${date}/${recordNumber}/txAssess`));
+            const cur = curSnap.val();
+            let srcDate = cur?.srcDate || null;
+            let srcTags = cur?.tags || null;
+            if (!srcDate) {
+                setStatus('saving', '查上次治療...');
+                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${recordNumber}`));
+                const prevDates = Object.keys(idxSnap.val() || {}).filter(d => d < date).sort((a, b) => b.localeCompare(a)).slice(0, 8);
+                for (const d of prevDates) {
+                    const vSnap = await get(ref(fbDb, `opd/visits/${d}/${recordNumber}`));
+                    const pv = vSnap.val();
+                    const tags = [...new Set((pv?.tags || []).map(normalizeTag))].filter(t => TX_TRACKABLE_TAGS.includes(t));
+                    if (tags.length) { srcDate = d; srcTags = tags; break; }
+                }
+                if (!srcDate) {
+                    setStatus('connected', `${recordNumber}：往前找不到 procedure visit，無法記錄療效`);
+                    return;
+                }
+            }
+            const i = TX_OUTCOME_SEQ.indexOf(cur?.outcome);
+            const next = i < 0 ? TX_OUTCOME_SEQ[0] : (TX_OUTCOME_SEQ[i + 1] || null);
+            const updates = {};
+            updates[`opd/visits/${date}/${recordNumber}/txAssess`] = next ? { srcDate, tags: srcTags, outcome: next, at: Date.now() } : null;
+            updates[`opd/visits/${srcDate}/${recordNumber}/txOutcome`] = next || null;
+            updates[`opd/visits/${srcDate}/${recordNumber}/txOutcomeOn`] = next ? date : null;
+            await update(ref(fbDb), updates);
+            setStatus('connected', next
+                ? `療效 ${TX_OUTCOME_META[next].icon} ${TX_OUTCOME_META[next].label}（${srcDate.slice(5)} ${(srcTags || []).join('+')}）`
+                : '已清除療效記錄');
+        } catch (err) {
+            reportWriteError(err, '療效記錄');
+        }
+    }
+
     function copyPlanToClipboard(recordNumber) {
         const date = state.currentClinicDate;
         const visit = (state.visitsByDate?.[date] || {})[recordNumber];
@@ -2887,13 +2954,20 @@
             if (window.matchMedia('(max-width: 768px)').matches) return;
             const cell = e.target.closest('td.tag-edit-trigger');
             if (!cell) return;
-            // 避免點 chip 觸發
-            if (e.target.closest('[data-tag], [data-jump-date], button')) return;
+            // 避免點 chip / 療效 dot 觸發
+            if (e.target.closest('[data-tag], [data-jump-date], button, .tx-dot')) return;
             const today = formatDate(new Date());
             if (state.currentClinicDate >= today) return; // 未來 / 今天 → 維持要雙擊
             openTagEditPopover(cell);
         });
         document.getElementById('visit-list').addEventListener('click', (e) => {
+            // 治療成效 dot：點擊循環（無 → 🟢 → 🟡 → 🔴 → 無）
+            const txDotEl = e.target.closest('.tx-dot');
+            if (txDotEl) {
+                e.stopPropagation();
+                cycleTxOutcome(txDotEl.dataset.txRecord);
+                return;
+            }
             // 整頁 Plan 編輯模式切換
             const planToggle = e.target.closest('#plan-edit-toggle');
             if (planToggle) {
@@ -3921,12 +3995,15 @@
             const noShow = Object.values(allByDate[d] || {}).filter(v => v.noShow).length;
             const counts = { Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0 };
             let alsoImage = 0;
+            const tx = { n: 0, improve: 0, mild: 0, nohelp: 0 }; // 當日記錄的療效評估（txAssess）
             visits.forEach(v => {
                 const c = classifyVisit(v);
                 counts[c.primary]++;
                 if (c.alsoImage) alsoImage++;
+                const o = v.txAssess?.outcome;
+                if (o && tx[o] !== undefined) { tx.n++; tx[o]++; }
             });
-            return { date: d, total: visits.length, noShow, counts, alsoImage };
+            return { date: d, total: visits.length, noShow, counts, alsoImage, tx };
         });
 
         // 依 aggMode 聚合
@@ -3942,10 +4019,14 @@
         const buckets = {};
         perDate.forEach(r => {
             const k = bucketOf(r.date);
-            if (!buckets[k]) buckets[k] = { key: k, dates: [], total: 0, noShow: 0, counts: { Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0 }, alsoImage: 0 };
+            if (!buckets[k]) buckets[k] = { key: k, dates: [], total: 0, noShow: 0, counts: { Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0 }, alsoImage: 0, tx: { n: 0, improve: 0, mild: 0, nohelp: 0 } };
             buckets[k].dates.push(r.date);
             buckets[k].total += r.total;
             buckets[k].noShow += r.noShow;
+            buckets[k].tx.n += r.tx.n;
+            buckets[k].tx.improve += r.tx.improve;
+            buckets[k].tx.mild += r.tx.mild;
+            buckets[k].tx.nohelp += r.tx.nohelp;
             buckets[k].counts.Procedure += r.counts.Procedure;
             buckets[k].counts['骨鬆'] += r.counts['骨鬆'];
             buckets[k].counts.Image += r.counts.Image;
@@ -4011,6 +4092,18 @@
                 <div style="${cardValueC}">${procHeavyClinics} <span style="font-size:0.9rem;color:var(--text-muted);">(${procHeavyPct}%)</span></div>
                 <div style="${cardSubC}">procedure ≥ 50%</div>
             </div>
+            ${(() => {
+                const n = perDate.reduce((s, r) => s + r.tx.n, 0);
+                if (!n) return '';
+                const imp = perDate.reduce((s, r) => s + r.tx.improve, 0);
+                const mild = perDate.reduce((s, r) => s + r.tx.mild, 0);
+                const no = perDate.reduce((s, r) => s + r.tx.nohelp, 0);
+                return `<div style="${cardStyleC}">
+                    <div style="${cardLabelC}">療效評估（期間）</div>
+                    <div style="${cardValueC}">${Math.round(imp / n * 100)}% <span style="font-size:0.85rem;color:var(--text-muted);">improve</span></div>
+                    <div style="${cardSubC}">🟢 ${imp} · 🟡 ${mild} · 🔴 ${no}（共 ${n} 筆）</div>
+                </div>`;
+            })()}
         </div>`;
 
         // 摘要文字
@@ -4023,11 +4116,40 @@
         }
         const summaryHtml = summaryParts.length ? `<div style="background:rgba(99,102,241,0.08); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:0.88rem; line-height:1.6;">${summaryParts.map(escapeHtml).join(' ')}</div>` : '';
 
-        let html = dashboardHtml + summaryHtml;
+        // per-procedure 療效（txOutcome 記在「治療那筆」visit）：治療日在期間內者，依 tag 拆
+        let txTagHtml = '';
+        {
+            const txByTag = {};
+            dateKeys.forEach(d => Object.values(allByDate[d] || {}).forEach(v => {
+                if (!TX_OUTCOME_META[v.txOutcome]) return;
+                const tags = [...new Set((v.tags || []).map(normalizeTag))].filter(t => TX_TRACKABLE_TAGS.includes(t));
+                tags.forEach(t => {
+                    const o = (txByTag[t] = txByTag[t] || { improve: 0, mild: 0, nohelp: 0 });
+                    o[v.txOutcome]++;
+                });
+            }));
+            const keys = TX_TRACKABLE_TAGS.filter(t => txByTag[t]);
+            if (keys.length) {
+                const rowsHtml = keys.map(t => {
+                    const o = txByTag[t];
+                    const n = o.improve + o.mild + o.nohelp;
+                    return `<tr><td>${escapeHtml(t)}</td><td>${n}</td>
+                        <td>🟢 ${o.improve} <span style="color:var(--text-muted);font-size:0.78rem;">(${Math.round(o.improve / n * 100)}%)</span></td>
+                        <td>🟡 ${o.mild}</td><td>🔴 ${o.nohelp}</td></tr>`;
+                }).join('');
+                txTagHtml = `<div style="margin-bottom:14px;">
+                    <div style="font-size:0.85rem; font-weight:600; margin-bottom:6px;">💊 治療成效（期間內治療、依 procedure 拆）<span style="font-weight:400; color:var(--text-muted); font-size:0.76rem;">　同次 session 多 procedure 會各計一次；分母只含已評估者</span></div>
+                    <table class="stats-table"><thead><tr><th>Procedure</th><th>已評估</th><th>improve</th><th>mild/stationary</th><th>no help</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody></table>
+                </div>`;
+            }
+        }
+
+        let html = dashboardHtml + summaryHtml + txTagHtml;
         html += '<table class="stats-table"><thead><tr>'
-            + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>骨鬆</th><th>Image only</th><th>Med + f/u</th><th>DC</th>`
+            + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>骨鬆</th><th>Image only</th><th>Med + f/u</th><th>療效</th><th>DC</th>`
             + '</tr></thead><tbody>';
-        const totals = { came: 0, Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0 };
+        const totals = { came: 0, Procedure: 0, '骨鬆': 0, Image: 0, Med: 0, 'f/u': 0, alsoImage: 0, dc: 0, txN: 0, txImp: 0, txMild: 0, txNo: 0 };
         const pctCell = (n, tot) => {
             if (n === 0) return '·';
             const pct = tot > 0 ? Math.round((n / tot) * 100) : 0;
@@ -4051,6 +4173,7 @@
             const medFuCell = medFuTotal > 0
                 ? `${medFuTotal} <span style="color:var(--text-muted);font-size:0.78rem;">(${medFuPct}% · med ${r.counts.Med} / f/u ${r.counts['f/u']})</span>`
                 : '·';
+            const txCell = r.tx.n > 0 ? `🟢${r.tx.improve} 🟡${r.tx.mild} 🔴${r.tx.nohelp}` : '·';
             html += `<tr>
                 <td>${labelHtml}</td>
                 <td><strong>${r.total}</strong></td>
@@ -4058,8 +4181,13 @@
                 <td>${pctCell(r.counts['骨鬆'], r.total)}</td>
                 <td>${pctCell(r.counts.Image, r.total)}</td>
                 <td>${medFuCell}</td>
+                <td style="white-space:nowrap;">${txCell}</td>
                 <td style="color:var(--text-muted);">${r.noShow || '·'}</td>
             </tr>`;
+            totals.txN += r.tx.n;
+            totals.txImp += r.tx.improve;
+            totals.txMild += r.tx.mild;
+            totals.txNo += r.tx.nohelp;
             totals.came += r.total;
             totals.Procedure += r.counts.Procedure;
             totals['骨鬆'] += r.counts['骨鬆'];
@@ -4081,6 +4209,7 @@
             <td>${pctCell(totals['骨鬆'], totals.came)}</td>
             <td>${pctCell(totals.Image, totals.came)}</td>
             <td>${totMedFuCell}</td>
+            <td style="white-space:nowrap;">${totals.txN > 0 ? `🟢${totals.txImp} 🟡${totals.txMild} 🔴${totals.txNo}` : '·'}</td>
             <td>${totals.dc || '·'}</td>
         </tr>`;
         html += '</tbody></table>';

@@ -1363,6 +1363,39 @@
             text-decoration: underline wavy #ef4444;
             text-underline-offset: 3px;
         }
+
+        /* 治療成效 dot（標籤區左緣）：點循環 無→🟢improve→🟡mild/stationary→🔴no help→無 */
+        .tx-dot {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            margin-right: 5px;
+            cursor: pointer;
+            vertical-align: middle;
+            position: relative;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+        .tx-dot::after {
+            /* 放大點擊熱區（觸控） */
+            content: '';
+            position: absolute;
+            inset: -7px;
+        }
+        .tx-dot.empty {
+            border: 1.5px dashed var(--text-muted);
+            opacity: 0.35;
+        }
+        .tx-dot.empty:hover { opacity: 0.9; }
+        .tx-dot.solid.tx-improve { background: #22c55e; }
+        .tx-dot.solid.tx-mild    { background: #eab308; }
+        .tx-dot.solid.tx-nohelp  { background: #ef4444; }
+        /* 空心色圈 = 此 row 治療的成效（之後回診評的，唯讀視覺） */
+        .tx-dot.hollow { border: 2.5px solid; background: transparent; }
+        .tx-dot.hollow.tx-improve { border-color: #22c55e; }
+        .tx-dot.hollow.tx-mild    { border-color: #eab308; }
+        .tx-dot.hollow.tx-nohelp  { border-color: #ef4444; }
         .status-dot.saving {
             background: var(--color-warning);
             animation: pulse 1s infinite;
