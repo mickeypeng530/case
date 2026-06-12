@@ -1357,6 +1357,7 @@
             background: var(--color-draft);
         }
         .status-dot.connected { background: var(--color-confirmed); }
+        .status-dot.error { background: #ef4444; }
         .status-dot.saving {
             background: var(--color-warning);
             animation: pulse 1s infinite;

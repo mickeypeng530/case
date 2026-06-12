@@ -648,8 +648,15 @@
     function setStatus(state, text) {
         const dot = document.getElementById('status-dot');
         const txt = document.getElementById('status-text');
-        dot.className = 'status-dot' + (state === 'connected' ? ' connected' : state === 'saving' ? ' saving' : '');
+        dot.className = 'status-dot' + (state === 'connected' ? ' connected' : state === 'saving' ? ' saving' : state === 'error' ? ' error' : '');
         txt.textContent = text;
+    }
+
+    // 寫入失敗統一回報：status 顯紅 + alert。fire-and-forget 的 toggle 類操作用這個 catch
+    function reportWriteError(err, what = '寫入') {
+        console.error(what + '失敗:', err);
+        setStatus('error', `❌ ${what}失敗`);
+        alert(`${what}失敗：${err.message}\n\n請檢查網路後重試。`);
     }
 
     // ========== Tab 切換 ==========
@@ -2143,7 +2150,12 @@
         updates[`opd/patientVisitIndex/${visit.recordNumber}/${visit.date}`] = true;
 
         setStatus('saving', '儲存中...');
-        await update(ref(fbDb), updates);
+        try {
+            await update(ref(fbDb), updates);
+        } catch (err) {
+            setStatus('error', '❌ 儲存失敗');
+            throw err; // 呼叫端（handleVisitSave）alert + 不關 modal
+        }
         setStatus('connected', '已儲存');
     }
 
@@ -2152,7 +2164,12 @@
         updates[`opd/visits/${date}/${recordNumber}`] = null;
         updates[`opd/patientVisitIndex/${recordNumber}/${date}`] = null;
         setStatus('saving', '刪除中...');
-        await update(ref(fbDb), updates);
+        try {
+            await update(ref(fbDb), updates);
+        } catch (err) {
+            setStatus('error', '❌ 刪除失敗');
+            throw err;
+        }
         setStatus('connected', '已刪除');
     }
 
@@ -2162,7 +2179,9 @@
         const snap = await get(ref(fbDb, `opd/visits/${date}/${recordNumber}`));
         const visit = snap.val();
         if (!visit) return;
-        await set(ref(fbDb, `opd/visits/${date}/${recordNumber}/noShow`), !visit.noShow);
+        try {
+            await set(ref(fbDb, `opd/visits/${date}/${recordNumber}/noShow`), !visit.noShow);
+        } catch (err) { reportWriteError(err, 'no-show 切換'); }
     }
 
     async function toggleConfirm(recordNumber) {
@@ -2182,12 +2201,14 @@
             // 取消確認 → 清除 propagatedTo，允許下次重跑 RTC 傳遞
             updates.propagatedTo = null;
         }
-        await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
+        try {
+            await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
 
-        // RTC 自動傳遞：每次 draft → confirmed 都重跑（existsSnap 查重避免重複建立）
-        if (newStatus === 'confirmed') {
-            await propagateRTC(date, recordNumber, visit);
-        }
+            // RTC 自動傳遞：每次 draft → confirmed 都重跑（existsSnap 查重避免重複建立）
+            if (newStatus === 'confirmed') {
+                await propagateRTC(date, recordNumber, visit);
+            }
+        } catch (err) { reportWriteError(err, '確認狀態'); }
     }
 
     async function propagateRTC(date, recordNumber, visit) {
@@ -2612,7 +2633,9 @@
             if (tags.has(tag)) tags.delete(tag);
             else tags.add(tag);
             visit.tags = [...tags];
-            await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { tags: visit.tags });
+            try {
+                await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { tags: visit.tags });
+            } catch (err) { reportWriteError(err, 'tag 更新'); return; }
             // listener 會 re-render visit list；popover 自己的 chip 也更新
             renderChips();
         });
@@ -2653,8 +2676,10 @@
                 const raw = input.value.trim();
                 const newVal = raw === '' ? null : parseInt(raw, 10);
                 if (newVal !== current && !Number.isNaN(newVal)) {
-                    await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { orderInClinic: newVal });
-                    return; // listener 會 re-render
+                    try {
+                        await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), { orderInClinic: newVal });
+                        return; // listener 會 re-render
+                    } catch (err) { reportWriteError(err, '序號更新'); }
                 }
             }
             renderVisitList(); // 還原顯示
@@ -2683,7 +2708,9 @@
         } else {
             updates.preparedAt = null;
         }
-        await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
+        try {
+            await update(ref(fbDb, `opd/visits/${date}/${recordNumber}`), updates);
+        } catch (err) { reportWriteError(err, '備藥狀態'); }
     }
 
     function copyPlanToClipboard(recordNumber) {
@@ -3259,8 +3286,13 @@
         const original = document.getElementById('v-record-number').dataset.original || '';
         if (original && original !== recordNumber) {
             if (!confirm(`病歷號將從「${original}」改為「${recordNumber}」。\n\n這會把本次 visit 搬到新病歷號名下。確定？`)) return;
-            // 刪舊
-            await deleteVisit(date, original);
+            // 刪舊（失敗就中止，不能讓新 visit 存了舊的還在 → 同人兩筆）
+            try {
+                await deleteVisit(date, original);
+            } catch (err) {
+                alert('搬移失敗（刪除舊病歷號 visit 時出錯）：' + err.message);
+                return;
+            }
         }
 
         // 過濾 procedureStatuses 只留有狀態的
@@ -3327,7 +3359,12 @@
         const rec = state.editingVisitRecord;
         if (!rec) return;
         showConfirm(`刪除 ${rec} 的本日 visit？`, '只刪除這次門診紀錄，不會刪掉病人主表。', async () => {
-            await deleteVisit(date, rec);
+            try {
+                await deleteVisit(date, rec);
+            } catch (err) {
+                reportWriteError(err, '刪除');
+                return; // 失敗不關 modal
+            }
             closeVisitModal();
         });
     }
