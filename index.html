@@ -710,6 +710,24 @@
         .caselist-table .row-delete:hover { color: var(--color-danger); }
         .caselist-table .src-manual { color: #f59e0b; font-weight: 600; }
         .caselist-table .src-cell { color: var(--text-muted); }
+        /* 桌面看診/回診 chip（plan 欄上方，與手機 v4-rtc-chip 同款配色） */
+        .caselist-table .cl-rtc-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            color: #a5b4fc;
+            background: rgba(99,102,241,0.14);
+            border: 1px solid rgba(99,102,241,0.4);
+            padding: 1px 8px;
+            border-radius: 4px;
+            margin-bottom: 3px;
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .caselist-table .cl-rtc-sep { color: rgba(99,102,241,0.45); }
+        .caselist-light .caselist-table .cl-rtc-chip { color: #4338ca; background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.35); }
         /* 點 plan textarea 編輯時自動擴張到 5 行（桌機）*/
         .caselist-table textarea[data-field="planScratch"] {
             transition: min-height 0.15s ease;
@@ -3142,6 +3160,41 @@
             }
         }
 
+        // 看診/回診 chip 解析（桌面 + 手機 V4 共用）。
+        // 舊版靠「第 1/第 2 個 RTC 行」位置慣例 → OPD 載入的 plan 上方是多行歷史 RTC，會抓錯。
+        // 改日期導向：
+        //   看診 = [本次] 行 → 沒有就取「日期 ≤ case 日期」最近的 RTC 行 → 再沒有取第 1 行
+        //   回診 = 「日期 > case 日期」最早的 RTC 行 → 沒有就取含「回診」字樣的最後一行 → 再沒有取看診後下一行
+        function extractCaselistRtc(c) {
+            const planLines = (c.planScratch || '').split('\n').map(l => l.trim()).filter(Boolean);
+            const rtcLines = planLines.filter(l => /\bRTC\b/i.test(l));
+            if (!rtcLines.length) return { visitDate: null, rtcDate: null };
+            const caseDate = c.date || '';
+            const caseYear = parseInt((caseDate || formatDateForInput(new Date())).slice(0, 4), 10);
+            const lineISO = (line) => {
+                const y3 = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);          // YY/MM/DD（OPD 歷史行常見）
+                if (y3) return `20${y3[1]}-${y3[2].padStart(2, '0')}-${y3[3].padStart(2, '0')}`;
+                const md = line.match(/\b(\d{1,2})\/(\d{1,2})\b(?!\/)/);              // MM/DD → 用 case 年補
+                if (md) return `${caseYear}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+                return null;
+            };
+            const entries = rtcLines.map(l => ({ line: l, iso: lineISO(l) }));
+            const dated = entries.filter(e => e.iso);
+            // 看診
+            let visitE = entries.find(e => /\[本次\]/.test(e.line)) || null;
+            if (!visitE && caseDate) visitE = dated.filter(e => e.iso <= caseDate).sort((a, b) => b.iso.localeCompare(a.iso))[0] || null;
+            if (!visitE) visitE = entries[0];
+            // 回診
+            let rtcE = caseDate ? (dated.filter(e => e !== visitE && e.iso > caseDate).sort((a, b) => a.iso.localeCompare(b.iso))[0] || null) : null;
+            if (!rtcE) {
+                const huiCands = entries.filter(e => e !== visitE && /回診/.test(e.line));
+                rtcE = huiCands[huiCands.length - 1] || null;
+            }
+            if (!rtcE) rtcE = entries[entries.indexOf(visitE) + 1] || null;
+            const mmdd = (e) => (e && e.iso) ? `${parseInt(e.iso.slice(5, 7))}/${parseInt(e.iso.slice(8, 10))}` : null;
+            return { visitDate: mmdd(visitE), rtcDate: mmdd(rtcE) };
+        }
+
         function renderCaselist() {
             const wrap = document.getElementById('caselist-table-wrap');
             if (!wrap) return;
@@ -3194,12 +3247,17 @@
                 const dateAMd = c.date ? `${parseInt(c.date.slice(5,7))}/${parseInt(c.date.slice(8,10))}` : 'A';
                 const orphanChip = c.orphan ? `<span class="orphan-chip" title="原排程上找不到此案例（可能已被刪除或移到範圍外）" style="font-size:0.72rem; padding:1px 6px; background:rgba(148,163,184,0.18); color:#94a3b8; border:1px dashed rgba(148,163,184,0.5); border-radius:4px; margin-left:auto;">⚠ 排程已移走</span>` : '';
                 const srcIconHtml = `${orphanChip}<span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; ${c.orphan ? 'margin-left:4px' : 'margin-left:auto'};">${c.source === 'manual' ? '✏️' : '🔗'}</span>`;
+                // 看診/回診 chip（共用 extractCaselistRtc，日期導向選行）
+                const rtcInfo = extractCaselistRtc(c);
+                const rtcChipHtml = (rtcInfo.visitDate || rtcInfo.rtcDate)
+                    ? `<div class="cl-rtc-chip">${rtcInfo.visitDate ? `📅 看診 ${esc(rtcInfo.visitDate)}` : ''}${rtcInfo.visitDate && rtcInfo.rtcDate ? '<span class="cl-rtc-sep">·</span>' : ''}${rtcInfo.rtcDate ? `↻ 回診 ${esc(rtcInfo.rtcDate)}` : ''}</div>`
+                    : '';
                 // Arthro：4 個結構化欄位（部位/體重/MRI/藥量）取代 textarea
                 let planCellHtml;
                 if (isArthro) {
                     const inputStyle = 'background:var(--bg-primary); border:1px dashed var(--border); color:var(--text-primary); border-radius:3px; padding:3px 5px; font-family:inherit; font-size:0.82rem;';
                     const labelStyle = 'display:inline-flex; align-items:center; gap:4px; font-size:0.72rem; color:var(--text-muted);';
-                    planCellHtml = `<div class="arthro-fields" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:2px 0;">
+                    planCellHtml = `${rtcChipHtml}<div class="arthro-fields" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:2px 0;">
                             <label style="${labelStyle}">部位<input type="text" data-field="arthroRegion" value="${esc(c.arthroRegion || '')}" placeholder="L shoulder" style="${inputStyle} width:96px;"></label>
                             <label style="${labelStyle}">體重<input type="text" data-field="arthroWeight" value="${esc(c.arthroWeight != null ? c.arthroWeight : '')}" placeholder="51" style="${inputStyle} width:48px; text-align:center;">kg</label>
                             <label style="${labelStyle}">MRI<input type="text" data-field="arthroMriTime" value="${esc(c.arthroMriTime || '')}" placeholder="10:00" style="${inputStyle} width:62px; text-align:center;"></label>
@@ -3207,9 +3265,9 @@
                             ${srcIconHtml}
                         </div>`;
                 } else if (isMri) {
-                    planCellHtml = `<textarea data-field="planScratch" rows="1" placeholder="MRI — 簡述" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>${srcIconHtml.replace('margin-left:auto', 'margin-left:6px')}`;
+                    planCellHtml = `${rtcChipHtml}<textarea data-field="planScratch" rows="1" placeholder="MRI — 簡述" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>${srcIconHtml.replace('margin-left:auto', 'margin-left:6px')}`;
                 } else {
-                    planCellHtml = `<textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
+                    planCellHtml = `${rtcChipHtml}<textarea data-field="planScratch" rows="3" placeholder="${c.chartNo ? '點 ⬇ 載入 plan' : '需先填病歷號'}" style="width:100%; min-width:240px; resize:vertical; font-size:0.78rem; line-height:1.35; padding:3px 5px; box-sizing:border-box;">${esc(c.planScratch || '')}</textarea>
                         <div class="plan-row-actions" style="display:flex; gap:4px; margin-top:3px; flex-wrap:wrap; align-items:center;">
                             <button type="button" data-action="load-plan" title="載入 ${esc(c.date || '')} plan（覆蓋）" style="padding:2px 6px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:3px; cursor:pointer; font-size:0.72rem;">⬇ 載入 ${esc(dateAMd)}</button>
                             <button type="button" data-action="goto-b" title="跳到下次回診 OPD 編輯頁" style="padding:2px 6px; background:var(--color-info); border:none; color:white; border-radius:3px; cursor:pointer; font-size:0.72rem;">🔗 → ?</button>
@@ -3254,13 +3312,9 @@
                 const typeKey = c.type || '';
                 const typeLabel = typeKey === 'other' ? (c.otherSubtype || 'Other') : (CASELIST_TYPE_LABEL[typeKey] || typeKey || '—');
                 const planLines = (c.planScratch || '').split('\n').map(l => l.trim()).filter(Boolean);
-                // 看診日 / 回診日：兩行都有 RTC 字樣（電腦版 plan 第 1 行 = 看診、第 3 行 = 回診）
                 const rtcLines = planLines.filter(l => /\bRTC\b/i.test(l));
-                const extractDate = (line) => line
-                    ? ((line.match(/(\d{1,2}\/\d{1,2})\s*RTC/i) || line.match(/RTC\s*(\d{1,2}\/\d{1,2})/i) || line.match(/(\d{1,2}\/\d{1,2})/) || [])[1])
-                    : null;
-                const visitDate = extractDate(rtcLines[0]);
-                const rtcDate = extractDate(rtcLines[1]);
+                // 看診/回診：共用 extractCaselistRtc（日期導向，OPD 載入的多行歷史 plan 也選對行）
+                const { visitDate, rtcDate } = extractCaselistRtc(c);
                 // 把兩個 RTC line 都從 plan 顯示中移掉
                 const otherLines = planLines.filter(l => !rtcLines.includes(l));
                 let planContent = '';
