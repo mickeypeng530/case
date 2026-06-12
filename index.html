@@ -2986,13 +2986,30 @@
             } catch (e) { console.warn('findVisitB error', e); return null; }
         }
 
+        // 從 OPD plan 抽「[本次] → 回診」段（caselist 載入用）。
+        // OPD plan 上方是歷年累積；caselist 只需要本次這段：
+        //   起點 = 含 [本次] 的行；終點 = 其後第一個含「回診」的行（含），沒有就到結尾。
+        //   沒有 [本次] → 整份回傳（無法可靠切，維持舊行為）。
+        function slicePlanThisVisit(plan) {
+            const lines = (plan || '').split(/\r?\n/);
+            const start = lines.findIndex(l => /\[本次\]/.test(l));
+            if (start < 0) return { text: plan || '', sliced: false };
+            let end = lines.length - 1;
+            for (let i = start + 1; i < lines.length; i++) {
+                if (/回診/.test(lines[i])) { end = i; break; }
+            }
+            return { text: lines.slice(start, end + 1).join('\n').trim(), sliced: true };
+        }
+
         async function caselistLoadVisitAPlan(rec, dateA, statusEl) {
             statusEl.textContent = '載入中...';
             try {
                 const snap = await get(ref(fbDb, `opd/visits/${dateA}/${rec}/plan`));
-                const plan = snap.val() || '';
-                statusEl.textContent = plan ? `已載入 (${plan.split('\n').length} 行)` : '此 visit 無 plan';
-                return plan;
+                const planRaw = snap.val() || '';
+                if (!planRaw) { statusEl.textContent = '此 visit 無 plan'; return planRaw; }
+                const seg = slicePlanThisVisit(planRaw);
+                statusEl.textContent = `已載入 (${seg.text.split('\n').length} 行${seg.sliced ? '，[本次]→回診段' : '，整份（無 [本次] 標記）'})`;
+                return seg.text;
             } catch (e) {
                 statusEl.textContent = `載入失敗：${e.message}`;
                 return null;
@@ -3030,7 +3047,7 @@
                     const planSnap = await get(ref(fbDb, `opd/visits/${res.date}/${res.rec}/plan`));
                     const plan = planSnap.val() || '';
                     if (!plan) { miss++; continue; }
-                    c.planScratch = plan;
+                    c.planScratch = slicePlanThisVisit(plan).text; // 只取 [本次]→回診 段（無標記則整份）
                     ok++;
                 } catch (e) {
                     console.warn('bulkLoad', c.chartNo, e);
