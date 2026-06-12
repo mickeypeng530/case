@@ -1367,8 +1367,8 @@
         /* 治療成效 dot（標籤區左緣）：點循環 無→🟢improve→🟡mild/stationary→🔴no help→無 */
         .tx-dot {
             display: inline-block;
-            width: 11px;
-            height: 11px;
+            width: 13px;
+            height: 13px;
             border-radius: 50%;
             margin-right: 5px;
             cursor: pointer;
@@ -1376,6 +1376,7 @@
             position: relative;
             flex-shrink: 0;
             box-sizing: border-box;
+            align-self: center;
         }
         .tx-dot::after {
             /* 放大點擊熱區（觸控） */
@@ -1384,10 +1385,13 @@
             inset: -7px;
         }
         .tx-dot.empty {
-            border: 1.5px dashed var(--text-muted);
-            opacity: 0.35;
+            border: 2px dashed var(--text-secondary);
+            opacity: 0.7;
         }
-        .tx-dot.empty:hover { opacity: 0.9; }
+        .tx-dot.empty:hover {
+            opacity: 1;
+            border-color: var(--text-primary);
+        }
         .tx-dot.solid.tx-improve { background: #22c55e; }
         .tx-dot.solid.tx-mild    { background: #eab308; }
         .tx-dot.solid.tx-nohelp  { background: #ef4444; }
