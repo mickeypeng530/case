@@ -1951,13 +1951,21 @@
               </tbody>
             </table>
           </div>
+          <div class="visit-cards-mobile">
+            ${came.map(v => renderVisitCardMobile(v, date)).join('')}
+            ${noShow.length ? `<div class="vm-dc-divider">─── DC 共 ${noShow.length} 位未到 ───</div>` : ''}
+            ${noShow.map(v => renderVisitCardMobile(v, date)).join('')}
+          </div>
         `;
         // 跳轉後 scroll 到目標 row
         if (state.scrollToRecord) {
             const tgt = state.scrollToRecord;
             state.scrollToRecord = null;
             requestAnimationFrame(() => {
-                const row = wrap.querySelector(`tr[data-record="${CSS.escape(tgt)}"]`);
+                // 桌面找 tr、手機找卡片（offsetParent null = 被 media query 藏起來的那份）
+                const tr = wrap.querySelector(`tr[data-record="${CSS.escape(tgt)}"]`);
+                const card = wrap.querySelector(`.vm-card[data-vm-record="${CSS.escape(tgt)}"]`);
+                const row = (tr && tr.offsetParent) ? tr : card;
                 if (row) {
                     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     row.classList.add('jump-flash');
@@ -2123,6 +2131,53 @@
                 </td>
               </tr>
             `;
+    }
+
+    // 手機（≤768px）卡片閱讀模式：取代橫向捲表格。
+    // 點卡片 → openVisitModal（可編輯）；「展開」→ 全部 plan + labs + 骨鬆/病史 + 概況
+    function renderVisitCardMobile(v, date) {
+        const p = state.patients[v.recordNumber] || {};
+        const planLines = (v.plan || '').split(/\r?\n/);
+        while (planLines.length && !planLines[0].trim()) planLines.shift();
+        while (planLines.length && !planLines[planLines.length - 1].trim()) planLines.pop();
+        const anchorIdx = planLines.findIndex(l => /\[(本次|today|本日)\]/i.test(l));
+        const expanded = state.mobileCardExpanded?.has(v.recordNumber);
+        const showLines = expanded ? planLines : (anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines.slice(-4));
+        const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+        const ageSex = displayAgeSex(p, date) || p.ageSex || '';
+        const tagChips = [...new Set((v.tags || []).map(normalizeTag))]
+            .map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+        const statusBadge = v.noShow ? '<span class="status-badge" style="background:rgba(148,163,184,0.3);color:#94a3b8;">DC</span>'
+            : v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>'
+            : v.prepared ? '<span class="status-badge" style="background:rgba(234,179,8,0.25);color:#fde047;">已備</span>'
+            : '<span class="status-badge draft">草稿</span>';
+        const acLine = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
+            ? `<div class="vm-ac">🩸 ${(p.anticoagulants || []).map(escapeHtml).join(' / ')}</div>` : '';
+        const planHtml = showLines.map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
+        let extraHtml = '';
+        if (expanded) {
+            const blocks = [];
+            if (p.labs) blocks.push(`<div class="vm-block"><span class="vm-block-label">抽血</span>${escapeHtml(p.labs)}</div>`);
+            if (p.boneScore) blocks.push(`<div class="vm-block"><span class="vm-block-label">骨鬆</span>${escapeHtml(p.boneScore)}</div>`);
+            const ph = (p.pastHistory ?? p.extra) || '';
+            if (ph) blocks.push(`<div class="vm-block"><span class="vm-block-label">病史</span>${escapeHtml(ph)}</div>`);
+            if (v.examEducation) blocks.push(`<div class="vm-block"><span class="vm-block-label">概況</span>${escapeHtml(v.examEducation)}</div>`);
+            extraHtml = blocks.join('');
+        }
+        const toggleLabel = expanded ? '▲ 收合' : `▼ 展開（plan ${planLines.length} 行 · labs · 病史）`;
+        return `<div class="vm-card${v.noShow ? ' vm-dc' : ''}" data-vm-record="${escapeAttr(v.recordNumber)}">
+            <div class="vm-head">
+                <span class="vm-order">${escapeHtml(String(v.orderInClinic || '—'))}</span>
+                <span class="vm-rec">${escapeHtml(v.recordNumber)}</span>
+                <span class="vm-name">${surname ? `(${escapeHtml(surname)})` : ''}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
+                <span class="vm-badge">${statusBadge}</span>
+            </div>
+            ${acLine}
+            ${tagChips ? `<div class="vm-tags visit-tags">${tagChips}</div>` : ''}
+            ${planHtml ? `<div class="vm-plan">${planHtml}</div>` : ''}
+            ${extraHtml}
+            <button type="button" class="vm-expand" data-vm-expand="${escapeAttr(v.recordNumber)}">${toggleLabel}</button>
+        </div>`;
     }
 
     function renderHeaderNotes() {
@@ -2966,6 +3021,22 @@
             if (txDotEl) {
                 e.stopPropagation();
                 cycleTxOutcome(txDotEl.dataset.txRecord);
+                return;
+            }
+            // 手機卡片：展開/收合
+            const vmExpand = e.target.closest('[data-vm-expand]');
+            if (vmExpand) {
+                const rec = vmExpand.dataset.vmExpand;
+                state.mobileCardExpanded = state.mobileCardExpanded || new Set();
+                if (state.mobileCardExpanded.has(rec)) state.mobileCardExpanded.delete(rec);
+                else state.mobileCardExpanded.add(rec);
+                renderVisitList();
+                return;
+            }
+            // 手機卡片：點卡片本體 → 開 visit modal（可編輯）
+            const vmCard = e.target.closest('.vm-card');
+            if (vmCard && !e.target.closest('button, [data-tag], .tx-dot')) {
+                openVisitModal(vmCard.dataset.vmRecord);
                 return;
             }
             // 整頁 Plan 編輯模式切換

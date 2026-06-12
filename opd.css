@@ -1400,6 +1400,82 @@
         @media (max-width: 768px) {
             .tx-dot { display: none; }
         }
+
+        /* ===== 手機卡片閱讀模式（≤768px 表格 → 卡片）===== */
+        .visit-cards-mobile { display: none; }
+        @media (max-width: 768px) {
+            .visit-table-wrapper { display: none; }
+            .visit-cards-mobile { display: block; padding: 4px 0 40px; }
+            .vm-card {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 10px 12px 8px;
+                margin-top: 10px;
+            }
+            .vm-card.vm-dc { opacity: 0.55; }
+            .vm-head {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .vm-order {
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--color-info);
+                min-width: 1.3em;
+                font-variant-numeric: tabular-nums;
+            }
+            .vm-rec { font-size: 1.05rem; font-weight: 600; }
+            .vm-name { font-size: 0.88rem; color: var(--text-secondary); }
+            .vm-badge { margin-left: auto; }
+            .vm-ac { color: #f87171; font-size: 0.88rem; font-weight: 600; margin-top: 4px; }
+            .vm-tags { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px; }
+            .vm-plan {
+                border-top: 1px dashed var(--border);
+                margin-top: 8px;
+                padding-top: 8px;
+                font-size: 1rem;        /* ≥16px：可讀 + 防 iOS 放大 */
+                line-height: 1.6;
+                word-break: break-word;
+            }
+            .vm-block {
+                border-top: 1px dashed var(--border);
+                margin-top: 8px;
+                padding-top: 8px;
+                font-size: 0.92rem;
+                line-height: 1.5;
+                white-space: pre-line;
+                color: var(--text-secondary);
+                word-break: break-word;
+            }
+            .vm-block-label {
+                display: inline-block;
+                font-size: 0.74rem;
+                font-weight: 600;
+                color: var(--text-muted);
+                margin-right: 6px;
+            }
+            .vm-expand {
+                width: 100%;
+                min-height: 40px;       /* 觸控目標 */
+                margin-top: 8px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                color: var(--text-secondary);
+                border-radius: 6px;
+                font-size: 0.85rem;
+                font-family: inherit;
+                cursor: pointer;
+            }
+            .vm-dc-divider {
+                text-align: center;
+                color: var(--text-muted);
+                font-size: 0.82rem;
+                margin-top: 16px;
+            }
+        }
         .status-dot.saving {
             background: var(--color-warning);
             animation: pulse 1s infinite;
