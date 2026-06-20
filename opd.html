@@ -645,6 +645,8 @@
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(url), 2000);
             localStorage.setItem('opd:lastBackup', d.toISOString());
+            // 同步到 Firebase，讓其他裝置也看得到「多久沒備份」
+            try { await set(ref(fbDb, 'opd/meta/lastBackupAt'), d.toISOString()); } catch (e) { console.warn('備份時間同步失敗', e); }
             setMsg(`✓ 已下載 opd-backup-${stamp}.json（${sizeKB} KB）— 記得丟進雲端資料夾`);
             return true;
         } catch (err) {
@@ -653,11 +655,23 @@
         }
     }
 
+    // 跨裝置同步「上次備份時間」：listener 讀 opd/meta/lastBackupAt（單一備份機寫、所有機讀）
+    function loadBackupMeta() {
+        if (!fbDb) return;
+        if (state.backupMetaListener) state.backupMetaListener();
+        const unsub = onValue(ref(fbDb, 'opd/meta/lastBackupAt'), (snap) => {
+            state.lastBackupAt = snap.val() || null;
+            renderBackupStatus();
+        });
+        state.backupMetaListener = unsub;
+    }
+
     // 備份日期：常駐在設定選單備份鈕下方（被動顯示，不跳橫幅）。> 7 天轉琥珀色當軟提醒。
+    // 來源優先 Firebase 共享值（state.lastBackupAt），fallback 本機 localStorage。
     function renderBackupStatus() {
         const statusEl = document.getElementById('backup-status');
         if (!statusEl) return;
-        const last = localStorage.getItem('opd:lastBackup');
+        const last = state.lastBackupAt || localStorage.getItem('opd:lastBackup');
         if (!last) {
             statusEl.textContent = '尚未備份過（建議下載一份存雲端）';
             statusEl.style.color = '#f59e0b';
@@ -837,6 +851,7 @@
     function onUserReady() {
         loadPatients();
         loadAdHocClinicDates();
+        loadBackupMeta();
         bindPatientUI();
         bindClinicDayUI();
         bindImportUI();
