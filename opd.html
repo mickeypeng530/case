@@ -86,12 +86,6 @@
         </div>
     </header>
 
-    <div id="backup-reminder" style="display:none; align-items:center; gap:10px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:var(--text-primary); padding:8px 14px; margin:8px 12px 0; border-radius:6px; font-size:0.85rem;">
-        <span class="br-text" style="flex:1;">⚠ 建議備份資料</span>
-        <button id="backup-reminder-do" class="header-btn" style="white-space:nowrap;">💾 立即備份</button>
-        <button id="backup-reminder-dismiss" class="header-btn" title="稍後再說">✕</button>
-    </div>
-
     <div class="tabs">
         <button class="tab active" data-panel="panel-clinic">📅 門診日</button>
         <button class="tab" data-panel="panel-patients">👥 病人主表</button>
@@ -659,22 +653,23 @@
         }
     }
 
-    // 逾期提醒：登入後若距上次備份 > 7 天 → 提示（不強制）
-    function checkBackupStaleness() {
-        // 手機不提醒：備份是桌機 node 腳本的事，手機看到也做不了什麼
-        if (window.matchMedia('(max-width: 768px)').matches) return;
-        const last = localStorage.getItem('opd:lastBackup');
-        const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
-        if (days < 7) return;
+    // 備份日期：常駐在設定選單備份鈕下方（被動顯示，不跳橫幅）。> 7 天轉琥珀色當軟提醒。
+    function renderBackupStatus() {
         const statusEl = document.getElementById('backup-status');
-        const banner = document.getElementById('backup-reminder');
-        if (banner) {
-            banner.style.display = 'flex';
-            const txt = banner.querySelector('.br-text');
-            if (txt) txt.textContent = last
-                ? `⚠ 上次備份是 ${Math.floor(days)} 天前，建議下載一份`
-                : `⚠ 尚未備份過資料，建議下載一份存本地/雲端`;
+        if (!statusEl) return;
+        const last = localStorage.getItem('opd:lastBackup');
+        if (!last) {
+            statusEl.textContent = '尚未備份過（建議下載一份存雲端）';
+            statusEl.style.color = '#f59e0b';
+            return;
         }
+        const d = new Date(last);
+        const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+        const pad = (x) => String(x).padStart(2, '0');
+        const md = `${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+        const ago = days <= 0 ? '今天' : `${days} 天前`;
+        statusEl.textContent = `上次備份：${ago}（${md}）`;
+        statusEl.style.color = days > 7 ? '#f59e0b' : 'var(--text-muted)';
     }
 
     function initFirebase() {
@@ -754,8 +749,8 @@
                 }
                 console.log('已登入:', user.email, '| UID:', user.uid);
                 onUserReady();
-                // 登入後檢查備份是否逾期（> 7 天提醒）
-                setTimeout(() => { try { checkBackupStaleness(); } catch (e) {} }, 1500);
+                // 登入後刷新「上次備份」日期顯示（被動，不跳橫幅）
+                setTimeout(() => { try { renderBackupStatus(); } catch (e) {} }, 1500);
             } else {
                 currentUser = null;
                 document.getElementById('login-screen').style.display = 'flex';
@@ -777,13 +772,6 @@
             if (confirm('確定要登出嗎？')) logout();
         });
         document.getElementById('backup-btn')?.addEventListener('click', () => downloadBackup());
-        document.getElementById('backup-reminder-do')?.addEventListener('click', async () => {
-            const ok = await downloadBackup();
-            if (ok) document.getElementById('backup-reminder').style.display = 'none';
-        });
-        document.getElementById('backup-reminder-dismiss')?.addEventListener('click', () => {
-            document.getElementById('backup-reminder').style.display = 'none';
-        });
         document.getElementById('font-up-btn')?.addEventListener('click', () => adjustFontSize(1));
         document.getElementById('font-down-btn')?.addEventListener('click', () => adjustFontSize(-1));
         // 設定下拉選單
@@ -791,7 +779,9 @@
         const settingsMenu = document.getElementById('settings-menu');
         settingsBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            settingsMenu.style.display = settingsMenu.style.display === 'none' ? 'block' : 'none';
+            const opening = settingsMenu.style.display === 'none';
+            settingsMenu.style.display = opening ? 'block' : 'none';
+            if (opening) renderBackupStatus(); // 每次開選單刷新「N 天前」
         });
         document.addEventListener('click', (e) => {
             if (settingsMenu && !settingsMenu.contains(e.target) && e.target !== settingsBtn) {
