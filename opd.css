@@ -978,6 +978,7 @@
         /* 8 種主 tag 配色 */
         .visit-tags .tag-chip[data-tag="鬆"] { background: #a855f7; }
         .visit-tags .tag-chip[data-tag="CT NB"] { background: #f59e0b; color: #1a1a2e; }
+        .visit-tags .tag-chip[data-tag="CT Bx"] { background: #c2410c; color: #fff; }
         .visit-tags .tag-chip[data-tag="SONO"] { background: #22c55e; }
         .visit-tags .tag-chip[data-tag="TAME"] { background: #3b82f6; }
         .visit-tags .tag-chip[data-tag="cTAME"] { background: #1e40af; }

@@ -28,6 +28,7 @@
             --color-ctame: #06b6d4;
             --color-sono: #22c55e;
             --color-mri: #c4b5fd;
+            --color-ct: #818cf8;
             --color-arthro: #ec4899;
             --color-other: #f97316;
             --color-slot: #64748b;
@@ -388,6 +389,7 @@
         .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: 0.6rem; margin-left: auto; }
         .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: inherit; }
         .case-tag.arthro { background: var(--color-arthro); color: white; }
+        .case-tag.ct { background: var(--color-ct); color: #1a1a2e; }
         .case-tag.other { background: var(--color-other); color: white; }
         .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; width: 100%; }
         .case-tag.note { background: var(--color-note); color: white; width: 50%; }
@@ -482,6 +484,7 @@
         .type-popup-btn.ctame { background: var(--color-ctame); color: #1a1a2e; }
         .type-popup-btn.sono { background: var(--color-sono); color: #1a1a2e; }
         .type-popup-btn.mri { background: var(--color-mri); color: #1a1a2e; }
+        .type-popup-btn.ct { background: var(--color-ct); color: #1a1a2e; }
         .type-popup-btn.arthro { background: var(--color-arthro); color: white; }
         .type-popup-btn.other { background: var(--color-other); color: white; }
         .type-popup-btn.note { background: var(--color-note); color: white; }
@@ -1607,6 +1610,7 @@
                 <button class="type-popup-btn ctame" data-type="ctame">cTAME</button>
                 <button class="type-popup-btn sono" data-type="sono">Sono</button>
                 <button class="type-popup-btn mri" data-type="mri">MRI</button>
+                <button class="type-popup-btn ct" data-type="ct">CT</button>
                 <button class="type-popup-btn arthro" data-type="arthro">Arthro</button>
                 <button class="type-popup-btn other" data-type="other">Other</button>
                 <button class="type-popup-btn note" data-type="note">📝 備註</button>
@@ -1995,7 +1999,7 @@
         const dayNames = ['一', '二', '三', '四', '五'];
         const caseTypeLabels = {
             'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
-            'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'other': 'Other', 'slot': '空位', 'note': '備註'
+            'sono': 'Sono', 'mri': 'MRI', 'ct': 'CT', 'arthro': 'Arthro', 'other': 'Other', 'slot': '空位', 'note': '備註'
         };
         // Other 常用子類型
         const otherSubtypes = ['PICC', 'Bone', 'Drain', 'PCN', 'Lung Biopsy'];
@@ -2425,8 +2429,8 @@
             
             // 收集所有案例
             const allCases = [];
-            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
-            
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'ct', 'arthro', 'other'];
+
             for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
                     const cellKey = `${formatDateForInput(d)}-${period}`;
@@ -2435,10 +2439,11 @@
                         const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
                         cases.forEach(c => {
                             if (c && c.type && c.type !== 'slot' && !c.isEmpty && validTypes.includes(c.type)) {
-                                // ct-nb-prf 合併到 ct-nb，stame/ctame 合併到 tame
+                                // ct-nb-prf 合併到 ct-nb，stame/ctame 合併到 tame，ct（CT 檢查）併入 mri 桶 → 顯示 CT/MRI
                                 let statsType = c.type;
                                 if (c.type === 'ct-nb-prf') statsType = 'ct-nb';
                                 if (c.type === 'stame' || c.type === 'ctame') statsType = 'tame';
+                                if (c.type === 'ct') statsType = 'mri';
                                 
                                 typeCounts[statsType]++;
                                 allCases.push({
@@ -2461,9 +2466,9 @@
                 'sono': 'Sono',
                 'arthro': 'Arthro',
                 'other': 'Other',
-                'mri': 'MRI'
+                'mri': 'CT/MRI'
             };
-            
+
             // 統計摘要排序（MRI 排最後）
             const statsOrder = ['ct-nb', 'tame', 'sono', 'arthro', 'other', 'mri'];
             
@@ -2535,6 +2540,7 @@
             'ctame': 'cTAME',
             'sono': 'SONO INJ',
             'mri': 'MRI',
+            'ct': 'CT',
             'arthro': 'Arthro',
             'other': 'Other'
         };
@@ -3553,7 +3559,7 @@
 
             const statsStart = new Date(tab.statsStartDate || tab.startDate);
             const statsEnd = new Date(tab.statsEndDate || tab.endDate);
-            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'ct', 'arthro', 'other'];
 
             // 收集所有案例
             const allCases = [];
@@ -4063,8 +4069,10 @@
             let mobileText = '';
             if (!isEmpty) {
                 if (caseData.type === 'note') {
-                    displayText = caseData.note || '';
-                    mobileText = caseData.note || '';
+                    // 備註有填時間就把時間擺前面（09:00 前晚值班）
+                    const noteParts = [caseData.time, caseData.note].filter(Boolean);
+                    displayText = noteParts.join(' ');
+                    mobileText = noteParts.join('\n');
                 } else {
                     // 電腦版：一行顯示
                     const parts = [caseData.time, typeLabel, caseData.chartNo].filter(Boolean);

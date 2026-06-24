@@ -479,6 +479,7 @@
         if (t === 'follow up') return 'f/u';
         if (t === 'NB') return 'CT NB';
         if (t === 'MRI') return 'CT/MRI';
+        if (/^CT\s*(?:biopsy|bx)$/i.test(t)) return 'CT Bx'; // CT biopsy / CTBx / CT BX → CT Bx
         return t;
     }
     // ===== 治療成效追蹤（B 模型）=====
@@ -2487,6 +2488,7 @@
         const TAG_COLOR = {
             '鬆':    { bg: 'A855F7', fg: 'FFFFFF' },
             'CT NB': { bg: 'F59E0B', fg: '1A1A2E' },
+            'CT Bx': { bg: 'C2410C', fg: 'FFFFFF' },
             'SONO':  { bg: '22C55E', fg: 'FFFFFF' },
             'TAME':  { bg: '3B82F6', fg: 'FFFFFF' },
             'cTAME': { bg: '1E40AF', fg: 'FFFFFF' },
@@ -3155,7 +3157,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'SONO', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA', 'CT/MRI', 'f/u', 'med', '自費', 'other'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'pRF', 'CT Bx', 'SONO', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA', 'CT/MRI', 'f/u', 'med', '自費', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
@@ -3178,7 +3180,7 @@
     // 本次 visit 是否需要「確認抗凝」（只 CT NB / TAME / pRF；SONO 不需要）
     // 此 visit 是否含侵入性 procedure tag
     function visitNeedsAnticoagCheck(v) {
-        const procTags = ['CT NB', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
+        const procTags = ['CT NB', 'CT Bx', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
         const tags = (v?.tags || []).map(normalizeTag);
         return tags.some(t => procTags.includes(t));
     }
@@ -3187,7 +3189,7 @@
         if (!p) return false;
         if (p.painPlanSummary && p.painPlanSummary.trim()) return true;
         if (p.painSummaryEdited) return true;   // 編輯過（即使空也算處理過）
-        const procTags = ['CT NB', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
+        const procTags = ['CT NB', 'CT Bx', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
         const ptTags = (p.tags || []).map(normalizeTag);
         return ptTags.some(t => procTags.includes(t));
     }
@@ -3845,7 +3847,8 @@
     const STATS_HIERARCHY = [
         { main: 'CT NB', subs: ['一般', 'pRF', '增生'] },  // 增生 = PRP + BMA 加總
         { main: 'SONO',  subs: ['一般', 'HA',  '增生'] },  // 增生 = PRP 加總
-        { main: 'TAME',  subs: ['cTAME', 'sTAME', '其他'] }
+        { main: 'TAME',  subs: ['cTAME', 'sTAME', '其他'] },
+        { main: 'CT Bx', subs: [] }  // CT biopsy：單列，無子類
     ];
     const STATS_ROWS = []; // 平坦化：[{main, sub:null} | {main, sub:'pRF'}, ...]
     STATS_HIERARCHY.forEach(h => {
@@ -4008,7 +4011,7 @@
     function classifyVisit(v) {
         const tags = (v.tags || []).map(normalizeTag);
         const has = (t) => tags.includes(t);
-        const hasProcedure = has('CT NB') || has('SONO') || has('TAME') ||
+        const hasProcedure = has('CT NB') || has('CT Bx') || has('SONO') || has('TAME') ||
                              has('cTAME') || has('sTAME') || has('pRF') ||
                              has('HA') || has('PRP') || has('BMA');
         const hasBone = has('鬆');
@@ -4462,6 +4465,7 @@
                 if (has('CT NB') || (has('pRF') && !has('SONO'))) proc++;
                 if (has('SONO') || ((has('HA') || has('PRP')) && !has('CT NB'))) proc++;
                 if (has('TAME') || has('cTAME') || has('sTAME')) proc++;
+                if (has('CT Bx')) proc++;
                 yoyMatrix[ymKey] += proc;
             });
         });
@@ -4535,6 +4539,8 @@
                     }
                     tally(`TAME::${tameSub}`, bk, v, dateStr);
                 }
+                // CT biopsy：獨立 procedure，無子類
+                if (has('CT Bx')) tally('CT Bx', bk, v, dateStr);
             });
         });
 
@@ -4845,7 +4851,7 @@
 
         const rowTotals = {};
         let mainsGrand = 0; // 主類加總（用於占比，避免子類重複）
-        const mainSet = new Set(['CT NB', 'SONO', 'TAME', 'HA', 'PRP', 'pRF']);
+        const mainSet = new Set(['CT NB', 'SONO', 'TAME', 'HA', 'PRP', 'pRF', 'CT Bx']);
 
         // sparkline 產生器
         const buildSpark = (vals) => {
