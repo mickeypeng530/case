@@ -2018,6 +2018,8 @@
                     const m = TX_OUTCOME_META[v.txOutcome];
                     return `<span class="tx-dot hollow tx-${v.txOutcome}" data-tx-record="${escapeAttr(v.recordNumber)}" title="此次治療成效：${escapeAttr(m.label)}（${escapeAttr((v.txOutcomeOn || '?').slice(5))} 回診評估）"></span>`;
                 }
+                // 未記錄的空圈：純骨鬆列不顯示（療效是疼痛 procedure 的事，骨鬆無此概念）
+                if (classifyVisit(v).primary === '骨鬆') return '';
                 return `<span class="tx-dot empty" data-tx-record="${escapeAttr(v.recordNumber)}" title="記錄上次治療成效：點擊循環 🟢 improve → 🟡 mild/stationary → 🔴 no help → 清除"></span>`;
             })();
 
