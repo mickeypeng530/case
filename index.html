@@ -2032,8 +2032,9 @@
                 showStatus('連線中...', true);
                 firebaseReady = true;
 
-                // 監聽雲端資料變化（即時同步）
-                onValue(ref(fbDb, 'scheduler'), (snapshot) => {
+                // 監聽雲端資料變化（即時同步）；unsub 存起來（防 leak 紀律，跟 opd.html 一致）
+                if (state.schedulerListener) state.schedulerListener();
+                state.schedulerListener = onValue(ref(fbDb, 'scheduler'), (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         state.tabs = data.tabs || [];
@@ -2058,7 +2059,8 @@
                 });
 
                 // 監聽閱讀清單
-                onValue(ref(fbDb, 'readings'), (snapshot) => {
+                if (state.readingsListener) state.readingsListener();
+                state.readingsListener = onValue(ref(fbDb, 'readings'), (snapshot) => {
                     const data = snapshot.val();
                     readingList = data ? Object.values(data) : [];
                     readingList.sort((a, b) => b.createdAt - a.createdAt); // 最新的在前
@@ -2166,7 +2168,8 @@
             return Date.now().toString(36) + Math.random().toString(36).substr(2);
         }
 
-        function formatDate(date) {
+        // 回 MM/DD（顯示用）。改名自 formatDate —— opd.html 的 formatDate 回 YYYY-MM-DD，同名不同義是 copy-paste 地雷
+        function formatDateMD(date) {
             const d = new Date(date);
             return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
         }
@@ -2237,7 +2240,7 @@
             // 優先用統計區間，舊資料用顯示區間
             const start = tab.statsStartDate || tab.startDate;
             const end = tab.statsEndDate || tab.endDate;
-            return `${formatDate(start)}-${formatDate(end)}`;
+            return `${formatDateMD(start)}-${formatDateMD(end)}`;
         }
 
         function getActiveTab() {
@@ -3199,7 +3202,15 @@
                 const y3 = line.match(/\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/);          // YY/MM/DD（OPD 歷史行常見）
                 if (y3) return `20${y3[1]}-${y3[2].padStart(2, '0')}-${y3[3].padStart(2, '0')}`;
                 const md = line.match(/\b(\d{1,2})\/(\d{1,2})\b(?!\/)/);              // MM/DD → 用 case 年補
-                if (md) return `${caseYear}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+                if (md) {
+                    let iso = `${caseYear}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+                    // 跨年：MM/DD 比 case 日早「超過半年」→ 視為明年（12 月的 case 寫 1/15 回診）
+                    if (caseDate && iso < caseDate) {
+                        const monthDiff = parseInt(caseDate.slice(5, 7), 10) - parseInt(md[1], 10);
+                        if (monthDiff >= 6) iso = `${caseYear + 1}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+                    }
+                    return iso;
+                }
                 return null;
             };
             const entries = rtcLines.map(l => ({ line: l, iso: lineISO(l) }));
@@ -3935,7 +3946,7 @@
                 <div class="week-container">
                     <div class="week-header">
                         <span class="week-title">第 ${weekIndex + 1} 週</span>
-                        <span class="week-dates">${formatDate(weekStart)} - ${formatDate(weekEnd)}</span>
+                        <span class="week-dates">${formatDateMD(weekStart)} - ${formatDateMD(weekEnd)}</span>
                     </div>
                     <div class="schedule-grid">
                         <div class="grid-header"></div>
@@ -3944,12 +3955,12 @@
                             date.setDate(date.getDate() + d);
                             const dayOfWeek = date.getDay();
                             const dayNameMap = ['日', '一', '二', '三', '四', '五', '六'];
-                            return `<div class="grid-header day-header"><span class="day-name">週${dayNameMap[dayOfWeek]}</span><span class="day-date">${formatDate(date)}</span></div>`;
+                            return `<div class="grid-header day-header"><span class="day-name">週${dayNameMap[dayOfWeek]}</span><span class="day-date">${formatDateMD(date)}</span></div>`;
                         }).join('')}
                         ${(() => {
                             const satDate = new Date(weekStart);
                             satDate.setDate(satDate.getDate() + 5);
-                            return `<div class="grid-header day-header saturday"><span class="day-name">週六</span><span class="day-date">${formatDate(satDate)}</span></div>`;
+                            return `<div class="grid-header day-header saturday"><span class="day-name">週六</span><span class="day-date">${formatDateMD(satDate)}</span></div>`;
                         })()}
                         <div class="row-label am">AM</div>
                         ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'AM', tab)).join('')}
@@ -4015,7 +4026,8 @@
             const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
 
             // 週六只顯示 MRI 類型的案例（過濾掉空位）
-            const mriCases = cases.filter(c => c && c.type === 'mri' && !c.isEmpty);
+            // 週六顯示影像類（MRI + CT）；CT 拖進週六不再隱形
+            const mriCases = cases.filter(c => c && (c.type === 'mri' || c.type === 'ct') && !c.isEmpty);
             
             // 加一個空位
             const displayCases = [...mriCases, { type: 'slot', isEmpty: true }];
@@ -4047,7 +4059,7 @@
             const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
             // 週六 MRI 點擊整個標籤來編輯，不用小按鈕
             return `
-                <div class="case-tag mri saturday-mri ${tentativeClass}" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false" data-saturday="true" style="cursor: pointer;">
+                <div class="case-tag ${caseData.type} saturday-mri ${tentativeClass}" data-cell-key="${cellKey}" data-index="${index}" data-is-empty="false" data-saturday="true" style="cursor: pointer;">
                     <span style="font-size: 0.55rem;">${escapeHtml(time)}</span>
                 </div>
             `;

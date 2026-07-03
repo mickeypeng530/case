@@ -33,6 +33,8 @@ package.json
 # 備份 ops 工具（本地用，含個人路徑，不需 public）
 backup_firebase.js
 BACKUP_SETUP.md
+# Google Calendar 同步腳本（Apps Script，本機備份；正本在 script.google.com）
+calendar_sync.gs
 
 # 整理後的本地資料夾（來源素材 / 教材 / 歷史產物，含 PHI 與截圖，皆不上 GitHub）
 archive/
