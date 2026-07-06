@@ -36,6 +36,14 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Stamp build version
+        # 把 __BUILD__ 佔位換成 git short SHA + UTC 日期 → 頁面 settings 顯示「版本」
+        # opd.html/index.html 頁面版 + proclist-core.js 模組版；不一致 = 某檔卡舊快取
+        run: |
+          BUILD="${GITHUB_SHA:0:7} $(date -u +%m/%d\ %H:%M)"
+          sed -i "s|__BUILD__|${BUILD}|g" opd.html index.html proclist-core.js
+          echo "stamped build = ${BUILD}"
+
       - name: Upload artifact
         # 整個 repo 根目錄即網站（tracked 檔：opd.html/opd.css/index.html/proclist-core.js/firebase-init.js/manifests/icons）
         uses: actions/upload-pages-artifact@v3

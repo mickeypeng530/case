@@ -1582,6 +1582,7 @@
                     <span id="storage-text">本地</span>
                 </span>
                 <span id="user-info" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+                <span id="version-info" style="font-size: 0.68rem; color: var(--text-muted); font-variant-numeric: tabular-nums;" title="版本">…</span>
                 <button id="logout-btn" style="padding: 6px 10px; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;" title="登出">🚪<span class="btn-text"> 登出</span></button>
             </div>
         </header>
@@ -1839,7 +1840,20 @@
             ref, set, get, update, remove, onValue
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
         // Procedure 清單共用模組（與 opd.html 的 🗂 tab 同一份實作）
-        import { createProcList } from "./proclist-core.js";
+        import { createProcList, PLC_VERSION } from "./proclist-core.js";
+
+        // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
+        const PAGE_BUILD = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';
+        function renderVersionInfo() {
+            const el = document.getElementById('version-info');
+            if (!el) return;
+            const mismatch = PAGE_BUILD !== PLC_VERSION && PAGE_BUILD !== 'dev';
+            el.textContent = mismatch ? `${PAGE_BUILD}⚠${PLC_VERSION}` : PAGE_BUILD;
+            el.style.color = mismatch ? 'var(--color-warning, #f59e0b)' : '';
+            el.title = mismatch
+                ? `頁面版 ${PAGE_BUILD} 與模組版 ${PLC_VERSION} 不一致 → 有檔卡舊快取，硬刷新（Ctrl+Shift+R）或重裝 PWA`
+                : `版本 ${PAGE_BUILD}`;
+        }
 
         // ========== 登入 ==========
         let currentUser = null;
@@ -2036,6 +2050,7 @@
 
         // Init
         async function init() {
+            renderVersionInfo();
             loadFromLocalStorage();
             if (state.tabs.length === 0) {
                 createNewTab();

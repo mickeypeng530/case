@@ -6,6 +6,10 @@
 //   ④ 純函數 helper（escapeHtml/normalizeTag/isRealDate…）是 opd.html 的「私有複本」——
 //      opd.html 其餘功能仍用自己那份；改 helper 語義時兩邊都要看（見 CLAUDE.md 模組邊界）
 
+// 版本戳：部署時 workflow 把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）。
+// 頁面顯示「頁面版 vs 模組版」，不一致 = 有檔卡快取（opd.html / proclist-core.js 分開快取）
+export const PLC_VERSION = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';
+
 // ===== 私有純函數 =====
 function formatDate(d) {
     const yyyy = d.getFullYear();

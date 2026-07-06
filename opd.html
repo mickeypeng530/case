@@ -80,6 +80,9 @@
                         <button id="backup-btn" class="header-btn" style="flex:1;" title="下載 opd + scheduler + readings 全部資料為 JSON（存到本地/雲端）">💾 下載備份 JSON</button>
                     </div>
                     <div id="backup-status" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;"></div>
+                    <div style="border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; font-size: 0.72rem; color: var(--text-muted);">
+                        版本 <span id="version-info" title="頁面版 / 模組版；不一致 = 有檔卡快取">…</span>
+                    </div>
                 </div>
             </div>
             <button id="logout-btn" class="header-btn" title="登出">🚪<span class="btn-text"> 登出</span></button>
@@ -499,7 +502,10 @@
         ref, set, get, update, remove, onValue
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     // Procedure 清單共用模組（推導規則 + 渲染 + 狀態循環都住那裡一份；index.html 掛同一張清單）
-    import { createProcList, deriveProcRows } from "./proclist-core.js";
+    import { createProcList, deriveProcRows, PLC_VERSION } from "./proclist-core.js";
+
+    // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
+    const PAGE_BUILD = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';
 
     let currentUser = null;
 
@@ -886,7 +892,19 @@
         document.documentElement.style.setProperty('--clinic-toolbar-h', `${Math.ceil(h)}px`);
     }
 
+    function renderVersionInfo() {
+        const el = document.getElementById('version-info');
+        if (!el) return;
+        const mismatch = PAGE_BUILD !== PLC_VERSION && PAGE_BUILD !== 'dev';
+        el.textContent = mismatch ? `${PAGE_BUILD} ⚠ 模組 ${PLC_VERSION}` : PAGE_BUILD;
+        el.style.color = mismatch ? 'var(--color-warning)' : '';
+        el.title = mismatch
+            ? `頁面版 ${PAGE_BUILD} 與模組版 ${PLC_VERSION} 不一致 → proclist-core.js 卡舊快取，硬刷新（Ctrl+Shift+R）或重裝 PWA`
+            : `頁面版 / 模組版一致（${PAGE_BUILD}）`;
+    }
+
     function onUserReady() {
+        renderVersionInfo();
         loadPatients();
         loadAdHocClinicDates();
         loadBackupMeta();
