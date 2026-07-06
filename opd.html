@@ -1566,6 +1566,7 @@
         if (state.metaListener) state.metaListener();
         loadVisitsForDate(dateStr);
         loadClinicMetaForDate(dateStr);
+        buildProcHistory(); // fire-and-forget：歷史 pills 資料（吃 cache，免流量）
     }
 
     function loadVisitsForDate(dateStr) {
@@ -2124,21 +2125,34 @@
                     } else if (everProc) {
                         acIcon = `<span class="ac-icon ac-unknown" title="病人有 procedure 歷史，請確認抗凝劑使用">❓ 待確認</span>`;
                     }
-                    // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)；MRI 不秀於本次概況
+                    // 骨鬆 auto chip 保留 plan 藥名判定（Prolia/Aclasta… 藥名 regex 可靠）；
+                    // Pain procedure 改走 tag 歷史（下方 histPills，精準 + 帶療效）
                     const filteredItems = summary.items.filter(it => {
-                        if (it.name === 'MRI') return false;
-                        // bone/pain summary：user 在 modal 編輯過（含清空）→ 視為已處理，不顯示 auto chip
-                        if ((p.boneSummaryEdited || p.bonePlanSummary) && BONE_PROCS.includes(it.name)) return false;
-                        if ((p.painSummaryEdited || p.painPlanSummary) && PAIN_PROCS.includes(it.name)) return false;
+                        if (!BONE_PROCS.includes(it.name)) return false;
+                        // bone summary：user 編輯過（含清空）→ 視為已處理，不顯示 auto chip
+                        if (p.boneSummaryEdited || p.bonePlanSummary) return false;
                         return true;
                     });
+                    // Pain 歷史 pills：per-patient tag 統計（次數 + 最近日期 + 療效色）
+                    const histPills = (() => {
+                        if (p.painSummaryEdited || p.painPlanSummary) return ''; // 手動摘要優先
+                        const hist = state.procHistoryByRec?.[v.recordNumber];
+                        if (!hist) return '';
+                        return PROC_HIST_ORDER.filter(t => hist[t]).map(t => {
+                            const e = hist[t];
+                            const icon = e.lastOutcome && TX_OUTCOME_META[e.lastOutcome] ? TX_OUTCOME_META[e.lastOutcome].icon : '';
+                            const md = e.lastDate ? `${parseInt(e.lastDate.slice(5, 7))}/${parseInt(e.lastDate.slice(8, 10))}` : '';
+                            const full = `${t} ×${e.count}（依 visit tag 統計）\n最近：${e.lastDate}${e.lastOutcome && TX_OUTCOME_META[e.lastOutcome] ? `\n療效：${TX_OUTCOME_META[e.lastOutcome].label}` : ''}`;
+                            return `<span class="pill expandable" data-full="${escapeAttr(full)}"><span class="pill-text">${escapeHtml(t)}×${e.count}${md ? ` ${escapeHtml(md)}` : ''}${icon}</span></span>`;
+                        }).join('');
+                    })();
                     // 手動摘要 chip — hover popover 顯示完整原文（含換行）
                     const manualChips = [
                         p.bonePlanSummary ? `<span class="pill expandable" data-full="${escapeAttr(p.bonePlanSummary)}" style="background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.4); color: #d8b4fe;"><span class="pill-text">🦴 ${escapeHtml(p.bonePlanSummary.replace(/\n/g, ' '))}</span></span>` : '',
                         p.painPlanSummary ? `<span class="pill expandable" data-full="${escapeAttr(p.painPlanSummary)}" style="background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); color: #fbcfe8;"><span class="pill-text">💢 ${escapeHtml(p.painPlanSummary.replace(/\n/g, ' '))}</span></span>` : ''
                     ].filter(Boolean).join('');
                     // Procedure auto-summary chip — popover 顯示完整日期 / NHI
-                    const summaryPills = manualChips + [
+                    const summaryPills = manualChips + histPills + [
                         ...filteredItems.map(it => {
                             const planNote = it.planned ? ` +${it.planned}計` : '';
                             const donePayments = (it.dates || []).filter(d => d.kind === 'done').map(d => d.payment).filter(Boolean);
@@ -2507,6 +2521,32 @@
         dc:      { label: '⊘ DC',   next: 'pending' }
     };
     const PROC_MED_META = { '': '－', pending: '🟠 未領', collected: '🟢 已領' };
+
+    // Pain procedure 歷史（tag 資料源）：visit tags 是有維護的事實，取代舊 plan-regex 猜測
+    const PROC_HIST_ORDER = ['CT NB', 'pRF', 'CT Bx', 'SONO', 'HA', 'PRP', 'BMA', 'cTAME', 'sTAME', 'TAME'];
+    async function buildProcHistory() {
+        try {
+            const allByDate = await getCachedAllVisits();
+            const todayStr = formatDate(new Date());
+            const map = {};
+            Object.keys(allByDate).forEach(d => {
+                if (d > todayStr) return; // 未來 visit 不算歷史
+                Object.values(allByDate[d] || {}).forEach(v => {
+                    if (!v?.recordNumber || v.noShow) return;
+                    [...new Set((v.tags || []).map(normalizeTag))].forEach(t => {
+                        if (!PROC_HIST_ORDER.includes(t)) return;
+                        const m = (map[v.recordNumber] = map[v.recordNumber] || {});
+                        const e = (m[t] = m[t] || { count: 0, lastDate: '', lastOutcome: null });
+                        e.count++;
+                        if (d > e.lastDate) { e.lastDate = d; e.lastOutcome = v.txOutcome || null; }
+                    });
+                });
+            });
+            const changed = JSON.stringify(state.procHistoryByRec || null) !== JSON.stringify(map);
+            state.procHistoryByRec = map;
+            if (changed) renderVisitList(); // map 更新後補畫歷史 pills
+        } catch (e) { console.warn('buildProcHistory 失敗', e); }
+    }
 
     // 從 OPD plan 抽「[本次] → 回診」段（與 index.html slicePlanThisVisit 同款；Phase 3 併入共用模組）
     function slicePlanThisVisitOPD(plan) {
