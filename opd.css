@@ -1368,8 +1368,10 @@
         /* ===== Procedure 清單樣式已搬至 proclist-core.js（自注入，opd/index 兩頁共用）===== */
 
         /* 抽血三分割（visit modal）：eGFR / INR / 抽血日 / 其他（貼上自動歸位） */
+        /* 桌機也 flex-wrap：4 格保證排一行、「其他」textarea 獨占一列 → INR 那格不會被 modal 寬度擠掉/裁切 */
         .labs-split {
             display: flex;
+            flex-wrap: wrap;
             gap: 6px;
             align-items: flex-start;
         }
@@ -1389,7 +1391,7 @@
             color: var(--text-secondary);
         }
         .labs-split textarea {
-            flex: 1 1 auto;
+            flex: 1 1 100%;   /* 獨占整列（4 格排在上面一行）*/
             min-width: 0;
             min-height: 34px;
             resize: vertical;
@@ -1397,11 +1399,9 @@
         }
         .labs-split textarea:focus { min-height: 90px; }
         @media (max-width: 768px) {
-            /* 手機：小欄們一列自動換行、其他欄換行吃滿寬；16px 防 iOS focus 放大（含 .ls-date，桌面縮字在手機必須讓位）*/
-            .labs-split { flex-wrap: wrap; }
+            /* 手機：16px 防 iOS focus 放大（含 .ls-date，桌面縮字在手機必須讓位）*/
             .labs-split input, .labs-split textarea, .labs-split .ls-date { font-size: 16px; }
             .labs-split .ls-date { width: 64px; }
-            .labs-split textarea { flex-basis: 100%; }
         }
 
         /* 治療成效 dot（標籤區左緣）：點循環 無→🟢improve→🟡mild/stationary→🔴no help→無 */
