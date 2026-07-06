@@ -136,7 +136,7 @@
                 <button class="pv-chip" data-view="done">✅ 已完成</button>
             </div>
             <select id="proc-range" style="min-width: 150px;">
-                <option value="recent" selected>近期（-2週 ~ +6週）</option>
+                <option value="recent" selected>近期（±6週；待做不受下限）</option>
                 <option value="3m">前後 3 個月</option>
                 <option value="all">全部</option>
             </select>
@@ -2606,12 +2606,14 @@
                         futureDates.forEach(ld => {
                             if (ld < startKey || ld > endKey) return;
                             const key = v.recordNumber + '|' + ld;
+                            // plan 紀律：* 開頭 / [X 已] badge = 已執行 → 自動顯示完成（手動狀態仍優先）
+                            const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
                             const prev = rows.get(key);
                             if (!prev) {
-                                rows.set(key, { rec: v.recordNumber, procDate: ld, tags: [...tags], srcDate: vDate, srcVisit: v, line: t });
+                                rows.set(key, { rec: v.recordNumber, procDate: ld, tags: [...tags], srcDate: vDate, srcVisit: v, line: t, autoDone });
                             } else {
                                 // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集
-                                if (vDate > prev.srcDate) { prev.srcDate = vDate; prev.srcVisit = v; prev.line = t; }
+                                if (vDate > prev.srcDate) { prev.srcDate = vDate; prev.srcVisit = v; prev.line = t; prev.autoDone = autoDone; }
                                 prev.tags = [...new Set([...prev.tags, ...tags])];
                             }
                         });
@@ -2657,12 +2659,18 @@
         const today = new Date();
         const fmtOff = (d) => formatDate(new Date(today.getTime() + d * 86400000));
         let startKey = '0000-00-00', endKey = '9999-99-99';
-        if (range === 'recent') { startKey = fmtOff(-14); endKey = fmtOff(42); }
+        if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
-        const { dated, undated, todayStr } = deriveProcRows(allByDate, startKey, endKey);
+        // 推導用更寬的下限：待做列不受範圍下限影響（待辦不該因為變舊而消失；半年為硬底）
+        const hardStart = range === 'all' ? '0000-00-00' : (fmtOff(-180) < startKey ? fmtOff(-180) : startKey);
+        const { dated: datedAll, undated, todayStr } = deriveProcRows(allByDate, hardStart, endKey);
 
-        // 狀態 filter
-        const stOf = (row) => procTrackOf(row).track?.status || 'pending';
+        // 有效狀態：手動 procTrack 優先，否則 plan 標記（*/[已]）自動完成，再否則待做
+        const stOf = (row) => procTrackOf(row).track?.status || (row.autoDone ? 'done' : 'pending');
+        // 範圍下限：完成/DC 照範圍；「近 8 週內規劃」的待做無視下限（真 straggler 不消失；
+        // 古早無標記行不洪水——舊 plan 未必有 */[已] 紀律，全穿透實測會冒出幾十筆假待辦）
+        const bypassFloor = fmtOff(-56);
+        const dated = datedAll.filter(r => r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor));
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
         else if (view === 'done') list = dated.filter(r => stOf(r) === 'done');
@@ -2685,7 +2693,7 @@
         const rowHtml = (row, mobile) => {
             const p = state.patients[row.rec] || {};
             const { key, track } = procTrackOf(row);
-            const st = track?.status || 'pending';
+            const st = track?.status || (row.autoDone ? 'done' : 'pending');
             const med = track?.med || '';
             const overdue = row.procDate && st === 'pending' && row.procDate < todayStr;
             const surname = p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g, ''))})` : '';
@@ -2694,8 +2702,8 @@
             const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('');
             const planSeg = slicePlanThisVisitOPD(row.srcVisit.plan);
             const planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
-            const dataAttrs = `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}"`;
-            const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs}>${PROC_ST_META[st].label}</button>`;
+            const dataAttrs = `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
+            const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${track?.status ? '手動狀態' : (row.autoDone ? 'plan 標記自動判定（*/[已]），點擊改手動' : '')}">${PROC_ST_META[st].label}</button>`;
             const medBtn = `<button type="button" class="pc-med pc-med-${med || 'none'}" data-pc-cycle="med" ${dataAttrs}>${PROC_MED_META[med]}</button>`;
             const dateLabel = row.procDate ? fmtD(row.procDate) : '📌 未定';
             if (mobile) {
@@ -2755,7 +2763,7 @@
     }
 
     // 狀態 / 領藥循環：寫來源 visit 的 procTrack/{key}（欄位級 update），寫完改本地 cache 直接重畫
-    async function cycleProcTrack(kind, srcDate, rec, key) {
+    async function cycleProcTrack(kind, srcDate, rec, key, nowSt) {
         try {
             const path = `opd/visits/${srcDate}/${rec}/procTrack/${key}`;
             // race guard：抓最新
@@ -2763,7 +2771,8 @@
             const cur = snap.val() || {};
             const updates = { at: Date.now() };
             if (kind === 'st') {
-                updates.status = PROC_ST_META[cur.status || 'pending'].next;
+                // DB 沒手動狀態時，從畫面上的有效狀態（可能是 autoDone）接著循環
+                updates.status = PROC_ST_META[cur.status || nowSt || 'pending'].next;
             } else {
                 updates.med = cur.med === 'pending' ? 'collected' : (cur.med === 'collected' ? null : 'pending');
             }
@@ -2795,7 +2804,7 @@
         document.getElementById('proc-list')?.addEventListener('click', (e) => {
             const cyc = e.target.closest('[data-pc-cycle]');
             if (cyc) {
-                cycleProcTrack(cyc.dataset.pcCycle, cyc.dataset.pcSrc, cyc.dataset.pcRec, cyc.dataset.pcKey);
+                cycleProcTrack(cyc.dataset.pcCycle, cyc.dataset.pcSrc, cyc.dataset.pcRec, cyc.dataset.pcKey, cyc.dataset.pcNow);
                 return;
             }
             const jump = e.target.closest('[data-pc-jump]');
