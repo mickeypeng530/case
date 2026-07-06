@@ -1365,6 +1365,134 @@
             text-underline-offset: 3px;
         }
 
+        /* ===== Procedure 清單 ===== */
+        .pv-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+        .pv-chip {
+            padding: 6px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 16px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .pv-chip.active {
+            background: rgba(99,102,241,0.2);
+            border-color: var(--color-tag-default);
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .proc-table-wrapper { overflow-x: auto; }
+        .proc-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;   /* 單一彈性欄（plan）；側欄固定寬（playbook §7.5(d)） */
+            font-size: 0.85rem;
+        }
+        .proc-table col.pc-c-date { width: 82px; }
+        .proc-table col.pc-c-rec { width: 118px; }
+        .proc-table col.pc-c-labs { width: 170px; }
+        .proc-table col.pc-c-tags { width: 130px; }
+        .proc-table col.pc-c-st { width: 86px; }
+        .proc-table col.pc-c-med { width: 74px; }
+        /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
+        .proc-table th {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 6px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .proc-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .proc-table .pc-c-labs { white-space: pre-line; font-size: 0.78rem; color: var(--text-secondary); }
+        .pc-plan-body { line-height: 1.5; font-size: 0.82rem; }
+        /* 類別 = 列底色（Phase 1 全是一般疼痛 → 無底色）；狀態疊加 */
+        .pc-row.pc-done td { background: rgba(34,197,94,0.14); }
+        .pc-row.pc-dc td { background: rgba(148,163,184,0.15); opacity: 0.65; }
+        .pc-row.pc-overdue td:first-child { box-shadow: inset 4px 0 0 0 #ef4444; } /* 紅左緣 = 過期未完成 */
+        .pc-group-row td {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .pc-group-row.pc-group-today td { color: #4ade80; }
+        .pc-group-row.pc-group-warn td { color: #fbbf24; }
+        .pc-st, .pc-med {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.78rem;
+            padding: 3px 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .pc-st-done { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
+        .pc-st-dc { background: rgba(148,163,184,0.3); color: var(--text-muted); }
+        .pc-med-pending { background: rgba(234,88,12,0.3); border-color: #ea580c; }
+        .pc-med-collected { background: rgba(74,222,128,0.3); border-color: #4ade80; }
+        /* 桌面/手機雙渲染切換 */
+        .proc-desktop { display: block; }
+        .proc-mobile { display: none; }
+        /* 直立醫院螢幕（≤1280）：側欄收窄，plan 自動變寬（保持單調：1280 值 ≤ 桌機值） */
+        @media (max-width: 1280px) {
+            .proc-table col.pc-c-labs { width: 130px; }
+            .proc-table col.pc-c-tags { width: 100px; }
+        }
+        @media (max-width: 768px) {
+            .proc-desktop { display: none; }
+            .proc-mobile { display: block; padding-bottom: 40px; }
+            .pc-group-header {
+                padding: 10px 4px 4px;
+                font-weight: 600;
+                font-size: 0.9rem;
+                color: var(--text-secondary);
+                border-bottom: 1px solid var(--border);
+            }
+            .pc-group-header.pc-group-today { color: #4ade80; }
+            .pc-group-header.pc-group-warn { color: #fbbf24; }
+            .pc-card {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 10px 12px;
+                margin-top: 8px;
+            }
+            .pc-card.pc-done { background: rgba(34,197,94,0.12); }
+            .pc-card.pc-dc { opacity: 0.55; }
+            .pc-card.pc-overdue { border-left: 4px solid #ef4444; border-radius: 0 10px 10px 0; }
+            .pc-card-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+            .pc-card-date { font-weight: 700; color: var(--color-info); font-size: 1rem; }
+            .pc-card-rec { font-weight: 600; font-size: 1rem; }
+            .pc-card-name { color: var(--text-secondary); font-size: 0.85rem; }
+            .pc-card-labs { color: var(--text-secondary); font-size: 0.85rem; margin-top: 3px; }
+            .pc-card-plan {
+                border-top: 1px dashed var(--border);
+                margin-top: 7px;
+                padding-top: 7px;
+                font-size: 1rem;      /* ≥16px */
+                line-height: 1.55;
+                word-break: break-word;
+            }
+            .pc-card-actions { display: flex; gap: 8px; margin-top: 8px; }
+            .pc-card-actions .pc-st, .pc-card-actions .pc-med {
+                flex: 1;
+                min-height: 40px;     /* 觸控目標 */
+                font-size: 0.9rem;
+            }
+        }
+
         /* 抽血三分割（visit modal）：eGFR / INR / 抽血日 / 其他（貼上自動歸位） */
         .labs-split {
             display: flex;

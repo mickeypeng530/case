@@ -88,6 +88,7 @@
 
     <div class="tabs">
         <button class="tab active" data-panel="panel-clinic">📅 門診日</button>
+        <button class="tab" data-panel="panel-proc">🗂 Procedure</button>
         <button class="tab" data-panel="panel-patients">👥 病人主表</button>
         <button class="tab" data-panel="panel-stats">📊 統計</button>
         <button class="tab" data-panel="panel-io">📥 匯入 / 匯出</button>
@@ -123,6 +124,26 @@
         <div id="visit-list">
             <div class="empty-hint">請選擇門診日期</div>
         </div>
+    </div>
+
+    <!-- Procedure 清單（OPD plan 衍生；同資料多視角） -->
+    <div class="panel" id="panel-proc">
+        <div class="toolbar" style="flex-wrap: wrap; gap: 8px;">
+            <div class="pv-chips" id="proc-view-chips">
+                <button class="pv-chip" data-view="all">📋 全部</button>
+                <button class="pv-chip active" data-view="bydate">📅 依日期</button>
+                <button class="pv-chip" data-view="pending">⏳ 待做</button>
+                <button class="pv-chip" data-view="done">✅ 已完成</button>
+            </div>
+            <select id="proc-range" style="min-width: 150px;">
+                <option value="recent" selected>近期（-2週 ~ +6週）</option>
+                <option value="3m">前後 3 個月</option>
+                <option value="all">全部</option>
+            </select>
+            <span style="flex:1"></span>
+            <span id="proc-status" style="color: var(--text-muted); font-size: 0.8rem;"></span>
+        </div>
+        <div id="proc-list"><div class="empty-hint">切換至此分頁自動載入</div></div>
     </div>
 
     <!-- 病人主表 -->
@@ -723,6 +744,10 @@
         if (panelId === 'panel-clinic' && typeof updateClinicToolbarHeight === 'function') {
             setTimeout(updateClinicToolbarHeight, 50);
         }
+        // 切到 Procedure 分頁 → 重新推導（資料吃 getCachedAllVisits，5min cache 內免流量）
+        if (panelId === 'panel-proc' && typeof renderProcList === 'function') {
+            renderProcList();
+        }
         // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
         if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
             // 已有結果就不重算（避免每次切回來都重跑）
@@ -863,6 +888,7 @@
         loadPatients();
         loadAdHocClinicDates();
         loadBackupMeta();
+        bindProcUI();
         bindPatientUI();
         bindClinicDayUI();
         bindImportUI();
@@ -2462,6 +2488,279 @@
         }
         await update(ref(fbDb), multiUpdates);
         setStatus('connected', `✓ 確認 + 已傳至 ${nextRTC}`);
+    }
+
+    // ========== Procedure 清單（模型 A 純視圖：row 從 plan 即時推導，狀態疊加在來源 visit）==========
+    // Phase 1：OPD 衍生（SONO/TAME/CT NB/pRF/CT Bx）。Phase 2 將聯集排程原生（arthro/mri/ct/other）。
+    const PROC_LINE_RES = [
+        { name: 'CT Bx', re: /\bCT\s*(?:biopsy|bx)\b/i },
+        { name: 'CT NB', re: /\bCT\s*NB\b/i },
+        { name: 'pRF',   re: /\bp?RF\b/ },
+        { name: 'SONO',  re: /\bSONO\b/i },
+        { name: 'cTAME', re: /\bcTAME\b/i },
+        { name: 'sTAME', re: /\bsTAME\b/i },
+        { name: 'TAME',  re: /\bTAME\b/i }   // generic 殿後；c/sTAME 命中就不收
+    ];
+    const PROC_ST_META = {
+        pending: { label: '⏳ 待做', next: 'done' },
+        done:    { label: '✅ 完成', next: 'dc' },
+        dc:      { label: '⊘ DC',   next: 'pending' }
+    };
+    const PROC_MED_META = { '': '－', pending: '🟠 未領', collected: '🟢 已領' };
+
+    // 從 OPD plan 抽「[本次] → 回診」段（與 index.html slicePlanThisVisit 同款；Phase 3 併入共用模組）
+    function slicePlanThisVisitOPD(plan) {
+        const lines = (plan || '').split(/\r?\n/);
+        const start = lines.findIndex(l => /\[本次\]/.test(l));
+        if (start < 0) return (plan || '').trim();
+        let end = lines.length - 1;
+        for (let i = start + 1; i < lines.length; i++) {
+            if (/回診/.test(lines[i])) { end = i; break; }
+        }
+        return lines.slice(start, end + 1).join('\n').trim();
+    }
+
+    // 推導 rows：掃全 visits 的 plan 行（未來日期 + proc 關鍵字）；已確認 visit 的「待/約 無日期」行 → 未定日期 leak
+    function deriveProcRows(allByDate, startKey, endKey) {
+        const todayStr = formatDate(new Date());
+        const rows = new Map();        // rec|procDate → row
+        const undated = new Map();     // rec|tag → row
+        const datedGlobal = new Set(); // rec|tag（不受範圍限制，用來消掉已補日期的漏網）
+        const recent60 = formatDate(new Date(Date.now() - 60 * 86400000));
+
+        Object.keys(allByDate).forEach(vDate => {
+            Object.values(allByDate[vDate] || {}).forEach(v => {
+                if (!v || v.noShow || !v.recordNumber) return;
+                (v.plan || '').split(/\r?\n/).forEach(line => {
+                    const t = line.trim();
+                    if (!t) return;
+                    // 討論/規劃行不算排定（跟 summarizePlan 同規則：may consider / 建議 / 討論…）
+                    if (t.startsWith('-') && DISCUSS_PATTERN.test(t)) return;
+                    const tags = [];
+                    for (const k of PROC_LINE_RES) {
+                        if (!k.re.test(t)) continue;
+                        if (k.name === 'TAME' && (tags.includes('cTAME') || tags.includes('sTAME'))) continue;
+                        tags.push(k.name);
+                    }
+                    if (!tags.length) return;
+                    // 先剝掉「X/Y RTC」的日期再抓 —— 「07/09 RTC, 07/18 15:00 SONO」要取 07/18 不是回診日
+                    const tForDate = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
+                    // 一行可含多個日期（sTAME 系列「07/16, 09/11, 03/19」）→ 每個未來日各成一列
+                    const futureDates = [];
+                    const dre = /\b(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\b/g;
+                    let dm;
+                    while ((dm = dre.exec(tForDate)) !== null) {
+                        const yy = dm[1] ? 2000 + parseInt(dm[1], 10) : parseInt(vDate.slice(0, 4), 10);
+                        const mo = parseInt(dm[2], 10), dd = parseInt(dm[3], 10);
+                        if (!isRealDate(yy, mo, dd)) continue;
+                        let iso = `${yy}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+                        // 無年份且比 visit 日早逾半年 → 視為明年（系列治療跨年常見）
+                        if (!dm[1] && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
+                            iso = `${yy + 1}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+                        }
+                        if (iso > vDate && !futureDates.includes(iso)) futureDates.push(iso);
+                    }
+                    if (futureDates.length) {
+                        // 該次門診規劃的未來 procedure（history 行日期 ≤ vDate 自然被排除）
+                        tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
+                        futureDates.forEach(ld => {
+                            if (ld < startKey || ld > endKey) return;
+                            const key = v.recordNumber + '|' + ld;
+                            const prev = rows.get(key);
+                            if (!prev) {
+                                rows.set(key, { rec: v.recordNumber, procDate: ld, tags: [...tags], srcDate: vDate, srcVisit: v, line: t });
+                            } else {
+                                // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集
+                                if (vDate > prev.srcDate) { prev.srcDate = vDate; prev.srcVisit = v; prev.line = t; }
+                                prev.tags = [...new Set([...prev.tags, ...tags])];
+                            }
+                        });
+                    } else if (!futureDates.length && v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
+                        // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
+                        tags.forEach(tg => {
+                            const uk = v.recordNumber + '|' + tg;
+                            const prev = undated.get(uk);
+                            if (!prev || vDate > prev.srcDate) {
+                                undated.set(uk, { rec: v.recordNumber, procDate: null, tags: [tg], srcDate: vDate, srcVisit: v, line: t });
+                            }
+                        });
+                    }
+                });
+            });
+        });
+        // 已有日期的 (rec,tag) → 漏網消除
+        const undatedRows = [...undated.values()].filter(r => !datedGlobal.has(r.rec + '|' + r.tags[0]));
+        return { dated: [...rows.values()].sort((a, b) => a.procDate.localeCompare(b.procDate) || a.rec.localeCompare(b.rec)), undated: undatedRows, todayStr };
+    }
+
+    function procTrackOf(row) {
+        const key = row.procDate || ('nodate|' + row.tags[0]);
+        return { key, track: row.srcVisit.procTrack?.[key] || null };
+    }
+
+    function jumpToVisit(date, rec) {
+        state.scrollToRecord = rec;
+        state.currentClinicDate = date;
+        localStorage.setItem('opd:currentClinicDate', date);
+        activateTab('panel-clinic');
+        renderClinicDateSelector();
+        onClinicDateChanged(date);
+    }
+
+    async function renderProcList() {
+        const wrap = document.getElementById('proc-list');
+        if (!wrap) return;
+        const view = state.procView || 'bydate';
+        const range = document.getElementById('proc-range')?.value || 'recent';
+        wrap.innerHTML = '<div class="empty-hint">推導中...</div>';
+        const allByDate = await getCachedAllVisits();
+        const today = new Date();
+        const fmtOff = (d) => formatDate(new Date(today.getTime() + d * 86400000));
+        let startKey = '0000-00-00', endKey = '9999-99-99';
+        if (range === 'recent') { startKey = fmtOff(-14); endKey = fmtOff(42); }
+        else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
+        const { dated, undated, todayStr } = deriveProcRows(allByDate, startKey, endKey);
+
+        // 狀態 filter
+        const stOf = (row) => procTrackOf(row).track?.status || 'pending';
+        let list = dated;
+        if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
+        else if (view === 'done') list = dated.filter(r => stOf(r) === 'done');
+        const showUndated = (view === 'all' || view === 'bydate' || view === 'pending') ? undated : [];
+
+        // 統計列
+        const cnt = { pending: 0, done: 0, dc: 0 };
+        dated.forEach(r => cnt[stOf(r)]++);
+        const statusEl = document.getElementById('proc-status');
+        if (statusEl) statusEl.textContent = `${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}`;
+
+        if (!list.length && !showUndated.length) {
+            wrap.innerHTML = '<div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div>';
+            return;
+        }
+
+        const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        const fmtD = (iso) => { const dt = new Date(iso + 'T00:00'); return `${dt.getMonth() + 1}/${dt.getDate()} (${dayNames[dt.getDay()]})`; };
+
+        const rowHtml = (row, mobile) => {
+            const p = state.patients[row.rec] || {};
+            const { key, track } = procTrackOf(row);
+            const st = track?.status || 'pending';
+            const med = track?.med || '';
+            const overdue = row.procDate && st === 'pending' && row.procDate < todayStr;
+            const surname = p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g, ''))})` : '';
+            const ageSex = displayAgeSex(p, todayStr) || p.ageSex || '';
+            const labs = buildLabsDisplay(p);
+            const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('');
+            const planSeg = slicePlanThisVisitOPD(row.srcVisit.plan);
+            const planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
+            const dataAttrs = `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}"`;
+            const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs}>${PROC_ST_META[st].label}</button>`;
+            const medBtn = `<button type="button" class="pc-med pc-med-${med || 'none'}" data-pc-cycle="med" ${dataAttrs}>${PROC_MED_META[med]}</button>`;
+            const dateLabel = row.procDate ? fmtD(row.procDate) : '📌 未定';
+            if (mobile) {
+                return `<div class="pc-card pc-${st}${overdue ? ' pc-overdue' : ''}">
+                    <div class="pc-card-head">
+                        <span class="pc-card-date">${escapeHtml(dateLabel)}</span>
+                        <span class="pc-card-rec clickable" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}">${escapeHtml(row.rec)}</span>
+                        <span class="pc-card-name">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
+                    </div>
+                    ${labs ? `<div class="pc-card-labs">${escapeHtml(labs.split('\n')[0])}</div>` : ''}
+                    <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
+                    ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
+                    <div class="pc-card-actions">${stBtn}${medBtn}</div>
+                </div>`;
+            }
+            return `<tr class="pc-row pc-${st}${overdue ? ' pc-overdue' : ''}">
+                <td class="pc-c-date">${escapeHtml(dateLabel)}</td>
+                <td class="pc-c-rec">
+                    <span class="record-line clickable" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到 ${escapeAttr(row.srcDate)} 門診">${escapeHtml(row.rec)}</span>
+                    <div class="age-line">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</div>
+                </td>
+                <td class="pc-c-labs">${escapeHtml(labs)}</td>
+                <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
+                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div></td>
+                <td class="pc-c-st">${stBtn}</td>
+                <td class="pc-c-med">${medBtn}</td>
+            </tr>`;
+        };
+
+        const tableWrap = (bodyHtml) => `<div class="proc-table-wrapper"><table class="proc-table">
+            <colgroup><col class="pc-c-date"><col class="pc-c-rec"><col class="pc-c-labs"><col class="pc-c-tags"><col class="pc-c-plan"><col class="pc-c-st"><col class="pc-c-med"></colgroup>
+            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Plan（本次→回診）</th><th>狀態</th><th>藥</th></tr></thead>
+            <tbody>${bodyHtml}</tbody></table></div>`;
+
+        let desktopHtml = '';
+        let mobileHtml = '';
+        const undatedBlockD = showUndated.length ? `<tr class="pc-group-row pc-group-warn"><td colspan="7">📌 未定日期（門診已確認但還沒約 — 漏網偵測）</td></tr>` + showUndated.map(r => rowHtml(r, false)).join('') : '';
+        const undatedBlockM = showUndated.length ? `<div class="pc-group-header pc-group-warn">📌 未定日期（已確認未約）</div>` + showUndated.map(r => rowHtml(r, true)).join('') : '';
+
+        if (view === 'bydate') {
+            const byDate = {};
+            list.forEach(r => { (byDate[r.procDate] = byDate[r.procDate] || []).push(r); });
+            const keys = Object.keys(byDate).sort();
+            desktopHtml = tableWrap(undatedBlockD + keys.map(d =>
+                `<tr class="pc-group-row${d === todayStr ? ' pc-group-today' : ''}"><td colspan="7">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length} 筆</td></tr>` +
+                byDate[d].map(r => rowHtml(r, false)).join('')
+            ).join(''));
+            mobileHtml = undatedBlockM + keys.map(d =>
+                `<div class="pc-group-header${d === todayStr ? ' pc-group-today' : ''}">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length}</div>` +
+                byDate[d].map(r => rowHtml(r, true)).join('')
+            ).join('');
+        } else {
+            desktopHtml = tableWrap(undatedBlockD + list.map(r => rowHtml(r, false)).join(''));
+            mobileHtml = undatedBlockM + list.map(r => rowHtml(r, true)).join('');
+        }
+        wrap.innerHTML = `<div class="proc-desktop">${desktopHtml}</div><div class="proc-mobile">${mobileHtml}</div>`;
+    }
+
+    // 狀態 / 領藥循環：寫來源 visit 的 procTrack/{key}（欄位級 update），寫完改本地 cache 直接重畫
+    async function cycleProcTrack(kind, srcDate, rec, key) {
+        try {
+            const path = `opd/visits/${srcDate}/${rec}/procTrack/${key}`;
+            // race guard：抓最新
+            const snap = await get(ref(fbDb, path));
+            const cur = snap.val() || {};
+            const updates = { at: Date.now() };
+            if (kind === 'st') {
+                updates.status = PROC_ST_META[cur.status || 'pending'].next;
+            } else {
+                updates.med = cur.med === 'pending' ? 'collected' : (cur.med === 'collected' ? null : 'pending');
+            }
+            await update(ref(fbDb, path), updates);
+            // 本地 cache 同步（srcDate 非當前門診日 → 不會有 listener echo，自己更新）
+            const allByDate = await getCachedAllVisits();
+            const v = allByDate?.[srcDate]?.[rec];
+            if (v) {
+                v.procTrack = v.procTrack || {};
+                v.procTrack[key] = { ...cur, ...updates };
+            }
+            renderProcList();
+        } catch (err) {
+            reportWriteError(err, 'Procedure 狀態');
+        }
+    }
+
+    function bindProcUI() {
+        if (state.procUIBound) return;
+        state.procUIBound = true;
+        document.getElementById('proc-view-chips')?.addEventListener('click', (e) => {
+            const chip = e.target.closest('.pv-chip');
+            if (!chip) return;
+            state.procView = chip.dataset.view;
+            document.querySelectorAll('#proc-view-chips .pv-chip').forEach(c => c.classList.toggle('active', c === chip));
+            renderProcList();
+        });
+        document.getElementById('proc-range')?.addEventListener('change', renderProcList);
+        document.getElementById('proc-list')?.addEventListener('click', (e) => {
+            const cyc = e.target.closest('[data-pc-cycle]');
+            if (cyc) {
+                cycleProcTrack(cyc.dataset.pcCycle, cyc.dataset.pcSrc, cyc.dataset.pcRec, cyc.dataset.pcKey);
+                return;
+            }
+            const jump = e.target.closest('[data-pc-jump]');
+            if (jump) jumpToVisit(jump.dataset.pcJump, jump.dataset.pcJumprec);
+        });
     }
 
     // ========== 匯出 docx (本日 OPD 名單) ==========
