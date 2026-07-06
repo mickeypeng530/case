@@ -396,14 +396,21 @@
             <label>抽血 / Labs（病人主表）— 貼整段到「其他」會自動歸位</label>
             <div class="labs-split">
                 <input type="text" id="v-egfr" placeholder="eGFR" title="eGFR 數值（可含 > < =）">
+                <input type="text" id="v-egfr-date" placeholder="日" title="eGFR 抽血日">
                 <input type="text" id="v-inr" placeholder="INR" title="INR 數值">
-                <input type="text" id="v-labs-date" placeholder="抽血日" title="抽血日期（eGFR/INR 共用）">
+                <input type="text" id="v-inr-date" placeholder="日" title="INR 抽血日（術前抽常跟 eGFR 不同天）">
                 <textarea id="v-labs" rows="1" placeholder="其他：Ca 9.4 / Cr 0.83…"></textarea>
             </div>
         </div>
         <div class="field">
-            <label>骨鬆評估（病人主表）</label>
-            <textarea id="v-bone-score" placeholder="T -2.8 (R hip);  TBS 1.284;  FRAX 9.2/3.1%;  BMD ..." style="min-height: 50px;"></textarea>
+            <label>骨鬆評估（病人主表）— 貼整段到「其他」會自動歸位</label>
+            <div class="labs-split">
+                <input type="text" id="v-bone-t" placeholder="T" title="T-score（多部位只記最低）">
+                <input type="text" id="v-bone-tbs" placeholder="TBS">
+                <input type="text" id="v-bone-frax" placeholder="FRAX" title="主要/髖部，如 9.2/3.1">
+                <input type="text" id="v-bone-date" placeholder="檢查日" title="DXA 檢查日期">
+                <textarea id="v-bone-score" rows="1" placeholder="其他：BMD、部位細節…"></textarea>
+            </div>
         </div>
         <div class="field">
             <label>慢性病史 / PH（病人主表）</label>
@@ -2096,7 +2103,7 @@
                 </td>
                 <td class="col-labs">${escapeHtml(labsDisplay)}</td>
                 <td class="col-extra">${(() => {
-                    const bs = p.boneScore || '';
+                    const bs = buildBoneDisplay(p); // 結構化 T/TBS/FRAX 優先 + 其他文字
                     const ph = (p.pastHistory ?? p.extra) || '';
                     const acDrugs = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
                         ? p.anticoagulants.join(' / ') : '';
@@ -2133,9 +2140,9 @@
                         if (p.boneSummaryEdited || p.bonePlanSummary) return false;
                         return true;
                     });
-                    // Pain 歷史 pills：per-patient tag 統計（次數 + 最近日期 + 療效色）
+                    // Pain 歷史 pills：per-patient tag 統計（次數 + 最近實際 procedure 日 + 療效色）。
+                    // 不再被手寫 pain 摘要抑制——舊規則是「自動不準」年代的 workaround，會讓過時手寫蓋住準確統計（339804 案例）
                     const histPills = (() => {
-                        if (p.painSummaryEdited || p.painPlanSummary) return ''; // 手動摘要優先
                         const hist = state.procHistoryByRec?.[v.recordNumber];
                         if (!hist) return '';
                         return PROC_HIST_ORDER.filter(t => hist[t]).map(t => {
@@ -2225,7 +2232,8 @@
             const blocks = [];
             const labsD = buildLabsDisplay(p);
             if (labsD) blocks.push(`<div class="vm-block"><span class="vm-block-label">抽血</span>${escapeHtml(labsD)}</div>`);
-            if (p.boneScore) blocks.push(`<div class="vm-block"><span class="vm-block-label">骨鬆</span>${escapeHtml(p.boneScore)}</div>`);
+            const boneD = buildBoneDisplay(p);
+            if (boneD) blocks.push(`<div class="vm-block"><span class="vm-block-label">骨鬆</span>${escapeHtml(boneD)}</div>`);
             const ph = (p.pastHistory ?? p.extra) || '';
             if (ph) blocks.push(`<div class="vm-block"><span class="vm-block-label">病史</span>${escapeHtml(ph)}</div>`);
             if (v.examEducation) blocks.push(`<div class="vm-block"><span class="vm-block-label">概況</span>${escapeHtml(v.examEducation)}</div>`);
@@ -2540,6 +2548,19 @@
                         e.count++;
                         if (d > e.lastDate) { e.lastDate = d; e.lastOutcome = v.txOutcome || null; }
                     });
+                });
+            });
+            // 「最近日期」升級為實際 procedure 日（deriveProcRows 同源）：
+            // tag 記在門診日（5/27），實際治療日在 plan 行（6/2）→ 顯示後者
+            const derived = deriveProcRows(allByDate, '0000-00-00', todayStr);
+            derived.dated.forEach(row => {
+                row.tags.forEach(t => {
+                    if (!PROC_HIST_ORDER.includes(t)) return;
+                    const e = map[row.rec]?.[t];
+                    if (e && row.procDate > e.lastDate) {
+                        e.lastDate = row.procDate;
+                        if (row.srcVisit?.txOutcome) e.lastOutcome = row.srcVisit.txOutcome;
+                    }
                 });
             });
             const changed = JSON.stringify(state.procHistoryByRec || null) !== JSON.stringify(map);
@@ -3752,10 +3773,17 @@
         // 抬升發生過 → 其他欄顯示清理後殘文 → 下次儲存自然完成 lazy migration
         const liftedL = extractLabsStructured(patient.labs || '');
         document.getElementById('v-egfr').value = (isValidEGFR(patient.eGFR) ? patient.eGFR : '') || liftedL.eGFR || '';
+        document.getElementById('v-egfr-date').value = patient.eGFRDate || liftedL.eGFRDate || patient.labsDate || '';
         document.getElementById('v-inr').value = patient.INR || liftedL.INR || '';
-        document.getElementById('v-labs-date').value = patient.labsDate || patient.INRDate || liftedL.labsDate || '';
+        document.getElementById('v-inr-date').value = patient.INRDate || liftedL.INRDate || patient.labsDate || '';
         document.getElementById('v-labs').value = (liftedL.eGFR || liftedL.INR) ? liftedL.rest : (patient.labs || '');
-        document.getElementById('v-bone-score').value = patient.boneScore || '';
+        // 骨鬆同款：結構化優先 + 舊文字抬升
+        const liftedB = extractBoneStructured(patient.boneScore || '');
+        document.getElementById('v-bone-t').value = patient.boneT || liftedB.boneT || '';
+        document.getElementById('v-bone-tbs').value = patient.boneTBS || liftedB.boneTBS || '';
+        document.getElementById('v-bone-frax').value = patient.boneFRAX || liftedB.boneFRAX || '';
+        document.getElementById('v-bone-date').value = patient.boneDate || liftedB.boneDate || '';
+        document.getElementById('v-bone-score').value = (liftedB.boneT || liftedB.boneTBS || liftedB.boneFRAX) ? liftedB.rest : (patient.boneScore || '');
         // pastHistory 取代 extra；用 ?? 只在 undefined 才 fallback（避免清空後重生）
         document.getElementById('v-past-history').value = (patient.pastHistory ?? patient.extra) || '';
 
@@ -3883,7 +3911,7 @@
             sex: parsed?.sex || '',
             referrer: document.getElementById('v-referrer').value.trim(),
             labs: document.getElementById('v-labs').value.trim(),
-            // eGFR/INR：非法值不擋存檔，自動退回其他 lab 欄（欄位只收乾淨數值）
+            // eGFR/INR：非法值不擋存檔，自動退回其他 lab 欄（數值欄只收乾淨數值）；日期各自帶
             ...(() => {
                 let eg = document.getElementById('v-egfr').value.trim();
                 let inr = document.getElementById('v-inr').value.trim();
@@ -3892,7 +3920,17 @@
                 if (inr && !/^\d+(\.\d+)?$/.test(inr)) { spill.push(inr); inr = ''; }
                 const labsEl = document.getElementById('v-labs');
                 if (spill.length) labsEl.value = [labsEl.value.trim(), ...spill].filter(Boolean).join('\n');
-                return { eGFR: eg, INR: inr, labsDate: document.getElementById('v-labs-date').value.trim(), labs: labsEl.value.trim() };
+                return {
+                    eGFR: eg,
+                    eGFRDate: document.getElementById('v-egfr-date').value.trim(),
+                    INR: inr,
+                    INRDate: document.getElementById('v-inr-date').value.trim(),
+                    labs: labsEl.value.trim(),
+                    boneT: document.getElementById('v-bone-t').value.trim(),
+                    boneTBS: document.getElementById('v-bone-tbs').value.trim(),
+                    boneFRAX: document.getElementById('v-bone-frax').value.trim(),
+                    boneDate: document.getElementById('v-bone-date').value.trim()
+                };
             })(),
             boneScore: document.getElementById('v-bone-score').value.trim(),
             pastHistory: document.getElementById('v-past-history').value.trim(),
@@ -3942,8 +3980,9 @@
         if (state.visitModalBound) return;
         state.visitModalBound = true;
 
-        // 「其他 lab」失焦 → 自動抬升 eGFR/INR/抽血日到左側欄位
+        // 「其他」欄失焦 → 自動抬升結構化值（抽血 / 骨鬆同機制）
         document.getElementById('v-labs')?.addEventListener('blur', liftLabsFromOther);
+        document.getElementById('v-bone-score')?.addEventListener('blur', liftBoneFromOther);
 
         // 病人歷次 modal
         document.getElementById('history-modal-close').addEventListener('click', closeHistoryModal);
@@ -4088,10 +4127,16 @@
                 fillIfEmpty('v-referrer', pt.referrer);
                 fillIfEmpty('v-labs', pt.labs);
                 fillIfEmpty('v-egfr', isValidEGFR(pt.eGFR) ? pt.eGFR : '');
+                fillIfEmpty('v-egfr-date', pt.eGFRDate || pt.labsDate);
                 fillIfEmpty('v-inr', pt.INR);
-                fillIfEmpty('v-labs-date', pt.labsDate || pt.INRDate);
+                fillIfEmpty('v-inr-date', pt.INRDate || pt.labsDate);
                 liftLabsFromOther(); // 舊自由文字自動歸位
                 fillIfEmpty('v-bone-score', pt.boneScore);
+                fillIfEmpty('v-bone-t', pt.boneT);
+                fillIfEmpty('v-bone-tbs', pt.boneTBS);
+                fillIfEmpty('v-bone-frax', pt.boneFRAX);
+                fillIfEmpty('v-bone-date', pt.boneDate);
+                liftBoneFromOther();
                 fillIfEmpty('v-past-history', pt.pastHistory ?? pt.extra);
                 fillIfEmpty('v-bone-summary', pt.bonePlanSummary);
                 fillIfEmpty('v-pain-summary', pt.painPlanSummary);
@@ -4186,6 +4231,7 @@
             document.getElementById('v-labs').value = labsCombined;
             liftLabsFromOther(); // 貼上解析後 eGFR/INR/日期 自動進結構化欄（無數字的孤標籤留在其他欄）
             document.getElementById('v-bone-score').value = boneStuff.boneScore;
+            liftBoneFromOther(); // T/TBS/FRAX/檢查日自動進結構化欄
             // 剩餘部分填入慢性病史 / extra
             let extraRemaining = boneStuff.remaining;
             if (refDetected) {
@@ -5778,20 +5824,59 @@
         return { INR: m[1], INRDate: (m[2] || m[3] || '').trim() };
     }
 
-    // 從自由文字抬升結構化 labs（eGFR / INR / 抽血日期），回傳 {eGFR, INR, labsDate, rest}
-    // 規則：標籤後必須有數字才算值——「eGFR」孤字（醫院印出無值標籤）留在 rest，不污染數值欄
+    // 從自由文字抬升結構化 labs（eGFR / INR **各自帶抽血日**——INR 常術前另抽），
+    // 回傳 {eGFR, eGFRDate, INR, INRDate, rest}
+    // 規則：① 標籤後必須有數字才算值——「eGFR」孤字（無值標籤）留在 rest，不污染數值欄
+    //       ② 日期只認「緊跟在該數值後面」的——不做跨值猜測（避免把 Ca 的日期錯配給 INR）
     function extractLabsStructured(text) {
         let rest = String(text || '');
         const cut = (m) => { rest = rest.slice(0, m.index) + ' ' + rest.slice(m.index + m[0].length); };
-        let eGFR = '', INR = '', labsDate = '';
-        const egM = rest.match(/\beGFR[:：]?\s*([><=]?\s*\d+(?:\.\d+)?)(?:\s*[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）])?/i);
-        if (egM) { eGFR = egM[1].replace(/\s+/g, ''); if (egM[2]) labsDate = egM[2]; cut(egM); }
+        let eGFR = '', eGFRDate = '', INR = '', INRDate = '';
+        const egM = rest.match(/\beGFR[:：]?\s*([><=]?\s*\d+(?:\.\d+)?)(?:\s*[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]|\s+((?:\d{2}\/)?\d{1,2}\/\d{1,2})\b)?/i);
+        if (egM) { eGFR = egM[1].replace(/\s+/g, ''); eGFRDate = egM[2] || egM[3] || ''; cut(egM); }
         const inrM = rest.match(/\bINR[:：]?\s*(\d+(?:\.\d+)?)(?:\s*[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]|\s+((?:\d{2}\/)?\d{1,2}\/\d{1,2})\b)?/i);
-        if (inrM) { INR = inrM[1]; labsDate = inrM[2] || inrM[3] || labsDate; cut(inrM); }
-        // 抽血日期 fallback：其他 lab 的第一個括號日期（同一次抽血；只讀不移除）
-        if (!labsDate) { const d = rest.match(/[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]/); if (d) labsDate = d[1]; }
+        if (inrM) { INR = inrM[1]; INRDate = inrM[2] || inrM[3] || ''; cut(inrM); }
         rest = rest.replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/^[\s/、,，;；]+|[\s/、,，;；]+$/g, '').trim();
-        return { eGFR, INR, labsDate, rest };
+        return { eGFR, eGFRDate, INR, INRDate, rest };
+    }
+
+    // 骨鬆評估抬升：T-score / TBS / FRAX(主/髖) / 檢查日。
+    // T 需含負號或小數點（避免「T5 針規」「3T 磁場」誤抓）；多個 T 取最低（user 慣例只記最差），原文留 rest
+    function extractBoneStructured(text) {
+        let rest = String(text || '');
+        let boneT = '', boneTBS = '', boneFRAX = '', boneDate = '';
+        const tRe = /\bT[-\s]?(?:score)?[:：]?\s*(-\d+(?:\.\d+)?|\d+\.\d+)/gi;
+        const tHits = [];
+        let tm;
+        while ((tm = tRe.exec(rest)) !== null) tHits.push({ v: parseFloat(tm[1]), index: tm.index, len: tm[0].length });
+        if (tHits.length) {
+            boneT = String(Math.min(...tHits.map(x => x.v)));
+            if (tHits.length === 1) rest = rest.slice(0, tHits[0].index) + ' ' + rest.slice(tHits[0].index + tHits[0].len);
+            // 多個 → 不切原文（部位資訊保留在其他欄）
+        }
+        const tbsM = rest.match(/\bTBS[:：]?\s*(\d\.\d+)/i);
+        if (tbsM) { boneTBS = tbsM[1]; rest = rest.slice(0, tbsM.index) + ' ' + rest.slice(tbsM.index + tbsM[0].length); }
+        const fxM = rest.match(/\bFRAX[^0-9%]{0,15}(\d+(?:\.\d+)?)\s*%?\s*[\/,、]\s*(\d+(?:\.\d+)?)\s*%?/i);
+        if (fxM) { boneFRAX = `${fxM[1]}/${fxM[2]}`; rest = rest.slice(0, fxM.index) + ' ' + rest.slice(fxM.index + fxM[0].length); }
+        const dM = rest.match(/[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]/);
+        if (dM) { boneDate = dM[1]; rest = rest.slice(0, dM.index) + ' ' + rest.slice(dM.index + dM[0].length); } // 日期已抬走 → 從其他欄移除
+        rest = rest.replace(/[;；،,，]\s*(?=[;；,，])/g, '')            // 連續分隔符收斂
+                   .replace(/[ \t]{2,}/g, ' ')
+                   .replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n')
+                   .replace(/^[\s/、,，;；]+|[\s/、,，;；]+$/g, '').trim();
+        return { boneT, boneTBS, boneFRAX, boneDate, rest };
+    }
+
+    // 慢性病史欄「骨鬆:」顯示：結構化優先 + 其他文字
+    function buildBoneDisplay(p) {
+        if (!p) return '';
+        const bits = [];
+        if (p.boneT) bits.push(`T ${p.boneT}`);
+        if (p.boneTBS) bits.push(`TBS ${p.boneTBS}`);
+        if (p.boneFRAX) bits.push(`FRAX ${p.boneFRAX}%`);
+        let head = bits.join(' · ');
+        if (head && p.boneDate) head += ` (${p.boneDate})`;
+        return [head, p.boneScore || ''].filter(Boolean).join('\n');
     }
 
     // visit row / 手機卡 / Procedure 清單共用：結構化欄位優先，舊自由文字即時抬升顯示（不寫回 DB）
@@ -5800,26 +5885,45 @@
         const lifted = extractLabsStructured(p.labs || '');
         const eg = (isValidEGFR(p.eGFR) ? p.eGFR : '') || lifted.eGFR;
         const inr = p.INR || lifted.INR;
-        const dt = p.labsDate || p.INRDate || lifted.labsDate;
+        // 各自帶日；legacy labsDate（短暫存在過的共用日）當 fallback
+        const egDt = p.eGFRDate || lifted.eGFRDate || p.labsDate || '';
+        const inrDt = p.INRDate || lifted.INRDate || p.labsDate || '';
         const bits = [];
-        if (eg) bits.push(`eGFR ${eg}`);
-        if (inr) bits.push(`INR ${inr}`);
-        let head = bits.join(' · ');
-        if (head && dt) head += ` (${dt})`;
+        if (eg) bits.push(`eGFR ${eg}${egDt ? ` (${egDt})` : ''}`);
+        if (inr) bits.push(`INR ${inr}${inrDt ? ` (${inrDt})` : ''}`);
+        const head = bits.join(' · ');
         const other = (lifted.eGFR || lifted.INR) ? lifted.rest : (p.labs || '');
         return [head, other].filter(Boolean).join('\n');
     }
 
-    // 「其他 lab」欄失焦時：抬升 eGFR/INR/日期到左側欄（貼上 = 新資料 → 覆蓋），抬走的內容從其他欄移除
+    // 「其他 lab」欄失焦時：抬升 eGFR/INR/各自日期到左側欄（貼上 = 新資料 → 覆蓋），抬走的內容從其他欄移除
     function liftLabsFromOther() {
         const otherEl = document.getElementById('v-labs');
         if (!otherEl) return;
         const r = extractLabsStructured(otherEl.value);
         if (!r.eGFR && !r.INR) return;
-        if (r.eGFR) document.getElementById('v-egfr').value = r.eGFR;
-        if (r.INR) document.getElementById('v-inr').value = r.INR;
-        if (r.labsDate && !document.getElementById('v-labs-date').value.trim()) document.getElementById('v-labs-date').value = r.labsDate;
+        if (r.eGFR) {
+            document.getElementById('v-egfr').value = r.eGFR;
+            if (r.eGFRDate) document.getElementById('v-egfr-date').value = r.eGFRDate;
+        }
+        if (r.INR) {
+            document.getElementById('v-inr').value = r.INR;
+            if (r.INRDate) document.getElementById('v-inr-date').value = r.INRDate;
+        }
         otherEl.value = r.rest;
+    }
+
+    // 骨鬆「其他」欄失焦時：抬升 T / TBS / FRAX / 檢查日
+    function liftBoneFromOther() {
+        const el = document.getElementById('v-bone-score');
+        if (!el) return;
+        const r = extractBoneStructured(el.value);
+        if (!r.boneT && !r.boneTBS && !r.boneFRAX) return;
+        if (r.boneT) document.getElementById('v-bone-t').value = r.boneT;
+        if (r.boneTBS) document.getElementById('v-bone-tbs').value = r.boneTBS;
+        if (r.boneFRAX) document.getElementById('v-bone-frax').value = r.boneFRAX;
+        if (r.boneDate && !document.getElementById('v-bone-date').value.trim()) document.getElementById('v-bone-date').value = r.boneDate;
+        el.value = r.rest;
     }
 
     // 從 extra 偵測常見來源關鍵字（Buo/Hsu/Huang/web 等短詞）

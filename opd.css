@@ -1503,22 +1503,27 @@
             flex: 0 0 auto;
             box-sizing: border-box;
         }
-        .labs-split #v-egfr { width: 76px; }
-        .labs-split #v-inr { width: 64px; }
-        .labs-split #v-labs-date { width: 86px; }
-        .labs-split #v-labs {
+        .labs-split #v-egfr { width: 70px; }
+        .labs-split #v-egfr-date { width: 66px; }
+        .labs-split #v-inr { width: 58px; }
+        .labs-split #v-inr-date { width: 66px; }
+        .labs-split #v-bone-t { width: 60px; }
+        .labs-split #v-bone-tbs { width: 66px; }
+        .labs-split #v-bone-frax { width: 84px; }
+        .labs-split #v-bone-date { width: 70px; }
+        .labs-split textarea {
             flex: 1 1 auto;
             min-width: 0;
             min-height: 34px;
             resize: vertical;
             transition: min-height 0.15s ease;
         }
-        .labs-split #v-labs:focus { min-height: 90px; }
+        .labs-split textarea:focus { min-height: 90px; }
         @media (max-width: 768px) {
-            /* 手機：三小欄一列、其他 lab 換行吃滿寬；16px 防 iOS focus 放大 */
+            /* 手機：小欄們一列自動換行、其他欄換行吃滿寬；16px 防 iOS focus 放大 */
             .labs-split { flex-wrap: wrap; }
             .labs-split input, .labs-split textarea { font-size: 16px; }
-            .labs-split #v-labs { flex-basis: 100%; }
+            .labs-split textarea { flex-basis: 100%; }
         }
 
         /* 治療成效 dot（標籤區左緣）：點循環 無→🟢improve→🟡mild/stationary→🔴no help→無 */
