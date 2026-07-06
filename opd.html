@@ -372,8 +372,13 @@
             </datalist>
         </div>
         <div class="field">
-            <label>抽血 / Labs（病人主表）</label>
-            <textarea id="v-labs" placeholder="eGFR >60&#10;Cr 0.83&#10;Ca 9.4 (26/04)&#10;INR 1.04 (26/04)" style="min-height: 60px;"></textarea>
+            <label>抽血 / Labs（病人主表）— 貼整段到「其他」會自動歸位</label>
+            <div class="labs-split">
+                <input type="text" id="v-egfr" placeholder="eGFR" title="eGFR 數值（可含 > < =）">
+                <input type="text" id="v-inr" placeholder="INR" title="INR 數值">
+                <input type="text" id="v-labs-date" placeholder="抽血日" title="抽血日期（eGFR/INR 共用）">
+                <textarea id="v-labs" rows="1" placeholder="其他：Ca 9.4 / Cr 0.83…"></textarea>
+            </div>
         </div>
         <div class="field">
             <label>骨鬆評估（病人主表）</label>
@@ -2049,14 +2054,8 @@
             const jumpChips = '';
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
-            // labs 顯示：優先 patient.labs；若無，fallback 合成 (eGFR + INR)
-            let labsDisplay = p.labs || '';
-            if (!labsDisplay) {
-                const synth = [];
-                if (p.eGFR && isValidEGFR(p.eGFR)) synth.push(`eGFR ${p.eGFR}`);
-                if (p.INR) synth.push(`INR ${p.INR}${p.INRDate ? ` (${p.INRDate})` : ''}`);
-                labsDisplay = synth.join('\n');
-            }
+            // labs 顯示：結構化優先 + 舊文字即時抬升（buildLabsDisplay 統一新舊資料格式）
+            const labsDisplay = buildLabsDisplay(p);
             // 如果 patient 殘留 referrer-like 內容在 eGFR（legacy bug），自動把它當 referrer 顯示
             const referrerDisplay = p.referrer || (p.eGFR && !isValidEGFR(p.eGFR) ? p.eGFR : '');
             return `
@@ -2184,7 +2183,8 @@
         let extraHtml = '';
         if (expanded) {
             const blocks = [];
-            if (p.labs) blocks.push(`<div class="vm-block"><span class="vm-block-label">抽血</span>${escapeHtml(p.labs)}</div>`);
+            const labsD = buildLabsDisplay(p);
+            if (labsD) blocks.push(`<div class="vm-block"><span class="vm-block-label">抽血</span>${escapeHtml(labsD)}</div>`);
             if (p.boneScore) blocks.push(`<div class="vm-block"><span class="vm-block-label">骨鬆</span>${escapeHtml(p.boneScore)}</div>`);
             const ph = (p.pastHistory ?? p.extra) || '';
             if (ph) blocks.push(`<div class="vm-block"><span class="vm-block-label">病史</span>${escapeHtml(ph)}</div>`);
@@ -3400,15 +3400,13 @@
         // 年齡/性別：若已有 birthYear 則計算當前年齡顯示
         document.getElementById('v-age-sex').value = displayAgeSex(patient, date) || patient.ageSex || '';
         document.getElementById('v-referrer').value = patient.referrer || '';
-        // labs 整合：若 patient.labs 已有就用，否則合成（含舊 eGFR/INR fallback）
-        let labsValue = patient.labs || '';
-        if (!labsValue) {
-            const synthesized = [];
-            if (patient.eGFR) synthesized.push(`eGFR ${patient.eGFR}`);
-            if (patient.INR) synthesized.push(`INR ${patient.INR}${patient.INRDate ? ` (${patient.INRDate})` : ''}`);
-            labsValue = synthesized.join('\n');
-        }
-        document.getElementById('v-labs').value = labsValue;
+        // labs 三分割：結構化欄位優先；舊自由文字自動抬升（只填空格，不覆蓋較新的結構化值）
+        // 抬升發生過 → 其他欄顯示清理後殘文 → 下次儲存自然完成 lazy migration
+        const liftedL = extractLabsStructured(patient.labs || '');
+        document.getElementById('v-egfr').value = (isValidEGFR(patient.eGFR) ? patient.eGFR : '') || liftedL.eGFR || '';
+        document.getElementById('v-inr').value = patient.INR || liftedL.INR || '';
+        document.getElementById('v-labs-date').value = patient.labsDate || patient.INRDate || liftedL.labsDate || '';
+        document.getElementById('v-labs').value = (liftedL.eGFR || liftedL.INR) ? liftedL.rest : (patient.labs || '');
         document.getElementById('v-bone-score').value = patient.boneScore || '';
         // pastHistory 取代 extra；用 ?? 只在 undefined 才 fallback（避免清空後重生）
         document.getElementById('v-past-history').value = (patient.pastHistory ?? patient.extra) || '';
@@ -3537,6 +3535,17 @@
             sex: parsed?.sex || '',
             referrer: document.getElementById('v-referrer').value.trim(),
             labs: document.getElementById('v-labs').value.trim(),
+            // eGFR/INR：非法值不擋存檔，自動退回其他 lab 欄（欄位只收乾淨數值）
+            ...(() => {
+                let eg = document.getElementById('v-egfr').value.trim();
+                let inr = document.getElementById('v-inr').value.trim();
+                const spill = [];
+                if (eg && !isValidEGFR(eg)) { spill.push(eg); eg = ''; }
+                if (inr && !/^\d+(\.\d+)?$/.test(inr)) { spill.push(inr); inr = ''; }
+                const labsEl = document.getElementById('v-labs');
+                if (spill.length) labsEl.value = [labsEl.value.trim(), ...spill].filter(Boolean).join('\n');
+                return { eGFR: eg, INR: inr, labsDate: document.getElementById('v-labs-date').value.trim(), labs: labsEl.value.trim() };
+            })(),
             boneScore: document.getElementById('v-bone-score').value.trim(),
             pastHistory: document.getElementById('v-past-history').value.trim(),
             extra: '',  // legacy field 清空（避免重生）
@@ -3584,6 +3593,9 @@
     function bindVisitModal() {
         if (state.visitModalBound) return;
         state.visitModalBound = true;
+
+        // 「其他 lab」失焦 → 自動抬升 eGFR/INR/抽血日到左側欄位
+        document.getElementById('v-labs')?.addEventListener('blur', liftLabsFromOther);
 
         // 病人歷次 modal
         document.getElementById('history-modal-close').addEventListener('click', closeHistoryModal);
@@ -3727,6 +3739,10 @@
                 fillIfEmpty('v-age-sex', displayAgeSex(pt, date) || pt.ageSex);
                 fillIfEmpty('v-referrer', pt.referrer);
                 fillIfEmpty('v-labs', pt.labs);
+                fillIfEmpty('v-egfr', isValidEGFR(pt.eGFR) ? pt.eGFR : '');
+                fillIfEmpty('v-inr', pt.INR);
+                fillIfEmpty('v-labs-date', pt.labsDate || pt.INRDate);
+                liftLabsFromOther(); // 舊自由文字自動歸位
                 fillIfEmpty('v-bone-score', pt.boneScore);
                 fillIfEmpty('v-past-history', pt.pastHistory ?? pt.extra);
                 fillIfEmpty('v-bone-summary', pt.bonePlanSummary);
@@ -3820,6 +3836,7 @@
 
             document.getElementById('v-referrer').value = refDetected;
             document.getElementById('v-labs').value = labsCombined;
+            liftLabsFromOther(); // 貼上解析後 eGFR/INR/日期 自動進結構化欄（無數字的孤標籤留在其他欄）
             document.getElementById('v-bone-score').value = boneStuff.boneScore;
             // 剩餘部分填入慢性病史 / extra
             let extraRemaining = boneStuff.remaining;
@@ -5407,9 +5424,54 @@
     function isValidEGFR(val) { return EGFR_PATTERN.test(val || ''); }
 
     function extractINR(text) {
-        const m = (text || '').match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
+        // 冒號可選、日期括號可選（"INR 1.1 5/27" 也吃）
+        const m = (text || '').match(/INR[:：]?\s*([\d.]+)\s*(?:[（(]([^)）]+)[)）]|((?:\d{2}\/)?\d{1,2}\/\d{1,2})\b)?/i);
         if (!m) return { INR: '', INRDate: '' };
-        return { INR: m[1], INRDate: (m[2] || '').trim() };
+        return { INR: m[1], INRDate: (m[2] || m[3] || '').trim() };
+    }
+
+    // 從自由文字抬升結構化 labs（eGFR / INR / 抽血日期），回傳 {eGFR, INR, labsDate, rest}
+    // 規則：標籤後必須有數字才算值——「eGFR」孤字（醫院印出無值標籤）留在 rest，不污染數值欄
+    function extractLabsStructured(text) {
+        let rest = String(text || '');
+        const cut = (m) => { rest = rest.slice(0, m.index) + ' ' + rest.slice(m.index + m[0].length); };
+        let eGFR = '', INR = '', labsDate = '';
+        const egM = rest.match(/\beGFR[:：]?\s*([><=]?\s*\d+(?:\.\d+)?)(?:\s*[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）])?/i);
+        if (egM) { eGFR = egM[1].replace(/\s+/g, ''); if (egM[2]) labsDate = egM[2]; cut(egM); }
+        const inrM = rest.match(/\bINR[:：]?\s*(\d+(?:\.\d+)?)(?:\s*[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]|\s+((?:\d{2}\/)?\d{1,2}\/\d{1,2})\b)?/i);
+        if (inrM) { INR = inrM[1]; labsDate = inrM[2] || inrM[3] || labsDate; cut(inrM); }
+        // 抽血日期 fallback：其他 lab 的第一個括號日期（同一次抽血；只讀不移除）
+        if (!labsDate) { const d = rest.match(/[（(]((?:\d{2}\/)?\d{1,2}\/\d{1,2})[)）]/); if (d) labsDate = d[1]; }
+        rest = rest.replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/^[\s/、,，;；]+|[\s/、,，;；]+$/g, '').trim();
+        return { eGFR, INR, labsDate, rest };
+    }
+
+    // visit row / 手機卡 / Procedure 清單共用：結構化欄位優先，舊自由文字即時抬升顯示（不寫回 DB）
+    function buildLabsDisplay(p) {
+        if (!p) return '';
+        const lifted = extractLabsStructured(p.labs || '');
+        const eg = (isValidEGFR(p.eGFR) ? p.eGFR : '') || lifted.eGFR;
+        const inr = p.INR || lifted.INR;
+        const dt = p.labsDate || p.INRDate || lifted.labsDate;
+        const bits = [];
+        if (eg) bits.push(`eGFR ${eg}`);
+        if (inr) bits.push(`INR ${inr}`);
+        let head = bits.join(' · ');
+        if (head && dt) head += ` (${dt})`;
+        const other = (lifted.eGFR || lifted.INR) ? lifted.rest : (p.labs || '');
+        return [head, other].filter(Boolean).join('\n');
+    }
+
+    // 「其他 lab」欄失焦時：抬升 eGFR/INR/日期到左側欄（貼上 = 新資料 → 覆蓋），抬走的內容從其他欄移除
+    function liftLabsFromOther() {
+        const otherEl = document.getElementById('v-labs');
+        if (!otherEl) return;
+        const r = extractLabsStructured(otherEl.value);
+        if (!r.eGFR && !r.INR) return;
+        if (r.eGFR) document.getElementById('v-egfr').value = r.eGFR;
+        if (r.INR) document.getElementById('v-inr').value = r.INR;
+        if (r.labsDate && !document.getElementById('v-labs-date').value.trim()) document.getElementById('v-labs-date').value = r.labsDate;
+        otherEl.value = r.rest;
     }
 
     // 從 extra 偵測常見來源關鍵字（Buo/Hsu/Huang/web 等短詞）
@@ -5640,7 +5702,9 @@
         document.getElementById('pt-record-number').value = parsed.recordNumber;
         document.getElementById('pt-surname').value = parsed.surname;
         document.getElementById('pt-age-sex').value = parsed.ageSex;
-        document.getElementById('pt-egfr').value = parsed.eGFR;
+        // 非數值（如 pipe 格式抓到文字）不進數值欄 → 退回 extra（修「eGFR 欄出現英文字」bug 的源頭）
+        document.getElementById('pt-egfr').value = isValidEGFR(parsed.eGFR) ? parsed.eGFR : '';
+        if (parsed.eGFR && !isValidEGFR(parsed.eGFR)) parsed.extra = [parsed.extra, parsed.eGFR].filter(Boolean).join(' / ');
         document.getElementById('pt-inr').value = parsed.INR;
         document.getElementById('pt-inr-date').value = parsed.INRDate;
         document.getElementById('pt-extra').value = parsed.extra;
