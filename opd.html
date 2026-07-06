@@ -2753,6 +2753,8 @@
                     sched: true, schedCase: c, cellKey,
                     fallbackStatus: cl?.status === 'done' ? 'done' : (cl?.status === 'dc' ? 'dc' : null),
                     planScratch: (cl?.planScratch || '').trim(),
+                    // Arthro 四欄位住在舊 caselist row 上（不在排程 case）——顯示從這裡拿
+                    arthro: c.type === 'arthro' && cl ? { region: cl.arthroRegion || '', weight: cl.arthroWeight || '', mriTime: cl.arthroMriTime || '', contrast: cl.arthroContrast || '' } : null,
                     srcDate: m[1], srcVisit: null, line: c.note || ''
                 });
             });
@@ -2882,9 +2884,11 @@
             const ageSex = displayAgeSex(p, todayStr) || p.ageSex || '';
             const labs = buildLabsDisplay(p);
             // 抗凝（procedure 前必看，跟抽血同欄）：yes 紅 + hold hover；unknown = 待確認警示；none 淡 ✓
-            // Arthro 不需抗凝確認（user 定），不顯示
+            // Arthro / MRI / CT（檢查類）不需抗凝確認（user 定），不顯示
+            const schedType = row.schedCase?.type || '';
+            const isNonInvasive = isSchedOnly && ['arthro', 'mri', 'ct'].includes(schedType);
             let acHtml = '';
-            if (!(isSchedOnly && row.schedCase?.type === 'arthro')) {
+            if (!isNonInvasive) {
                 if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
                     const names = (p.anticoagulants || []).map(escapeHtml).join('/');
                     const holdInfo = (p.anticoagulants || []).map(dr => `${dr} hold ${getAnticoagHold(dr)}`).join('\n');
@@ -2903,8 +2907,8 @@
                 const planSeg = slicePlanThisVisitOPD(row.srcVisit.plan);
                 planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
             } else if (row.schedCase?.type === 'arthro') {
-                const c = row.schedCase;
-                planHtml = escapeHtml([`部位 ${c.arthroRegion || '?'}`, `體重 ${c.arthroWeight || '?'}kg`, `MRI ${c.arthroMriTime || '?'}`, `藥量 ${c.arthroContrast || '?'}`].join(' · '));
+                const a = row.arthro || {};
+                planHtml = escapeHtml([`部位 ${a.region || '?'}`, `體重 ${a.weight || '?'}kg`, `MRI ${a.mriTime || '?'}`, `藥量 ${a.contrast || '?'}`].join(' · '));
             } else {
                 planHtml = row.planScratch ? escapeHtml(row.planScratch).replace(/\n/g, '<br>') : `<span style="color:var(--text-muted);">🔗 排程登記（OPD plan 無對應行）</span>`;
             }
@@ -2913,10 +2917,12 @@
                 : `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
             const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.autoDone ? 'plan 標記自動判定（*/[已]），點擊改手動' : ''));
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
-            // 領藥：排程原生 row 顯示排程格的領藥條狀態（唯讀，單一真相在排程）；OPD row 照舊可點
-            const medBtn = isSchedOnly
-                ? `<span class="pc-med pc-med-${med || 'none'} pc-med-ro">${PROC_MED_META[med === 'pending' ? 'pending' : (med === 'collected' ? 'collected' : '')]}</span>`
-                : `<button type="button" class="pc-med pc-med-${med || 'none'}" data-pc-cycle="med" ${dataAttrs}>${PROC_MED_META[med]}</button>`;
+            // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 照舊可點
+            const medBtn = (isSchedOnly && (schedType === 'mri' || schedType === 'ct'))
+                ? ''
+                : (isSchedOnly
+                    ? `<span class="pc-med pc-med-${med || 'none'} pc-med-ro">${PROC_MED_META[med === 'pending' ? 'pending' : (med === 'collected' ? 'collected' : '')]}</span>`
+                    : `<button type="button" class="pc-med pc-med-${med || 'none'}" data-pc-cycle="med" ${dataAttrs}>${PROC_MED_META[med]}</button>`);
             const dateLabel = row.procDate ? fmtD(row.procDate) : '📌 未定';
             const timeHtml = row.time ? `<span class="pc-time">${escapeHtml(row.time)}</span>` : '';
             const recHtml = row.srcVisit
