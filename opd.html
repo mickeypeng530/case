@@ -134,6 +134,7 @@
                 <button class="pv-chip active" data-view="bydate">📅 依日期</button>
                 <button class="pv-chip" data-view="pending">⏳ 待做</button>
                 <button class="pv-chip" data-view="done">✅ 已完成</button>
+                <button class="pv-chip" data-view="tent">📝 待排</button>
             </div>
             <select id="proc-range" style="min-width: 150px;">
                 <option value="cycle" selected>本診間（上次 ~ 下次門診）</option>
@@ -2749,6 +2750,7 @@
                     procDate: m[1],
                     time: c.time || '',
                     tags: [...tags], noTag: false, autoDone: false,
+                    tentative: c.status === 'tentative', // 排程暫定 → 「待排」視圖專屬，不進主清單
                     sched: true, schedCase: c, cellKey,
                     fallbackStatus: cl?.status === 'done' ? 'done' : (cl?.status === 'dc' ? 'dc' : null),
                     planScratch: (cl?.planScratch || '').trim(),
@@ -2834,12 +2836,16 @@
         // 範圍下限：完成/DC 照範圍；「近 8 週內規劃」的待做無視下限（真 straggler 不消失；
         // 古早無標記行不洪水——舊 plan 未必有 */[已] 紀律，全穿透實測會冒出幾十筆假待辦）
         const bypassFloor = fmtOff(-56);
+        // 排程「暫定」（未確認）→ 只住「📝 待排」視圖，本診間/全部/待做/已完成一律不列
+        const isTent = (r) => !!r.tentative && r.sched && !r.srcVisit;
         const inWindow = (r) => r.procDate <= endKey && (r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor));
-        const dated = datedAll.filter(inWindow);
+        const dated = datedAll.filter(r => !isTent(r) && inWindow(r));
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
         // 「已完成」視圖不受範圍下限：穿透進來的過期待做被點成完成後，要在這裡找得到（近 90 天）
-        else if (view === 'done') list = datedAll.filter(r => stOf(r) === 'done' && r.procDate <= endKey && r.procDate >= fmtOff(-90));
+        else if (view === 'done') list = datedAll.filter(r => !isTent(r) && stOf(r) === 'done' && r.procDate <= endKey && r.procDate >= fmtOff(-90));
+        else if (view === 'tent') list = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey);
+        const tentCnt = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey).length;
         const showUndated = (view === 'all' || view === 'bydate' || view === 'pending') ? undated : [];
 
         // 統計列
@@ -2847,7 +2853,7 @@
         dated.forEach(r => cnt[stOf(r)]++);
         const statusEl = document.getElementById('proc-status');
         const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '';
-        if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${schedNote}`;
+        if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
 
         if (!list.length && !showUndated.length) {
             wrap.innerHTML = '<div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div>';
