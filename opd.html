@@ -2736,10 +2736,12 @@
         // 範圍下限：完成/DC 照範圍；「近 8 週內規劃」的待做無視下限（真 straggler 不消失；
         // 古早無標記行不洪水——舊 plan 未必有 */[已] 紀律，全穿透實測會冒出幾十筆假待辦）
         const bypassFloor = fmtOff(-56);
-        const dated = datedAll.filter(r => r.procDate <= endKey && (r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor)));
+        const inWindow = (r) => r.procDate <= endKey && (r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor));
+        const dated = datedAll.filter(inWindow);
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
-        else if (view === 'done') list = dated.filter(r => stOf(r) === 'done');
+        // 「已完成」視圖不受範圍下限：穿透進來的過期待做被點成完成後，要在這裡找得到（近 90 天）
+        else if (view === 'done') list = datedAll.filter(r => stOf(r) === 'done' && r.procDate <= endKey && r.procDate >= fmtOff(-90));
         const showUndated = (view === 'all' || view === 'bydate' || view === 'pending') ? undated : [];
 
         // 統計列
@@ -2863,6 +2865,13 @@
             if (v) {
                 v.procTrack = v.procTrack || {};
                 v.procTrack[key] = { ...cur, ...updates };
+            }
+            // 明確回饋：過期待做點完成會退出目前視圖（穿透資格消失），跟 user 說去哪找
+            if (kind === 'st') {
+                const lbl = PROC_ST_META[updates.status]?.label || updates.status;
+                setStatus('connected', `${rec} → ${lbl}（列若消失 = 已移出目前範圍，見「✅ 已完成」視圖）`);
+            } else {
+                setStatus('connected', `${rec} 領藥 → ${PROC_MED_META[updates.med || '']}`);
             }
             renderProcList();
         } catch (err) {
