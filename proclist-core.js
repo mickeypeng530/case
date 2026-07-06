@@ -132,6 +132,10 @@ function buildLabsDisplay(p) {
     const other = (lifted.eGFR || lifted.INR) ? lifted.rest : (p.labs || '');
     return [head, other].filter(Boolean).join('\n');
 }
+// 抽血顯示的日期縮小淡化（「eGFR 55 (6/24)」的 (6/24)）——配角，不搶版面；吃已 escape 的字串
+function fmtLabDates(escapedText) {
+    return escapedText.replace(/\(((?:\d{2}\/)?\d{1,2}\/\d{1,2})\)/g, '<span class="plc-lab-date">($1)</span>');
+}
 // 「[本次] → 回診」切段（跟 index.html 舊 caselist 的 slicePlanThisVisit 同款）
 function slicePlanThisVisit(plan) {
     const lines = (plan || '').split(/\r?\n/);
@@ -433,6 +437,7 @@ const PLC_CSS = `
 .plc-scope .record-line.clickable:hover { color: #c7d2fe; }
 .plc-scope .age-line { font-size: 0.75rem; color: var(--text-muted,#64748b); }
 .plc-scope .empty-hint { text-align: center; color: var(--text-muted,#64748b); padding: 60px 20px; font-size: 0.95rem; }
+.plc-scope .plc-lab-date { font-size: 0.82em; color: var(--text-muted,#64748b); }
 .plc-scope .date-invalid { text-decoration: underline wavy #ef4444; text-underline-offset: 3px; }
 /* light 主題補色（host 有 data-theme 才生效） */
 :root[data-theme="light"] .plc-scope .ac-icon.ac-yes { color: #991b1b; }
@@ -523,9 +528,12 @@ export function createProcList(deps) {
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
         if (range === 'cycle') {
-            // 本診間：今天「之前」最近門診日 ~ 今天「之後」最近門診日（嚴格前後，門診日當天窗口跨兩診間）
+            // 本診間：上次「已完成門診」~ 下次門診（嚴格前後，門診日當天窗口跨兩診間）
+            // 已完成門診 = 該日至少一筆 confirmed visit——草稿/RTC 預建/零星 visit 的日期不算門診日
+            //（幽靈窗口案例：7/6 一筆孤 draft 讓起點從 6/24 縮成 7/6）
             const keys = Object.keys(allByDate).sort();
-            const past = keys.filter(k => k < todayKey);
+            const isHeldClinic = (k) => Object.values(allByDate[k] || {}).some(v => v && v.status === 'confirmed');
+            const past = keys.filter(k => k < todayKey && isHeldClinic(k));
             const future = keys.filter(k => k > todayKey);
             startKey = past.length ? past[past.length - 1] : fmtOff(-14);
             endKey = future.length ? future[0] : fmtOff(42);
@@ -685,7 +693,7 @@ export function createProcList(deps) {
                         ${jumpable ? `<span class="pc-card-rec clickable" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}">${escapeHtml(row.rec)}</span>` : `<span class="pc-card-rec">${escapeHtml(row.rec || '—')}</span>`}
                         <span class="pc-card-name">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
                     </div>
-                    ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${escapeHtml(labs.split('\n')[0] || '')}</div>` : ''}
+                    ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${fmtLabDates(escapeHtml(labs.split('\n')[0] || ''))}</div>` : ''}
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
                     ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
@@ -697,7 +705,7 @@ export function createProcList(deps) {
                     ${recHtml}
                     <div class="age-line">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</div>
                 </td>
-                <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${escapeHtml(labs)}</td>
+                <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${fmtLabDates(escapeHtml(labs))}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div></td>
                 <td class="pc-c-st">${stBtn}</td>
