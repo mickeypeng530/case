@@ -1575,6 +1575,7 @@
                 <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
                 <button id="export-btn" title="匯出 docx" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄</button>
                 <button id="caselist-btn" title="線上 list" style="padding: 6px 12px; background: var(--color-info); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📋</button>
+                <button id="proc-btn" title="Procedure 清單（與 OPD 🗂 同一張，共用模組）" style="padding: 6px 12px; background: var(--color-sono, #22c55e); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🗂</button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
                 <span class="storage-status">
                     <span class="storage-dot" id="storage-dot"></span>
@@ -1756,6 +1757,30 @@
     </div>
 
     <!-- 線上 case list -->
+    <!-- 🗂 Procedure 清單（proclist-core.js 共用模組；與 OPD 的 🗂 tab 同一張清單/同一份資料） -->
+    <div id="proc-overlay" style="display:none; position:fixed; inset:0; background:var(--bg-primary); z-index:600; overflow-y:auto; padding:14px 16px; -webkit-overflow-scrolling:touch;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            <h3 style="margin:0; font-size:1rem;">🗂 Procedure 清單</h3>
+            <div class="pv-chips" id="proc-view-chips">
+                <button class="pv-chip" data-view="all">📋 全部</button>
+                <button class="pv-chip active" data-view="bydate">📅 依日期</button>
+                <button class="pv-chip" data-view="pending">⏳ 待做</button>
+                <button class="pv-chip" data-view="done">✅ 已完成</button>
+                <button class="pv-chip" data-view="tent">📝 待排</button>
+            </div>
+            <select id="proc-range" style="min-width:150px; padding:5px 8px; background:var(--bg-primary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; font-family:inherit; font-size:0.85rem;">
+                <option value="cycle" selected>本診間（上次 ~ 下次門診）</option>
+                <option value="recent">近期（±6週）</option>
+                <option value="3m">前後 3 個月</option>
+                <option value="all">全部</option>
+            </select>
+            <span style="flex:1"></span>
+            <span id="proc-status" style="color:var(--text-muted); font-size:0.8rem;"></span>
+            <button id="proc-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-family:inherit; font-size:0.82rem;">✕ 關閉</button>
+        </div>
+        <div id="proc-list"></div>
+    </div>
+
     <div class="modal-overlay" id="caselist-modal">
         <div class="modal-wrapper">
         <div class="modal caselist-modal" style="width: 90vw; max-width: 1200px; height: 80vh; max-height: 95vh; min-width: 600px; min-height: 400px; resize: both; overflow: hidden; display: flex; flex-direction: column;">
@@ -1813,6 +1838,8 @@
         import {
             ref, set, get, update, remove, onValue
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        // Procedure 清單共用模組（與 opd.html 的 🗂 tab 同一份實作）
+        import { createProcList } from "./proclist-core.js";
 
         // ========== 登入 ==========
         let currentUser = null;
@@ -4158,11 +4185,29 @@
             }
         }
 
+        // ========== 🗂 Procedure 清單（proclist-core.js 掛載） ==========
+        // 排程頁沒有 OPD 的 visits/patients cache → 不注入 getAllVisits/getPatients，模組自建 TTL 5min cache
+        let procListInst = null;
+        function openProcPanel() {
+            document.getElementById('proc-overlay').style.display = 'block';
+            if (!procListInst) {
+                procListInst = createProcList({
+                    fb: { db: fbDb, ref, get, update },
+                    jumpToVisit: (date, rec) => window.open(`opd.html?date=${encodeURIComponent(date)}&rec=${encodeURIComponent(rec)}`, '_blank'),
+                    reportError: (err, label) => alert(`${label} 寫入失敗：${err?.message || err}`)
+                });
+                procListInst.bind();
+            }
+            procListInst.render();
+        }
+
         // Event Listeners
         function setupEventListeners() {
             // 匯出按鈕
             document.getElementById('export-btn')?.addEventListener('click', exportToDocx);
             document.getElementById('caselist-btn')?.addEventListener('click', openCaselist);
+            document.getElementById('proc-btn')?.addEventListener('click', openProcPanel);
+            document.getElementById('proc-close')?.addEventListener('click', () => { document.getElementById('proc-overlay').style.display = 'none'; });
             document.getElementById('caselist-close')?.addEventListener('click', closeCaselist);
             document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
             document.getElementById('caselist-sync-btn')?.addEventListener('click', () => { syncCaselistFromCells(false); renderCaselist(); });
