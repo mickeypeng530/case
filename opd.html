@@ -1515,7 +1515,19 @@
             const isAdHoc = !!state.adHocClinicDates?.[date];
             removeBtn.style.display = (isAdHoc && count === 0) ? '' : 'none';
         }
-        meta.textContent = `${count} 位病人`;
+        // 已準備數跟著 sticky toolbar 走：捲過 stats-bar 後仍看得到（全備完顯示 ✓全備）
+        const vList = Object.values(visits);
+        const cameN = vList.filter(v => !v.noShow).length;
+        const prepN = vList.filter(v => !v.noShow && v.prepared && v.status !== 'confirmed').length;
+        const confN = vList.filter(v => !v.noShow && v.status === 'confirmed').length;
+        const readyN = prepN + confN; // 備 + 確 都算「處理過」
+        let readyHtml = '';
+        if (cameN > 0 && readyN > 0) {
+            readyHtml = readyN >= cameN
+                ? ` <span style="color:#22c55e;font-weight:600;">✓全備</span>`
+                : ` <span style="color:#22c55e;font-weight:600;">✓${readyN}</span>`;
+        }
+        meta.innerHTML = `${count} 位病人${readyHtml}`;
     }
 
     function onClinicDateChanged(dateStr) {
