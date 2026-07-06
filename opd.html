@@ -2583,14 +2583,13 @@
         return lines.slice(start, end + 1).join('\n').trim();
     }
 
-    // 推導 rows（兩段式）。範圍過濾移到呼叫端（renderProcList），這裡永遠全量推導。
-    // Pass1 掃全 visits plan 行 → 收「候選」（未來日）+「目擊」（該行所有解析日，含歷史行）
-    // Pass2 兩道閘門：
-    //   ① tag 家族閘（user 規則「先看 tag 再抓內文」）：行關鍵字必須屬於該 visit tags 的家族
-    //      —— med / f/u / 草稿 visit 的 plan 殘文不再成列（F66780 案例）
-    //   ② 年份考據：無年份 MM/DD 被較新 visit 以當年重讀會生「幽靈年」（2025 的 * 07/31 變 2026-07-31）
-    //      → 同病人同 MM/DD 同家族取「最早目擊年份」為真年，較新年份的候選 = 幽靈，丟棄
-    // 另：行內有帶年份日期（24/04/25）時當「era 錨」——同行無年份日期用該年代補，不用 visit 年（診斷摘要行）
+    // 推導 rows。範圍過濾移到呼叫端（renderProcList），這裡永遠全量推導。
+    // 核心規則（第三版，取代「年份考據」）：**只掃「最後一個 [本次] 錨點起」的段落**。
+    //   plan 是累積文件：歷史行永遠堆在 [本次] 上方、當次新寫的在下方——
+    //   幽靈年（去年 MM/DD 被今年 visit 重讀）、診斷摘要行假日期，全都住在錨點上方，一刀切掉。
+    //   沒有 [本次] 的 plan（極舊資料）→ 整份掃（fallback）。
+    // tag 家族閘 = 軟標：行關鍵字不屬於該 visit tags 家族 → 照樣成列但掛 ⚠（硬刪會漏真預約）。
+    // era 錨：行內帶年日期（24/04/25）決定同行無年日期的年代，不用 visit 年。
     const PROC_FAMILIES = [['CT NB', 'pRF'], ['TAME', 'cTAME', 'sTAME'], ['SONO'], ['CT Bx']];
     const procFamKey = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t])[0];
     function deriveProcRows(allByDate) {
@@ -2599,14 +2598,27 @@
         const datedGlobal = new Set(); // rec|tag（消掉已補日期的漏網）
         const recent60 = formatDate(new Date(Date.now() - 60 * 86400000));
         const candidates = [];
-        const sightMinYear = new Map(); // rec|MM-DD|fam → 最早目擊年份
 
         Object.keys(allByDate).forEach(vDate => {
             Object.values(allByDate[vDate] || {}).forEach(v => {
                 if (!v || v.noShow || !v.recordNumber) return;
                 const vTags = new Set((v.tags || []).map(normalizeTag));
                 const tagAllowed = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t]).some(x => vTags.has(x));
-                (v.plan || '').split(/\r?\n/).forEach(line => {
+                const planLines = (v.plan || '').split(/\r?\n/);
+                // 只掃「本次錨點」之後（含錨點行——錨點行常帶當次排程）。
+                // 錨點雙訊號：① [本次] 標記 ② visit 自己日期的 RTC 行（03/11 RTC 之於 03-11 visit，
+                //   結構上等價「本次」——沒打 [本次] 標記的 plan 靠它）。取最後一個。無錨 → 整份（極舊資料 fallback）
+                let anchorIdx = -1;
+                const vYr = parseInt(vDate.slice(0, 4), 10), vMo = parseInt(vDate.slice(5, 7), 10), vDd = parseInt(vDate.slice(8, 10), 10);
+                planLines.forEach((l, i) => {
+                    if (/\[本次\]/.test(l)) { anchorIdx = i; return; }
+                    const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC/i);
+                    if (m && parseInt(m[2], 10) === vMo && parseInt(m[3], 10) === vDd && (!m[1] || 2000 + parseInt(m[1], 10) === vYr)) {
+                        anchorIdx = i;
+                    }
+                });
+                const scanLines = anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines;
+                scanLines.forEach(line => {
                     const t = line.trim();
                     if (!t) return;
                     // 討論/規劃行不算排定（跟 summarizePlan 同規則）
@@ -2640,21 +2652,19 @@
                         if (!dm[1] && eraYear === null && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
                             iso = `${yy0 + 1}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
                         }
-                        // 目擊登記（不分未來/歷史、不看 tag 閘）：年份考據的證據
-                        const mmdd = iso.slice(5);
-                        const yr = parseInt(iso.slice(0, 4), 10);
-                        tags.forEach(tg => {
-                            const sk = v.recordNumber + '|' + mmdd + '|' + procFamKey(tg);
-                            if (!sightMinYear.has(sk) || yr < sightMinYear.get(sk)) sightMinYear.set(sk, yr);
-                        });
                         if (iso > vDate && !futureDates.includes(iso)) futureDates.push(iso);
                     }
-                    const gated = tags.filter(tagAllowed); // ① tag 家族閘
+                    // ① tag 家族閘改「軟標」：無 tag 佐證照樣成列但掛 ⚠（硬刪會漏掉真預約——07/02 SONO 案例）
+                    const gated = tags.filter(tagAllowed);
                     if (futureDates.length) {
-                        if (!gated.length) return;
-                        gated.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
+                        tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
                         const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
-                        futureDates.forEach(ld => candidates.push({ rec: v.recordNumber, procDate: ld, tags: [...gated], srcDate: vDate, srcVisit: v, line: t, autoDone }));
+                        futureDates.forEach(ld => candidates.push({
+                            rec: v.recordNumber, procDate: ld,
+                            tags: gated.length ? [...gated] : [...tags],
+                            noTag: !gated.length,
+                            srcDate: vDate, srcVisit: v, line: t, autoDone
+                        }));
                     } else if (v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
                         // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
                         gated.forEach(tg => {
@@ -2669,24 +2679,18 @@
             });
         });
 
-        // ② 年份考據 + 合併
+        // 合併（同病人同日多來源）
         const rows = new Map();
         candidates.forEach(c => {
-            const yr = parseInt(c.procDate.slice(0, 4), 10);
-            const mmdd = c.procDate.slice(5);
-            const isGhost = c.tags.every(tg => {
-                const minY = sightMinYear.get(c.rec + '|' + mmdd + '|' + procFamKey(tg));
-                return minY !== undefined && yr > minY;
-            });
-            if (isGhost) return;
             const key = c.rec + '|' + c.procDate;
             const prev = rows.get(key);
             if (!prev) {
                 rows.set(key, c);
             } else {
-                // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集
+                // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集；任一來源有 tag 佐證就除 ⚠
                 if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; prev.line = c.line; prev.autoDone = c.autoDone; }
                 prev.tags = [...new Set([...prev.tags, ...c.tags])];
+                prev.noTag = prev.noTag && c.noTag;
             }
         });
         // 已有日期的 (rec,tag) → 漏網消除
@@ -2720,12 +2724,16 @@
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
         if (range === 'cycle') {
-            // 本診間：上次門診日（含）~ 下次門診日（含）。門診日 = visits 有資料的日期（RTC 傳遞會先建未來 visit）
+            // 本診間：今天「之前」最近門診日 ~ 今天「之後」最近門診日（嚴格前後，門診日當天窗口跨兩診間）
+            // 門診日 = visits 有資料的日期（RTC 傳遞會先建未來 visit）
             const keys = Object.keys(allByDate).sort();
-            const past = keys.filter(k => k <= todayKey);
+            const past = keys.filter(k => k < todayKey);
             const future = keys.filter(k => k > todayKey);
             startKey = past.length ? past[past.length - 1] : fmtOff(-14);
             endKey = future.length ? future[0] : fmtOff(42);
+            // 下拉選項直接顯示實際區間
+            const opt = document.querySelector('#proc-range option[value="cycle"]');
+            if (opt) opt.textContent = `本診間（${startKey.slice(5).replace('-', '/')} ~ ${endKey.slice(5).replace('-', '/')}）`;
         }
         else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
@@ -2779,7 +2787,8 @@
             } else {
                 acHtml = `<span class="ac-icon ac-unknown">❓ 抗凝待確認</span>`;
             }
-            const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('');
+            const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('')
+                + (row.noTag ? `<span class="pill expandable pc-notag" data-full="來源 visit 沒掛對應 tag——可能是漏掛 tag，或這行是殘文。點病歷號跳去該 visit 檢查"><span class="pill-text">⚠</span></span>` : '');
             const planSeg = slicePlanThisVisitOPD(row.srcVisit.plan);
             const planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
             const dataAttrs = `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
