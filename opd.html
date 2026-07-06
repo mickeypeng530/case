@@ -2875,16 +2875,19 @@
             const surname = p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g, ''))})` : '';
             const ageSex = displayAgeSex(p, todayStr) || p.ageSex || '';
             const labs = buildLabsDisplay(p);
-            // 抗凝（procedure 前必看）：yes 紅 + hold hover；unknown = 待確認警示；none 淡 ✓
+            // 抗凝（procedure 前必看，跟抽血同欄）：yes 紅 + hold hover；unknown = 待確認警示；none 淡 ✓
+            // Arthro 不需抗凝確認（user 定），不顯示
             let acHtml = '';
-            if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
-                const names = (p.anticoagulants || []).map(escapeHtml).join('/');
-                const holdInfo = (p.anticoagulants || []).map(dr => `${dr} hold ${getAnticoagHold(dr)}`).join('\n');
-                acHtml = `<span class="ac-icon ac-yes pill expandable" data-full="${escapeAttr(holdInfo)}"><span class="pill-text">🩸 ${names}</span></span>`;
-            } else if (p.anticoagState === 'none') {
-                acHtml = `<span class="ac-icon ac-none">✓ 無抗凝</span>`;
-            } else {
-                acHtml = `<span class="ac-icon ac-unknown">❓ 抗凝待確認</span>`;
+            if (!(isSchedOnly && row.schedCase?.type === 'arthro')) {
+                if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
+                    const names = (p.anticoagulants || []).map(escapeHtml).join('/');
+                    const holdInfo = (p.anticoagulants || []).map(dr => `${dr} hold ${getAnticoagHold(dr)}`).join('\n');
+                    acHtml = `<span class="ac-icon ac-yes pill expandable" data-full="${escapeAttr(holdInfo)}"><span class="pill-text">🩸 ${names}</span></span>`;
+                } else if (p.anticoagState === 'none') {
+                    acHtml = `<span class="ac-icon ac-none">✓ 無抗凝</span>`;
+                } else {
+                    acHtml = `<span class="ac-icon ac-unknown">❓ 抗凝待</span>`;
+                }
             }
             const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('')
                 + (row.noTag ? `<span class="pill expandable pc-notag" data-full="來源 visit 沒掛對應 tag——可能是漏掛 tag，或這行是殘文。點病歷號跳去該 visit 檢查"><span class="pill-text">⚠</span></span>` : '');
@@ -2920,8 +2923,7 @@
                         ${row.srcVisit ? `<span class="pc-card-rec clickable" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}">${escapeHtml(row.rec)}</span>` : `<span class="pc-card-rec">${escapeHtml(row.rec || '—')}</span>`}
                         <span class="pc-card-name">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
                     </div>
-                    ${labs ? `<div class="pc-card-labs">${escapeHtml(labs.split('\n')[0])}</div>` : ''}
-                    <div class="pc-card-ac">${acHtml}</div>
+                    ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${escapeHtml(labs.split('\n')[0] || '')}</div>` : ''}
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
                     ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
@@ -2932,9 +2934,8 @@
                 <td class="pc-c-rec">
                     ${recHtml}
                     <div class="age-line">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</div>
-                    <div class="pc-ac">${acHtml}</div>
                 </td>
-                <td class="pc-c-labs">${escapeHtml(labs)}</td>
+                <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${escapeHtml(labs)}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div></td>
                 <td class="pc-c-st">${stBtn}</td>
