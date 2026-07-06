@@ -1,0 +1,49 @@
+name: Deploy static site to Pages
+
+# 純靜態站（無 build step）。改用自訂 workflow 的實益：
+#   ① concurrency cancel-in-progress → 新 push 自動取消排隊中的舊 run（治「殭屍 rerun 卡佇列」）
+#   ② 跳過 Jekyll（原 pages-build-deployment 會多跑一次 Jekyll）
+#   ③ workflow_dispatch → Actions 頁一鍵手動重跑（暫時性故障後不必再推空 commit）
+# ⚠ deploy 那步仍呼叫同一個 GitHub Pages 部署後端，服務端事故（Deployment failed, try again later）換方法擋不掉。
+#   已知事故：2026-07-02～03 早 July 大規模 Pages 部署事故，兩種部署方式都中，服務端自癒。
+#   失敗時 = Actions 頁按 Re-run（比空 commit 快）。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # 允許在 Actions 頁手動觸發重跑
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一時間只跑一個 Pages 部署；新 push 取消還在排隊/進行中的舊 run
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        # 整個 repo 根目錄即網站（tracked 檔：opd.html/opd.css/index.html/proclist-core.js/firebase-init.js/manifests/icons）
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000   # 部署後端偶爾慢，給 10 分鐘上限（不是重試，是等待）
