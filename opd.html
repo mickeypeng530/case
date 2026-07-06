@@ -2600,16 +2600,22 @@
                 const tagAllowed = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t]).some(x => vTags.has(x));
                 const planLines = (v.plan || '').split(/\r?\n/);
                 // 只掃「本次錨點」之後（含錨點行——錨點行常帶當次排程）。
-                // 錨點雙訊號：① [本次] 標記 ② visit 自己日期的 RTC 行（03/11 RTC 之於 03-11 visit，
-                //   結構上等價「本次」——沒打 [本次] 標記的 plan 靠它）。取最後一個。無錨 → 整份（極舊資料 fallback）
+                // 錨點三訊號（取最後一個命中行）：
+                //   ① [本次] 標記 ② visit 自己日期的 RTC 行（03/11 RTC 之於 03-11 visit）
+                //   ③ 行首是 visit 自己日期的行（「01/07 Vessel tortuous…」這種無 RTC 字樣的當次紀錄——
+                //      T79409 案例：plan 無①②，fallback 掃整份讓 2025 的 07/02 SONO 變今年幽靈）
+                // 都沒有 → 整份 fallback（極舊資料）
                 let anchorIdx = -1;
                 const vYr = parseInt(vDate.slice(0, 4), 10), vMo = parseInt(vDate.slice(5, 7), 10), vDd = parseInt(vDate.slice(8, 10), 10);
+                const selfDateHead = new RegExp(`^[-*\\s]*(?:${String(vYr).slice(2)}\\/)?0?${vMo}\\/0?${vDd}\\b`);
                 planLines.forEach((l, i) => {
                     if (/\[本次\]/.test(l)) { anchorIdx = i; return; }
                     const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC/i);
                     if (m && parseInt(m[2], 10) === vMo && parseInt(m[3], 10) === vDd && (!m[1] || 2000 + parseInt(m[1], 10) === vYr)) {
                         anchorIdx = i;
+                        return;
                     }
+                    if (selfDateHead.test(l.trim())) anchorIdx = i;
                 });
                 const scanLines = anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines;
                 scanLines.forEach(line => {
