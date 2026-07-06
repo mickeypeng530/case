@@ -2828,14 +2828,20 @@
         };
         // 範圍下限：完成/DC 照範圍；「近 8 週內規劃」的待做無視下限（真 straggler 不消失；
         // 古早無標記行不洪水——舊 plan 未必有 */[已] 紀律，全穿透實測會冒出幾十筆假待辦）
-        const bypassFloor = fmtOff(-56);
         // 排程「暫定」（未確認）→ 只住「📝 待排」視圖，本診間/全部/待做/已完成一律不列
         const isTent = (r) => !!r.tentative && r.sched && !r.srcVisit;
-        const inWindow = (r) => r.procDate <= endKey && (r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor));
+        // 視圖語義（直觀版）：窗口 = 純日期範圍，任何狀態進出一致——
+        // 舊的「待做穿透下限」造成不對稱（五月待做亂入本診間、六月完成的卻看不到 → 看似隨機）
+        const inWindow = (r) => r.procDate >= startKey && r.procDate <= endKey;
         const dated = datedAll.filter(r => !isTent(r) && inWindow(r));
+        // 逾期未完成（窗口前 8 週內）→ 不混進主清單，只在「⏳ 待做」視圖以獨立區塊顯示
+        const overdueOut = view === 'pending'
+            ? datedAll.filter(r => !isTent(r) && r.procDate < startKey && r.procDate >= fmtOff(-56) && stOf(r) === 'pending')
+            : [];
+        const overdueCnt = datedAll.filter(r => !isTent(r) && r.procDate < startKey && r.procDate >= fmtOff(-56) && stOf(r) === 'pending').length;
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
-        // 「已完成」視圖不受範圍下限：穿透進來的過期待做被點成完成後，要在這裡找得到（近 90 天）
+        // 「已完成」視圖：近 90 天都可見（處理完的 backlog 找得到）
         else if (view === 'done') list = datedAll.filter(r => !isTent(r) && stOf(r) === 'done' && r.procDate <= endKey && r.procDate >= fmtOff(-90));
         else if (view === 'tent') list = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey);
         const tentCnt = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey).length;
@@ -2846,7 +2852,7 @@
         dated.forEach(r => cnt[stOf(r)]++);
         const statusEl = document.getElementById('proc-status');
         const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '';
-        if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
+        if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${overdueCnt ? ` · ⏰逾期 ${overdueCnt}（見待做）` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
 
         if (!list.length && !showUndated.length) {
             wrap.innerHTML = '<div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div>';
@@ -2945,6 +2951,8 @@
         let mobileHtml = '';
         const undatedBlockD = showUndated.length ? `<tr class="pc-group-row pc-group-warn"><td colspan="7">📌 未定日期（門診已確認但還沒約 — 漏網偵測）</td></tr>` + showUndated.map(r => rowHtml(r, false)).join('') : '';
         const undatedBlockM = showUndated.length ? `<div class="pc-group-header pc-group-warn">📌 未定日期（已確認未約）</div>` + showUndated.map(r => rowHtml(r, true)).join('') : '';
+        const overdueBlockD = overdueOut.length ? `<tr class="pc-group-row pc-group-warn"><td colspan="7">⏰ 逾期未完成（窗口前 8 週內 — 點完成/DC 收掉）</td></tr>` + overdueOut.map(r => rowHtml(r, false)).join('') : '';
+        const overdueBlockM = overdueOut.length ? `<div class="pc-group-header pc-group-warn">⏰ 逾期未完成（窗口前）</div>` + overdueOut.map(r => rowHtml(r, true)).join('') : '';
 
         if (view === 'bydate') {
             const byDate = {};
@@ -2959,8 +2967,8 @@
                 byDate[d].map(r => rowHtml(r, true)).join('')
             ).join('');
         } else {
-            desktopHtml = tableWrap(undatedBlockD + list.map(r => rowHtml(r, false)).join(''));
-            mobileHtml = undatedBlockM + list.map(r => rowHtml(r, true)).join('');
+            desktopHtml = tableWrap(undatedBlockD + overdueBlockD + list.map(r => rowHtml(r, false)).join(''));
+            mobileHtml = undatedBlockM + overdueBlockM + list.map(r => rowHtml(r, true)).join('');
         }
         wrap.innerHTML = `<div class="proc-desktop">${desktopHtml}</div><div class="proc-mobile">${mobileHtml}</div>`;
     }
