@@ -2847,11 +2847,11 @@
             ? datedAll.filter(r => !isTent(r) && r.procDate < startKey && r.procDate >= fmtOff(-56) && stOf(r) === 'pending')
             : [];
         const overdueCnt = datedAll.filter(r => !isTent(r) && r.procDate < startKey && r.procDate >= fmtOff(-56) && stOf(r) === 'pending').length;
+        // 範圍是外層濾鏡、視圖是內層：已完成 = 「範圍內」的完成（本診間+已完成 = 本診間內完成的）
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
-        // 「已完成」視圖：近 90 天都可見（處理完的 backlog 找得到）
-        else if (view === 'done') list = datedAll.filter(r => !isTent(r) && stOf(r) === 'done' && r.procDate <= endKey && r.procDate >= fmtOff(-90));
-        else if (view === 'tent') list = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey);
+        else if (view === 'done') list = dated.filter(r => stOf(r) === 'done');
+        else if (view === 'tent') list = datedAll.filter(r => isTent(r) && inWindow(r));
         const tentCnt = datedAll.filter(r => isTent(r) && r.procDate >= startKey && r.procDate <= endKey).length;
         const showUndated = (view === 'all' || view === 'bydate' || view === 'pending') ? undated : [];
 
@@ -3018,7 +3018,7 @@
             // 明確回饋：過期待做點完成會退出目前視圖（穿透資格消失），跟 user 說去哪找
             if (kind === 'st') {
                 const lbl = PROC_ST_META[updates.status]?.label || updates.status;
-                setStatus('connected', `${rec} → ${lbl}（列若消失 = 已移出目前範圍，見「✅ 已完成」視圖）`);
+                setStatus('connected', `${rec} → ${lbl}（列若消失 = 日期在目前範圍外，調大時間範圍可見）`);
             } else {
                 setStatus('connected', `${rec} 領藥 → ${PROC_MED_META[updates.med || '']}`);
             }
