@@ -357,6 +357,11 @@ const PLC_CSS = `
 /* Arthro 四欄位 inline 編輯（桌面）：存 opd/procTrackSched overlay */
 .plc-arthro-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 0.8rem; color: var(--text-secondary,#94a3b8); }
 .plc-arthro-in { background: var(--bg-primary,#0f172a); border: 1px solid var(--border,#475569); color: var(--text-primary,#f1f5f9); border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 0.82rem; }
+/* 註記（清單小筆記，不寫回 plan）：虛線框 = 可寫的備註槽；手機唯讀顯示 */
+.plc-note-in { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: transparent; border: 1px dashed var(--border,#475569); color: var(--text-primary,#f1f5f9); border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 0.78rem; }
+.plc-note-in::placeholder { color: var(--text-muted,#64748b); opacity: 0.55; }
+.plc-note-in:focus { border-style: solid; border-color: var(--color-info,#3b82f6); outline: none; }
+.plc-scope .plc-note-ro { margin-top: 4px; font-size: 0.9em; color: var(--text-secondary,#94a3b8); }
 .proc-desktop { display: block; }
 .proc-mobile { display: none; }
 /* 直立醫院螢幕（≤1280）：側欄收窄，plan 自動變寬 */
@@ -648,11 +653,13 @@ export function createProcList(deps) {
             }
             const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('')
                 + (row.noTag ? `<span class="pill expandable pc-notag" data-full="來源 visit 沒掛對應 tag——可能是漏掛 tag，或這行是殘文。點病歷號跳去該 visit 檢查"><span class="pill-text">⚠</span></span>` : '');
-            // Plan 欄：OPD row = [本次]→回診段；排程原生 = 舊 caselist planScratch / Arthro 欄位 / note
+            // 註記：純清單小筆記（不寫回 plan）——OPD 列存 procTrack[key].note、排程列存 procTrackSched[caseId].note
+            // 跟狀態/領藥同層 → plan 改期 key 斷時一起消失（=改期重新來，跟狀態重置同語義）
+            const noteVal = track?.note || '';
+            // Plan 欄：OPD row = 生成此列的那行（整段太吵，前後文點病歷號跳去看）；排程原生 = planScratch / Arthro 欄位 / note
             let planHtml = '';
             if (row.srcVisit) {
-                const planSeg = slicePlanThisVisit(row.srcVisit.plan);
-                planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
+                planHtml = highlightPlanLine(row.line || '');
             } else if (schedType === 'arthro') {
                 // Arthro 四欄位：顯示/編輯以 procTrackSched overlay 優先，舊 caselist row 值當 fallback（退役後 overlay 是唯一家）
                 const ov = track || {};
@@ -672,6 +679,7 @@ export function createProcList(deps) {
             const dataAttrs = isSchedOnly
                 ? `data-pc-schedkey="${escapeAttr(schedKey)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-now="${escapeAttr(st)}"`
                 : `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
+            const noteIn = `<input class="plc-note-in" data-plc-note ${dataAttrs} value="${escapeAttr(noteVal)}" placeholder="📝 註記…">`;
             const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.autoDone ? 'plan 標記自動判定（*/[已]），點擊改手動' : ''));
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
             // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 可點
@@ -696,6 +704,7 @@ export function createProcList(deps) {
                     ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${fmtLabDates(escapeHtml(labs.split('\n')[0] || ''))}</div>` : ''}
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
                     ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
+                    ${noteVal ? `<div class="plc-note-ro">📝 ${escapeHtml(noteVal)}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
                 </div>`;
             }
@@ -707,7 +716,7 @@ export function createProcList(deps) {
                 </td>
                 <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${fmtLabDates(escapeHtml(labs))}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
-                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div></td>
+                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div>${noteIn}</td>
                 <td class="pc-c-st">${stBtn}</td>
                 <td class="pc-c-med">${medBtn}</td>
             </tr>`;
@@ -715,7 +724,7 @@ export function createProcList(deps) {
 
         const tableWrap = (bodyHtml) => `<div class="proc-table-wrapper"><table class="proc-table">
             <colgroup><col class="pc-c-date"><col class="pc-c-rec"><col class="pc-c-labs"><col class="pc-c-tags"><col class="pc-c-plan"><col class="pc-c-st"><col class="pc-c-med"></colgroup>
-            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Plan（本次→回診）</th><th>狀態</th><th>藥</th></tr></thead>
+            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Procedure 行 / 註記</th><th>狀態</th><th>藥</th></tr></thead>
             <tbody>${bodyHtml}</tbody></table></div>`;
 
         let desktopHtml = '';
@@ -784,6 +793,32 @@ export function createProcList(deps) {
         }
     }
 
+    // 註記存檔（失焦；空值寫 null = 刪註記）——不重畫，避免打字流程被打斷
+    async function saveProcNote(ds, value) {
+        const v = value.trim();
+        try {
+            const path = ds.pcSchedkey
+                ? `opd/procTrackSched/${ds.pcSchedkey}`
+                : `opd/visits/${ds.pcSrc}/${ds.pcRec}/procTrack/${ds.pcKey}`;
+            await fb.update(fb.ref(fb.db, path), { note: v || null, at: Date.now() });
+            // 本地 cache 同步
+            if (ds.pcSchedkey) {
+                _procTrackSched[ds.pcSchedkey] = { ...(_procTrackSched[ds.pcSchedkey] || {}), note: v || null };
+                if (_schedCache) _schedCache.track = _procTrackSched;
+            } else {
+                const allByDate = await getAllVisits();
+                const vis = allByDate?.[ds.pcSrc]?.[ds.pcRec];
+                if (vis) {
+                    vis.procTrack = vis.procTrack || {};
+                    vis.procTrack[ds.pcKey] = { ...(vis.procTrack[ds.pcKey] || {}), note: v || null };
+                }
+            }
+            setStatus(v ? `${ds.pcRec} 註記已存` : `${ds.pcRec} 註記已清除`);
+        } catch (err) {
+            reportError(err, '註記');
+        }
+    }
+
     // Arthro inline 欄位存檔（失焦時單欄寫入 overlay；不重畫，避免打字流程被打斷）
     async function saveArthroField(schedKey, field, value) {
         try {
@@ -818,13 +853,21 @@ export function createProcList(deps) {
             const jmp = e.target.closest('[data-pc-jump]');
             if (jmp && jump) jump(jmp.dataset.pcJump, jmp.dataset.pcJumprec);
         });
-        // Arthro inline 編輯：focusout 存單欄
+        // Arthro inline 編輯 + 註記：focusout 存單欄
         listEl?.addEventListener('focusout', (e) => {
             const inp = e.target.closest?.('[data-plc-arthro]');
-            if (!inp) return;
-            const prev = (_procTrackSched[inp.dataset.plcSchedkey] || {})[inp.dataset.plcArthro] || '';
-            if (inp.value.trim() === String(prev)) return; // 沒改不寫
-            saveArthroField(inp.dataset.plcSchedkey, inp.dataset.plcArthro, inp.value);
+            if (inp) {
+                const prev = (_procTrackSched[inp.dataset.plcSchedkey] || {})[inp.dataset.plcArthro] || '';
+                if (inp.value.trim() === String(prev)) return; // 沒改不寫
+                saveArthroField(inp.dataset.plcSchedkey, inp.dataset.plcArthro, inp.value);
+                return;
+            }
+            const noteEl = e.target.closest?.('[data-plc-note]');
+            if (noteEl) {
+                if (noteEl.value.trim() === (noteEl.defaultValue || '').trim()) return; // 沒改不寫
+                saveProcNote(noteEl.dataset, noteEl.value);
+                noteEl.defaultValue = noteEl.value; // 更新比較基準（防重複失焦重寫）
+            }
         });
     }
 
