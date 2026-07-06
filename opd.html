@@ -2553,8 +2553,9 @@
             });
             // 「最近日期」升級為實際 procedure 日（deriveProcRows 同源）：
             // tag 記在門診日（5/27），實際治療日在 plan 行（6/2）→ 顯示後者
-            const derived = deriveProcRows(allByDate, '0000-00-00', todayStr);
+            const derived = deriveProcRows(allByDate);
             derived.dated.forEach(row => {
+                if (row.procDate > todayStr) return; // 未來排程不算歷史
                 row.tags.forEach(t => {
                     if (!PROC_HIST_ORDER.includes(t)) return;
                     const e = map[row.rec]?.[t];
@@ -2582,21 +2583,33 @@
         return lines.slice(start, end + 1).join('\n').trim();
     }
 
-    // 推導 rows：掃全 visits 的 plan 行（未來日期 + proc 關鍵字）；已確認 visit 的「待/約 無日期」行 → 未定日期 leak
-    function deriveProcRows(allByDate, startKey, endKey) {
+    // 推導 rows（兩段式）。範圍過濾移到呼叫端（renderProcList），這裡永遠全量推導。
+    // Pass1 掃全 visits plan 行 → 收「候選」（未來日）+「目擊」（該行所有解析日，含歷史行）
+    // Pass2 兩道閘門：
+    //   ① tag 家族閘（user 規則「先看 tag 再抓內文」）：行關鍵字必須屬於該 visit tags 的家族
+    //      —— med / f/u / 草稿 visit 的 plan 殘文不再成列（F66780 案例）
+    //   ② 年份考據：無年份 MM/DD 被較新 visit 以當年重讀會生「幽靈年」（2025 的 * 07/31 變 2026-07-31）
+    //      → 同病人同 MM/DD 同家族取「最早目擊年份」為真年，較新年份的候選 = 幽靈，丟棄
+    // 另：行內有帶年份日期（24/04/25）時當「era 錨」——同行無年份日期用該年代補，不用 visit 年（診斷摘要行）
+    const PROC_FAMILIES = [['CT NB', 'pRF'], ['TAME', 'cTAME', 'sTAME'], ['SONO'], ['CT Bx']];
+    const procFamKey = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t])[0];
+    function deriveProcRows(allByDate) {
         const todayStr = formatDate(new Date());
-        const rows = new Map();        // rec|procDate → row
         const undated = new Map();     // rec|tag → row
-        const datedGlobal = new Set(); // rec|tag（不受範圍限制，用來消掉已補日期的漏網）
+        const datedGlobal = new Set(); // rec|tag（消掉已補日期的漏網）
         const recent60 = formatDate(new Date(Date.now() - 60 * 86400000));
+        const candidates = [];
+        const sightMinYear = new Map(); // rec|MM-DD|fam → 最早目擊年份
 
         Object.keys(allByDate).forEach(vDate => {
             Object.values(allByDate[vDate] || {}).forEach(v => {
                 if (!v || v.noShow || !v.recordNumber) return;
+                const vTags = new Set((v.tags || []).map(normalizeTag));
+                const tagAllowed = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t]).some(x => vTags.has(x));
                 (v.plan || '').split(/\r?\n/).forEach(line => {
                     const t = line.trim();
                     if (!t) return;
-                    // 討論/規劃行不算排定（跟 summarizePlan 同規則：may consider / 建議 / 討論…）
+                    // 討論/規劃行不算排定（跟 summarizePlan 同規則）
                     if (t.startsWith('-') && DISCUSS_PATTERN.test(t)) return;
                     const tags = [];
                     for (const k of PROC_LINE_RES) {
@@ -2605,43 +2618,46 @@
                         tags.push(k.name);
                     }
                     if (!tags.length) return;
-                    // 先剝掉「X/Y RTC」的日期再抓 —— 「07/09 RTC, 07/18 15:00 SONO」要取 07/18 不是回診日
+                    // 先剝掉「X/Y RTC」的日期 —— 「07/09 RTC, 07/18 15:00 SONO」要取 07/18 不是回診日
                     const tForDate = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
-                    // 一行可含多個日期（sTAME 系列「07/16, 09/11, 03/19」）→ 每個未來日各成一列
+                    // era 錨：行內最早的帶年日期 → 同行無年份日期用它的年代補
+                    let eraYear = null;
+                    const eraRe = /\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/g;
+                    let em;
+                    while ((em = eraRe.exec(tForDate)) !== null) {
+                        const y = 2000 + parseInt(em[1], 10);
+                        if (eraYear === null || y < eraYear) eraYear = y;
+                    }
                     const futureDates = [];
                     const dre = /\b(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\b/g;
                     let dm;
                     while ((dm = dre.exec(tForDate)) !== null) {
-                        const yy = dm[1] ? 2000 + parseInt(dm[1], 10) : parseInt(vDate.slice(0, 4), 10);
+                        const yy0 = dm[1] ? 2000 + parseInt(dm[1], 10) : (eraYear ?? parseInt(vDate.slice(0, 4), 10));
                         const mo = parseInt(dm[2], 10), dd = parseInt(dm[3], 10);
-                        if (!isRealDate(yy, mo, dd)) continue;
-                        let iso = `${yy}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-                        // 無年份且比 visit 日早逾半年 → 視為明年（系列治療跨年常見）
-                        if (!dm[1] && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
-                            iso = `${yy + 1}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+                        if (!isRealDate(yy0, mo, dd)) continue;
+                        let iso = `${yy0}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+                        // 無年份、無 era 錨、比 visit 日早逾半年 → 視為明年（系列治療跨年）
+                        if (!dm[1] && eraYear === null && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
+                            iso = `${yy0 + 1}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
                         }
+                        // 目擊登記（不分未來/歷史、不看 tag 閘）：年份考據的證據
+                        const mmdd = iso.slice(5);
+                        const yr = parseInt(iso.slice(0, 4), 10);
+                        tags.forEach(tg => {
+                            const sk = v.recordNumber + '|' + mmdd + '|' + procFamKey(tg);
+                            if (!sightMinYear.has(sk) || yr < sightMinYear.get(sk)) sightMinYear.set(sk, yr);
+                        });
                         if (iso > vDate && !futureDates.includes(iso)) futureDates.push(iso);
                     }
+                    const gated = tags.filter(tagAllowed); // ① tag 家族閘
                     if (futureDates.length) {
-                        // 該次門診規劃的未來 procedure（history 行日期 ≤ vDate 自然被排除）
-                        tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
-                        futureDates.forEach(ld => {
-                            if (ld < startKey || ld > endKey) return;
-                            const key = v.recordNumber + '|' + ld;
-                            // plan 紀律：* 開頭 / [X 已] badge = 已執行 → 自動顯示完成（手動狀態仍優先）
-                            const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
-                            const prev = rows.get(key);
-                            if (!prev) {
-                                rows.set(key, { rec: v.recordNumber, procDate: ld, tags: [...tags], srcDate: vDate, srcVisit: v, line: t, autoDone });
-                            } else {
-                                // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集
-                                if (vDate > prev.srcDate) { prev.srcDate = vDate; prev.srcVisit = v; prev.line = t; prev.autoDone = autoDone; }
-                                prev.tags = [...new Set([...prev.tags, ...tags])];
-                            }
-                        });
-                    } else if (!futureDates.length && v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
+                        if (!gated.length) return;
+                        gated.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
+                        const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
+                        futureDates.forEach(ld => candidates.push({ rec: v.recordNumber, procDate: ld, tags: [...gated], srcDate: vDate, srcVisit: v, line: t, autoDone }));
+                    } else if (v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
                         // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
-                        tags.forEach(tg => {
+                        gated.forEach(tg => {
                             const uk = v.recordNumber + '|' + tg;
                             const prev = undated.get(uk);
                             if (!prev || vDate > prev.srcDate) {
@@ -2651,6 +2667,27 @@
                     }
                 });
             });
+        });
+
+        // ② 年份考據 + 合併
+        const rows = new Map();
+        candidates.forEach(c => {
+            const yr = parseInt(c.procDate.slice(0, 4), 10);
+            const mmdd = c.procDate.slice(5);
+            const isGhost = c.tags.every(tg => {
+                const minY = sightMinYear.get(c.rec + '|' + mmdd + '|' + procFamKey(tg));
+                return minY !== undefined && yr > minY;
+            });
+            if (isGhost) return;
+            const key = c.rec + '|' + c.procDate;
+            const prev = rows.get(key);
+            if (!prev) {
+                rows.set(key, c);
+            } else {
+                // 跨 visit 撞同日：保留最新 visit 當來源，tags 聯集
+                if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; prev.line = c.line; prev.autoDone = c.autoDone; }
+                prev.tags = [...new Set([...prev.tags, ...c.tags])];
+            }
         });
         // 已有日期的 (rec,tag) → 漏網消除
         const undatedRows = [...undated.values()].filter(r => !datedGlobal.has(r.rec + '|' + r.tags[0]));
@@ -2692,16 +2729,14 @@
         }
         else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
-        // 推導用更寬的下限：待做列不受範圍下限影響（待辦不該因為變舊而消失；半年為硬底）
-        const hardStart = range === 'all' ? '0000-00-00' : (fmtOff(-180) < startKey ? fmtOff(-180) : startKey);
-        const { dated: datedAll, undated, todayStr } = deriveProcRows(allByDate, hardStart, endKey);
+        const { dated: datedAll, undated, todayStr } = deriveProcRows(allByDate); // 全量推導，範圍在下面過濾
 
         // 有效狀態：手動 procTrack 優先，否則 plan 標記（*/[已]）自動完成，再否則待做
         const stOf = (row) => procTrackOf(row).track?.status || (row.autoDone ? 'done' : 'pending');
         // 範圍下限：完成/DC 照範圍；「近 8 週內規劃」的待做無視下限（真 straggler 不消失；
         // 古早無標記行不洪水——舊 plan 未必有 */[已] 紀律，全穿透實測會冒出幾十筆假待辦）
         const bypassFloor = fmtOff(-56);
-        const dated = datedAll.filter(r => r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor));
+        const dated = datedAll.filter(r => r.procDate <= endKey && (r.procDate >= startKey || (stOf(r) === 'pending' && r.srcDate >= bypassFloor)));
         let list = dated;
         if (view === 'pending') list = dated.filter(r => stOf(r) === 'pending');
         else if (view === 'done') list = dated.filter(r => stOf(r) === 'done');
