@@ -136,7 +136,8 @@
                 <button class="pv-chip" data-view="done">✅ 已完成</button>
             </div>
             <select id="proc-range" style="min-width: 150px;">
-                <option value="recent" selected>近期（±6週；待做不受下限）</option>
+                <option value="cycle" selected>本診間（上次 ~ 下次門診）</option>
+                <option value="recent">近期（±6週）</option>
                 <option value="3m">前後 3 個月</option>
                 <option value="all">全部</option>
             </select>
@@ -2680,7 +2681,16 @@
         const today = new Date();
         const fmtOff = (d) => formatDate(new Date(today.getTime() + d * 86400000));
         let startKey = '0000-00-00', endKey = '9999-99-99';
-        if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
+        const todayKey = formatDate(today);
+        if (range === 'cycle') {
+            // 本診間：上次門診日（含）~ 下次門診日（含）。門診日 = visits 有資料的日期（RTC 傳遞會先建未來 visit）
+            const keys = Object.keys(allByDate).sort();
+            const past = keys.filter(k => k <= todayKey);
+            const future = keys.filter(k => k > todayKey);
+            startKey = past.length ? past[past.length - 1] : fmtOff(-14);
+            endKey = future.length ? future[0] : fmtOff(42);
+        }
+        else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
         // 推導用更寬的下限：待做列不受範圍下限影響（待辦不該因為變舊而消失；半年為硬底）
         const hardStart = range === 'all' ? '0000-00-00' : (fmtOff(-180) < startKey ? fmtOff(-180) : startKey);
@@ -2701,7 +2711,8 @@
         const cnt = { pending: 0, done: 0, dc: 0 };
         dated.forEach(r => cnt[stOf(r)]++);
         const statusEl = document.getElementById('proc-status');
-        if (statusEl) statusEl.textContent = `${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}`;
+        const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '';
+        if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}`;
 
         if (!list.length && !showUndated.length) {
             wrap.innerHTML = '<div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div>';
@@ -2720,6 +2731,17 @@
             const surname = p.surname ? `(${escapeHtml(String(p.surname).replace(/\s+/g, ''))})` : '';
             const ageSex = displayAgeSex(p, todayStr) || p.ageSex || '';
             const labs = buildLabsDisplay(p);
+            // 抗凝（procedure 前必看）：yes 紅 + hold hover；unknown = 待確認警示；none 淡 ✓
+            let acHtml = '';
+            if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
+                const names = (p.anticoagulants || []).map(escapeHtml).join('/');
+                const holdInfo = (p.anticoagulants || []).map(dr => `${dr} hold ${getAnticoagHold(dr)}`).join('\n');
+                acHtml = `<span class="ac-icon ac-yes pill expandable" data-full="${escapeAttr(holdInfo)}"><span class="pill-text">🩸 ${names}</span></span>`;
+            } else if (p.anticoagState === 'none') {
+                acHtml = `<span class="ac-icon ac-none">✓ 無抗凝</span>`;
+            } else {
+                acHtml = `<span class="ac-icon ac-unknown">❓ 抗凝待確認</span>`;
+            }
             const tagChips = row.tags.map(t => `<span class="tag-chip" data-tag="${escapeAttr(normalizeTag(t))}">${escapeHtml(t)}</span>`).join('');
             const planSeg = slicePlanThisVisitOPD(row.srcVisit.plan);
             const planHtml = planSeg.split(/\r?\n/).map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
@@ -2735,6 +2757,7 @@
                         <span class="pc-card-name">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
                     </div>
                     ${labs ? `<div class="pc-card-labs">${escapeHtml(labs.split('\n')[0])}</div>` : ''}
+                    <div class="pc-card-ac">${acHtml}</div>
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
                     ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
@@ -2745,6 +2768,7 @@
                 <td class="pc-c-rec">
                     <span class="record-line clickable" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到 ${escapeAttr(row.srcDate)} 門診">${escapeHtml(row.rec)}</span>
                     <div class="age-line">${surname}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</div>
+                    <div class="pc-ac">${acHtml}</div>
                 </td>
                 <td class="pc-c-labs">${escapeHtml(labs)}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>

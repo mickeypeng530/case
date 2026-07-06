@@ -1415,6 +1415,8 @@
         }
         .proc-table .pc-c-labs { white-space: pre-line; font-size: 0.78rem; color: var(--text-secondary); }
         .pc-plan-body { line-height: 1.5; font-size: 0.82rem; }
+        .pc-ac { margin-top: 3px; font-size: 0.7rem; }
+        .pc-card-ac { margin-top: 4px; font-size: 0.82rem; }
         /* 類別 = 列底色（Phase 1 全是一般疼痛 → 無底色）；狀態疊加 */
         .pc-row.pc-done td { background: rgba(34,197,94,0.14); }
         .pc-row.pc-dc td { background: rgba(148,163,184,0.15); opacity: 0.65; }
