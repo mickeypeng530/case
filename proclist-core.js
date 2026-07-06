@@ -84,6 +84,24 @@ function highlightPlanLine(line) {
     }
     return `<span class="${cls}">${withBadges}</span>`;
 }
+// 規律門診日 = 該月第 2 / 第 4 個週三（user 的雙週三門診）——deterministic，不受資料污染
+function getNthWednesdayOfMonth(year, month, n) {
+    const d = new Date(year, month - 1, 1);
+    let count = 0;
+    while (d.getMonth() === month - 1) {
+        if (d.getDay() === 3) { count++; if (count === n) return new Date(d); }
+        d.setDate(d.getDate() + 1);
+    }
+    return null;
+}
+function isRegularClinicDate(dateStr) {
+    const [y, m] = dateStr.split('-').map(Number);
+    const dt = new Date(dateStr + 'T00:00');
+    if (dt.getDay() !== 3) return false;
+    const w2 = getNthWednesdayOfMonth(y, m, 2);
+    const w4 = getNthWednesdayOfMonth(y, m, 4);
+    return (w2 && formatDate(w2) === dateStr) || (w4 && formatDate(w4) === dateStr);
+}
 function displayAgeSex(patient, refDate) {
     if (patient?.birthYear) {
         const refYear = refDate ? new Date(refDate).getFullYear() : new Date().getFullYear();
@@ -533,13 +551,15 @@ export function createProcList(deps) {
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
         if (range === 'cycle') {
-            // 本診間：上次「已完成門診」~ 下次門診（嚴格前後，門診日當天窗口跨兩診間）
-            // 已完成門診 = 該日至少一筆 confirmed visit——草稿/RTC 預建/零星 visit 的日期不算門診日
-            //（幽靈窗口案例：7/6 一筆孤 draft 讓起點從 6/24 縮成 7/6）
+            // 本診間：上次門診 ~ 下次門診（嚴格前後，門診日當天窗口跨兩診間）
+            // 門診日判定 = 規律雙週三 OR 當日 visit 數夠多（真門診 20+）——
+            //   單筆污染排除：非門診日的孤 confirmed visit、RTC 自動建的加診日（opd/clinicDates 被單一 RTC 塞）
+            //   都只有 1~2 筆 visit，過不了門檻，不會綁架起點（7/6 幽靈窗口案例）
+            const CLINIC_MIN_VISITS = 5; // 遠低於真門診(20+)、遠高於雜訊(1~2)
+            const isClinicDay = (k) => isRegularClinicDate(k) || Object.keys(allByDate[k] || {}).length >= CLINIC_MIN_VISITS;
             const keys = Object.keys(allByDate).sort();
-            const isHeldClinic = (k) => Object.values(allByDate[k] || {}).some(v => v && v.status === 'confirmed');
-            const past = keys.filter(k => k < todayKey && isHeldClinic(k));
-            const future = keys.filter(k => k > todayKey);
+            const past = keys.filter(k => k < todayKey && isClinicDay(k));
+            const future = keys.filter(k => k > todayKey && isClinicDay(k));
             startKey = past.length ? past[past.length - 1] : fmtOff(-14);
             endKey = future.length ? future[0] : fmtOff(42);
             const opt = rangeEl?.querySelector('option[value="cycle"]');
