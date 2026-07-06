@@ -1379,13 +1379,15 @@
             flex: 0 0 auto;
             box-sizing: border-box;
         }
-        .labs-split #v-egfr { width: 70px; }
-        .labs-split #v-inr { width: 58px; }
+        .labs-split #v-egfr, .labs-split #pt-egfr { width: 70px; }
+        .labs-split #v-inr, .labs-split #pt-inr { width: 58px; }
         .labs-split #v-bone-t { width: 60px; }
         .labs-split #v-bone-tbs { width: 66px; }
         .labs-split #v-bone-frax { width: 84px; }
-        /* 日期欄一律縮小淡化：配角，不吃 modal 空間 */
-        .labs-split .ls-date {
+        /* 日期欄一律縮小淡化：配角，不吃 modal 空間。
+           ⚠ 用 .modal 前綴拉高 specificity（0,0,3,0）壓過全域 `.modal .field input{width:100%}`（0,0,2,1）——
+              否則日期欄（class 選擇器）被撐成 width:100% 各佔整行（eGFR/INR/T… 用 ID 免疫，日期欄用 class 中招）*/
+        .modal .labs-split .ls-date {
             width: 54px;
             font-size: 0.78rem;
             color: var(--text-secondary);
@@ -1401,7 +1403,7 @@
         @media (max-width: 768px) {
             /* 手機：16px 防 iOS focus 放大（含 .ls-date，桌面縮字在手機必須讓位）*/
             .labs-split input, .labs-split textarea, .labs-split .ls-date { font-size: 16px; }
-            .labs-split .ls-date { width: 64px; }
+            .modal .labs-split .ls-date { width: 64px; }
         }
 
         /* 治療成效 dot（標籤區左緣）：點循環 無→🟢improve→🟡mild/stationary→🔴no help→無 */
