@@ -2796,6 +2796,12 @@
         }
         else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
+        // 近期 / 3個月 選項也顯示實際日期區間（跟本診間一致）
+        const md = (k) => k.slice(5).replace('-', '/');
+        const optR = document.querySelector('#proc-range option[value="recent"]');
+        if (optR) optR.textContent = `近期 ±6週（${md(fmtOff(-42))} ~ ${md(fmtOff(42))}）`;
+        const opt3 = document.querySelector('#proc-range option[value="3m"]');
+        if (opt3) opt3.textContent = `前後 3 個月（${md(fmtOff(-90))} ~ ${md(fmtOff(90))}）`;
         const { dated: opdRows, undated, todayStr } = deriveProcRows(allByDate); // 全量推導，範圍在下面過濾
 
         // Phase 2：聯集排程原生 rows。去重 = 同病人（正規化：大寫、去 leading-0）同日 → 併入 OPD row（補時間/狀態 fallback）
