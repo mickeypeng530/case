@@ -37,12 +37,14 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Stamp build version
-        # 把 __BUILD__ 佔位換成 git short SHA + UTC 日期 → 頁面 settings 顯示「版本」
-        # opd.html/index.html 頁面版 + proclist-core.js 模組版；不一致 = 某檔卡舊快取
+        # __SHA__  → 7 碼 git SHA（網址安全，用於 opd.css / proclist-core.js 的 ?v= 快取破壞）
+        # __BUILD__→ SHA + 台灣時間（顯示用；頁面 settings 顯示「版本」）
+        # 版本化資產 URL = opd.html 一新就自動拉新 CSS/JS，根治「各檔分開快取」staleness
         run: |
-          BUILD="${GITHUB_SHA:0:7} $(date -u +%m/%d\ %H:%M)"
-          sed -i "s|__BUILD__|${BUILD}|g" opd.html index.html proclist-core.js
-          echo "stamped build = ${BUILD}"
+          SHA="${GITHUB_SHA:0:7}"
+          BUILD="${SHA} $(TZ='Asia/Taipei' date +%m/%d\ %H:%M)"
+          sed -i "s|__SHA__|${SHA}|g; s|__BUILD__|${BUILD}|g" opd.html index.html proclist-core.js
+          echo "stamped: SHA=${SHA}  BUILD=${BUILD}"
 
       - name: Upload artifact
         # 整個 repo 根目錄即網站（tracked 檔：opd.html/opd.css/index.html/proclist-core.js/firebase-init.js/manifests/icons）

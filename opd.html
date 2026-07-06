@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="opd.css">
+    <link rel="stylesheet" href="opd.css?v=__SHA__">
     <!-- mammoth.js for Word .docx parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.2/mammoth.browser.min.js"></script>
     <!-- docx.js for Word .docx export -->
@@ -502,7 +502,7 @@
         ref, set, get, update, remove, onValue
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     // Procedure 清單共用模組（推導規則 + 渲染 + 狀態循環都住那裡一份；index.html 掛同一張清單）
-    import { createProcList, deriveProcRows, PLC_VERSION } from "./proclist-core.js";
+    import { createProcList, deriveProcRows, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
 
     // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
     const PAGE_BUILD = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';

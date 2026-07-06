@@ -1840,7 +1840,7 @@
             ref, set, get, update, remove, onValue
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
         // Procedure 清單共用模組（與 opd.html 的 🗂 tab 同一份實作）
-        import { createProcList, PLC_VERSION } from "./proclist-core.js";
+        import { createProcList, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
 
         // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
         const PAGE_BUILD = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';
