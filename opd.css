@@ -1368,7 +1368,7 @@
         /* ===== Procedure 清單樣式已搬至 proclist-core.js（自注入，opd/index 兩頁共用）===== */
 
         /* 抽血三分割（visit modal）：eGFR / INR / 抽血日 / 其他（貼上自動歸位） */
-        /* 桌機也 flex-wrap：4 格保證排一行、「其他」textarea 獨占一列 → INR 那格不會被 modal 寬度擠掉/裁切 */
+        /* 一行排完（480px modal 內 4 格 + textarea 綽綽有餘）；flex-wrap 只當窄視窗安全網，不主動拆行 */
         .labs-split {
             display: flex;
             flex-wrap: wrap;
@@ -1391,8 +1391,8 @@
             color: var(--text-secondary);
         }
         .labs-split textarea {
-            flex: 1 1 100%;   /* 獨占整列（4 格排在上面一行）*/
-            min-width: 0;
+            flex: 1 1 110px;   /* 跟 4 格同一行、吃剩餘寬；空間不足才換行（窄視窗）*/
+            min-width: 90px;
             min-height: 34px;
             resize: vertical;
             transition: min-height 0.15s ease;
