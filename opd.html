@@ -297,24 +297,17 @@
             <label>姓</label>
             <input type="text" id="pt-surname" placeholder="例：楊" maxlength="2">
         </div>
-        <div class="field-row">
-            <div class="field">
-                <label>年齡 / 性別</label>
-                <input type="text" id="pt-age-sex" placeholder="例：55/F">
-            </div>
-            <div class="field">
-                <label>eGFR</label>
-                <input type="text" id="pt-egfr" placeholder="例：>60">
-            </div>
+        <div class="field">
+            <label>年齡 / 性別</label>
+            <input type="text" id="pt-age-sex" placeholder="例：55/F">
         </div>
-        <div class="field-row">
-            <div class="field">
-                <label>INR</label>
-                <input type="text" id="pt-inr" placeholder="例：1.04">
-            </div>
-            <div class="field">
-                <label>INR 日期</label>
-                <input type="text" id="pt-inr-date" placeholder="例：26/04">
+        <div class="field">
+            <label>抽血（eGFR ＋日、INR ＋日）</label>
+            <div class="labs-split">
+                <input type="text" id="pt-egfr" placeholder="eGFR" title="eGFR 數值（可含 > < =）">
+                <input type="text" id="pt-egfr-date" class="ls-date" placeholder="日" title="eGFR 抽血日">
+                <input type="text" id="pt-inr" placeholder="INR" title="INR 數值">
+                <input type="text" id="pt-inr-date" class="ls-date" placeholder="日" title="INR 抽血日">
             </div>
         </div>
         <div class="field">
@@ -5935,6 +5928,7 @@
         document.getElementById('pt-surname').value = p.surname || '';
         document.getElementById('pt-age-sex').value = p.ageSex || '';
         document.getElementById('pt-egfr').value = p.eGFR || '';
+        document.getElementById('pt-egfr-date').value = p.eGFRDate || '';
         document.getElementById('pt-inr').value = p.INR || '';
         document.getElementById('pt-inr-date').value = p.INRDate || '';
         document.getElementById('pt-extra').value = p.extra || '';
@@ -6359,6 +6353,7 @@
         document.getElementById('pt-age-sex').value = parsed.ageSex;
         // 非數值（如 pipe 格式抓到文字）不進數值欄 → 退回 extra（修「eGFR 欄出現英文字」bug 的源頭）
         document.getElementById('pt-egfr').value = isValidEGFR(parsed.eGFR) ? parsed.eGFR : '';
+        document.getElementById('pt-egfr-date').value = parsed.eGFRDate || '';
         if (parsed.eGFR && !isValidEGFR(parsed.eGFR)) parsed.extra = [parsed.extra, parsed.eGFR].filter(Boolean).join(' / ');
         document.getElementById('pt-inr').value = parsed.INR;
         document.getElementById('pt-inr-date').value = parsed.INRDate;
@@ -6399,6 +6394,7 @@
             surname: document.getElementById('pt-surname').value.trim(),
             ageSex: document.getElementById('pt-age-sex').value.trim(),
             eGFR: document.getElementById('pt-egfr').value.trim(),
+            eGFRDate: document.getElementById('pt-egfr-date').value.trim(),
             INR: document.getElementById('pt-inr').value.trim(),
             INRDate: document.getElementById('pt-inr-date').value.trim(),
             extra: document.getElementById('pt-extra').value.trim(),
