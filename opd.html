@@ -3940,13 +3940,15 @@
                 detected = detectTagsFromVisit({ plan: planText, noShow: false }, date, true);
             }
             if (detected.size === 0) return;
-            const before = state.visitTagsTemp.length;
+            const added = [];
             detected.forEach(t => {
                 const norm = normalizeTag(t);
-                if (!state.visitTagsTemp.includes(norm)) state.visitTagsTemp.push(norm);
+                if (!state.visitTagsTemp.includes(norm)) { state.visitTagsTemp.push(norm); added.push(norm); }
             });
-            if (state.visitTagsTemp.length > before) {
+            if (added.length) {
                 renderVisitTagPicker(state.visitTagsTemp);
+                // 回饋：自動加了什麼講出來，誤判當場看到（tag chip 點掉即可）
+                setStatus('connected', `🏷 自動偵測 +${added.join(' +')}（誤判點 tag 移除）`);
             }
         });
 
@@ -5272,17 +5274,19 @@
     // 規則：dash + DISCUSS 行跳；anchor `*` 與一般行掃 procedure keyword
     function detectTagsFromVisit(v, dateStr, loose = false) {
         if (v.noShow) return new Set();
+        // ⚠ 偵測清單必須對齊 DEFAULT_TAGS：選單移除某 tag 時這裡要同步拿掉，
+        //    否則 plan 一寫到關鍵字就自動長回 legacy tag（純 TAME 復活案例：933657）
         const detectors = [
             { tag: 'CT NB', re: /\bCT\s*NB\b/i },
+            { tag: 'CT Bx', re: /\bCT\s*(?:biopsy|bx)\b/i },
             { tag: 'pRF',   re: /\bpRF\b/ },
             { tag: 'SONO',  re: /\bSONO\b/i },
             { tag: 'cTAME', re: /\bcTAME\b/i },
             { tag: 'sTAME', re: /\bsTAME\b/i },
-            { tag: 'TAME',  re: /\b(TAME|IO\s*PRP)\b/i },  // 含義廣的 TAME 兜底
             { tag: 'HA',    re: /\bHA\b/ },
             { tag: 'PRP',   re: /\bPRP\b/i },
             { tag: 'BMA',   re: /\bBMA\b/i },
-            { tag: 'CT/MRI', re: /\b(MRI|CT(?!\s*NB))\b/i },  // CT 或 MRI 影像（排除 "CT NB" procedure）
+            { tag: 'CT/MRI', re: /\b(MRI|CT(?!\s*(?:NB|biopsy|bx)))\b/i },  // CT/MRI 影像（排除 CT NB / CT Bx procedure）
             { tag: '鬆',     re: /\b(Prolia|Aclasta|Evenity|Forteo|Fosamax)\b/i }
         ];
         const lines = (v.plan || '').split(/\r?\n/);
@@ -5313,6 +5317,9 @@
             const isDash = trimmed.startsWith('-');
             // dash + DISCUSS 才跳（讓 anchor 行 `* ... Consider Evenity` 仍能抓到 Prolia）
             if (isDash && DISCUSS_PATTERN.test(trimmed)) return;
+            // dash + 「字母緊跟 ?」（- TAME? / - INJ? / (EG Gel?)）= 還在考慮的選項，不當已排定
+            //（? 接在數字後如「7/18?」不算——那是日期不確定，procedure 本身已定）
+            if (isDash && /[A-Za-z一-鿿]\?/.test(trimmed)) return;
             detectors.forEach(d => { if (d.re.test(trimmed)) detected.add(d.tag); });
         });
         return detected;
