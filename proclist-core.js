@@ -352,8 +352,9 @@ const PLC_CSS = `
 .proc-table col.pc-c-rec { width: 118px; }
 .proc-table col.pc-c-labs { width: 170px; }
 .proc-table col.pc-c-tags { width: 130px; }
-.proc-table col.pc-c-st { width: 86px; }
-.proc-table col.pc-c-med { width: 86px; }
+/* 狀態/藥欄用 rem → 跟 app 字體一起縮放（app 用 root font-size 控字級；px 欄寬不跟放會被撐大字的按鈕溢出）*/
+.proc-table col.pc-c-st { width: 5.6rem; }
+.proc-table col.pc-c-med { width: 5.8rem; }
 /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
 .proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border,#475569); position: sticky; top: 0; z-index: 1; }
 .proc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border,#475569); vertical-align: top; word-break: break-word; }
