@@ -353,7 +353,7 @@ const PLC_CSS = `
 .proc-table col.pc-c-labs { width: 170px; }
 .proc-table col.pc-c-tags { width: 130px; }
 .proc-table col.pc-c-st { width: 86px; }
-.proc-table col.pc-c-med { width: 74px; }
+.proc-table col.pc-c-med { width: 86px; }
 /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
 .proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border,#475569); position: sticky; top: 0; z-index: 1; }
 .proc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border,#475569); vertical-align: top; word-break: break-word; }
@@ -375,7 +375,8 @@ const PLC_CSS = `
 .pc-group-row td { background: var(--bg-tertiary,#334155); font-weight: 600; font-size: 0.8rem; color: var(--text-secondary,#94a3b8); }
 .pc-group-row.pc-group-today td { color: #4ade80; }
 .pc-group-row.pc-group-warn td { color: #fbbf24; }
-.pc-st, .pc-med { border: 1px solid var(--border,#475569); border-radius: 4px; background: var(--bg-secondary,#1e293b); color: var(--text-primary,#f1f5f9); font-family: inherit; font-size: 0.78rem; padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+.pc-st, .pc-med { border: 1px solid var(--border,#475569); border-radius: 4px; background: var(--bg-secondary,#1e293b); color: var(--text-primary,#f1f5f9); font-family: inherit; font-size: 0.78rem; padding: 3px 7px; cursor: pointer; white-space: nowrap; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.proc-table td.pc-c-med, .proc-table td.pc-c-st { overflow: hidden; }
 .pc-st-done { background: rgba(34,197,94,0.3); border-color: rgba(34,197,94,0.5); }
 .pc-st-dc { background: rgba(148,163,184,0.3); color: var(--text-muted,#64748b); }
 .pc-med-pending { background: rgba(234,88,12,0.3); border-color: #ea580c; }
@@ -560,19 +561,18 @@ export function createProcList(deps) {
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
         if (range === 'cycle') {
-            // 本診間：上次門診 ~ 下次門診（嚴格前後，門診日當天窗口跨兩診間）
-            // 門診日判定 = 規律雙週三 OR 當日 visit 數夠多（真門診 20+）——
-            //   單筆污染排除：非門診日的孤 confirmed visit、RTC 自動建的加診日（opd/clinicDates 被單一 RTC 塞）
-            //   都只有 1~2 筆 visit，過不了門檻，不會綁架起點（7/6 幽靈窗口案例）
-            const CLINIC_MIN_VISITS = 5; // 遠低於真門診(20+)、遠高於雜訊(1~2)
+            // 本診間起：今天(含)以前最近的門診日「起」，**無上限**——
+            //   7/6(兩診間) → 6/24 起（6/24 以後全部，含跨過下次門診的 7/16 SONO）
+            //   7/8(門診日當天) → 7/8 起（今天是門診日就含今天，自動收斂成「今天和以後」）
+            // 門診日判定 = 規律雙週三 OR 當日 visit≥5（排除孤 confirmed / RTC 加診單筆污染，不綁架起點）
+            const CLINIC_MIN_VISITS = 5;
             const isClinicDay = (k) => isRegularClinicDate(k) || Object.keys(allByDate[k] || {}).length >= CLINIC_MIN_VISITS;
             const keys = Object.keys(allByDate).sort();
-            const past = keys.filter(k => k < todayKey && isClinicDay(k));
-            const future = keys.filter(k => k > todayKey && isClinicDay(k));
-            startKey = past.length ? past[past.length - 1] : fmtOff(-14);
-            endKey = future.length ? future[0] : fmtOff(42);
+            const atOrBefore = keys.filter(k => k <= todayKey && isClinicDay(k));
+            startKey = atOrBefore.length ? atOrBefore[atOrBefore.length - 1] : fmtOff(-14);
+            endKey = '9999-99-99';  // 無上限
             const opt = rangeEl?.querySelector('option[value="cycle"]');
-            if (opt) opt.textContent = `本診間（${startKey.slice(5).replace('-', '/')} ~ ${endKey.slice(5).replace('-', '/')}）`;
+            if (opt) opt.textContent = `本診間（${startKey.slice(5).replace('-', '/')} 起）`;
         }
         else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
@@ -641,7 +641,7 @@ export function createProcList(deps) {
         const cnt = { pending: 0, done: 0, dc: 0 };
         dated.forEach(r => cnt[stOf(r)]++);
         const statusEl = document.getElementById(ids.status);
-        const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '';
+        const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')} 起 · ` : '';
         if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${overdueCnt ? ` · ⏰逾期 ${overdueCnt}（見待做）` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
 
         if (!list.length && !showUndated.length) {
