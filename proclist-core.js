@@ -203,6 +203,9 @@ export function deriveProcRows(allByDate) {
     Object.keys(allByDate).forEach(vDate => {
         Object.values(allByDate[vDate] || {}).forEach(v => {
             if (!v || v.noShow || !v.recordNumber) return;
+            // ④A confirmed 閘：procedure 名單 = 已確認要做的事。準備中（draft）visit 的計畫 procedure 不推導進來
+            //（病人還沒看診確認就把 plan 裡計畫中的 procedure 加進名單 = user 不要）。真的排進行事曆的走排程 union，不受此閘影響
+            const isConfirmed = v.status === 'confirmed';
             const vTags = new Set((v.tags || []).map(normalizeTag));
             const tagAllowed = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t]).some(x => vTags.has(x));
             const planLines = (v.plan || '').split(/\r?\n/);
@@ -255,6 +258,7 @@ export function deriveProcRows(allByDate) {
                 }
                 const gated = tags.filter(tagAllowed);
                 if (futureDates.length) {
+                    if (!isConfirmed) return;  // ④A：未確認來源不列（不標 datedGlobal，讓真正 confirmed 的漏網照抓）
                     tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
                     const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
                     const tm = tForDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);

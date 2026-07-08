@@ -3998,13 +3998,16 @@
             // 預設放到 pastHistory（慢性病史）；若已有 v-past-history 則不覆蓋（保留 user 已有內容）
             const phEl = document.getElementById('v-past-history');
             if (!phEl.value.trim()) phEl.value = extraRemaining;
-            // 抗凝劑偵測
+            // 抗凝劑偵測（懂否定：全 (-) → none「✓ 無抗凝」）
             const ac = extractAnticoagulants(result.extra || '');
             if (ac.state === 'yes') {
                 document.getElementById('v-anticoag-state').value = 'yes';
                 const acInp = document.getElementById('v-anticoag-list');
                 acInp.value = ac.drugs.join(', ');
                 acInp.style.display = 'inline-block';
+            } else if (ac.state === 'none') {
+                document.getElementById('v-anticoag-state').value = 'none';
+                document.getElementById('v-anticoag-list').style.display = 'none';
             }
             // v-extra legacy field 已移除，不需要清空
             document.getElementById('v-exam').value = result.exam;
@@ -5750,19 +5753,27 @@
     }
     // 偵測抗凝劑：找已知藥名 → 回傳 { state: 'yes'|null, drugs: [] }
     // Bokey 是 Aspirin 商品名 → 正規化為 Aspirin
+    // 懂否定：藥名緊跟 `-` 或 `(-)` = 問過、沒在吃（user 慣例：「Aspirin -」表示沒吃）。
+    //   全部藥都 (-) → state 'none'（✓ 無抗凝，問過的正資訊比 unknown 好）；混寫只收非否定的。
+    //   ⚠ 不處理「已停/stop」——語義兩可（術前 hold ≠ 沒在吃），保守留 unknown
     function extractAnticoagulants(text) {
         if (!text) return { state: null, drugs: [] };
         const knownDrugs = ['Aspirin', 'Plavix', 'Lixiana', 'Eliquis', 'Xarelto', 'Pradaxa', 'Warfarin', 'Bokey', 'Dipyridamole', 'Persantin'];
-        const found = [];
         const canonicalMap = { 'Bokey': 'Aspirin', 'Persantin': 'Dipyridamole' };
+        const active = [], negated = [];
         knownDrugs.forEach(drug => {
-            const re = new RegExp('\\b' + drug + '\\b', 'i');
-            if (re.test(text)) {
-                const canonical = canonicalMap[drug] || drug;
-                if (!found.includes(canonical)) found.push(canonical);
-            }
+            const b = '\\b' + drug + '\\b';
+            if (!new RegExp(b, 'i').test(text)) return;
+            const canonical = canonicalMap[drug] || drug;
+            // 否定 = 藥名後接 (-)/（-） 或 緊跟的 - 且後面不是英數（"Aspirin - " 是否定，"Aspirin-100" 不是）
+            const negRe = new RegExp(b + '\\s*(?:[（(]\\s*[-–]\\s*[)）]|[-–](?![\\w]))', 'i');
+            const bucket = negRe.test(text) ? negated : active;
+            if (!bucket.includes(canonical)) bucket.push(canonical);
         });
-        return found.length > 0 ? { state: 'yes', drugs: found } : { state: null, drugs: [] };
+        const negatedOnly = negated.filter(d => !active.includes(d)); // 同藥又正又否 → 正優先
+        if (active.length) return { state: 'yes', drugs: active };
+        if (negatedOnly.length) return { state: 'none', drugs: [] };  // 問過、都沒吃 → ✓ 無抗凝
+        return { state: null, drugs: [] };
     }
 
     // Tab 分隔解析（單列、cell 內可能含換行）
