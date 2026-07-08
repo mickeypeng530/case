@@ -561,19 +561,29 @@ export function createProcList(deps) {
         const fmtOff = (d) => formatDate(new Date(today.getTime() + d * 86400000));
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
+        // 門診日判定 = 規律雙週三 OR 當日 visit≥5（排除孤 confirmed / RTC 加診單筆污染，不綁架邊界）
+        const CLINIC_MIN_VISITS = 5;
+        const isClinicDay = (k) => isRegularClinicDate(k) || Object.keys(allByDate[k] || {}).length >= CLINIC_MIN_VISITS;
+        const clinicAtOrBefore = () => Object.keys(allByDate).sort().filter(k => k <= todayKey && isClinicDay(k));
         if (range === 'cycle') {
-            // 本診間起：今天(含)以前最近的門診日「起」，**無上限**——
-            //   7/6(兩診間) → 6/24 起（6/24 以後全部，含跨過下次門診的 7/16 SONO）
-            //   7/8(門診日當天) → 7/8 起（今天是門診日就含今天，自動收斂成「今天和以後」）
-            // 門診日判定 = 規律雙週三 OR 當日 visit≥5（排除孤 confirmed / RTC 加診單筆污染，不綁架起點）
-            const CLINIC_MIN_VISITS = 5;
-            const isClinicDay = (k) => isRegularClinicDate(k) || Object.keys(allByDate[k] || {}).length >= CLINIC_MIN_VISITS;
-            const keys = Object.keys(allByDate).sort();
-            const atOrBefore = keys.filter(k => k <= todayKey && isClinicDay(k));
+            // A「本次起 + 未來」：今天(含)以前最近門診日「起」，**無上限**——
+            //   7/6(兩診間) → 6/24 起（含跨過下次門診的未來 procedure）；7/8(門診日) → 7/8 起（今天和以後）
+            const atOrBefore = clinicAtOrBefore();
             startKey = atOrBefore.length ? atOrBefore[atOrBefore.length - 1] : fmtOff(-14);
             endKey = '9999-99-99';  // 無上限
             const opt = rangeEl?.querySelector('option[value="cycle"]');
-            if (opt) opt.textContent = `本診間（${startKey.slice(5).replace('-', '/')} 起）`;
+            if (opt) opt.textContent = `本次起（${startKey.slice(5).replace('-', '/')} 起）`;
+        }
+        else if (range === 'between') {
+            // B「上次～本次」：上一門診 ~ 最近門診(≤今天)——回顧剛結束的診間（有上限）
+            //   7/8(門診日) → 6/24 ~ 7/8；7/9(隔天) → 6/24 ~ 7/8；7/6(兩診間) → 6/10 ~ 6/24
+            const atOrBefore = clinicAtOrBefore();
+            const cur = atOrBefore.length ? atOrBefore[atOrBefore.length - 1] : todayKey;
+            const prevArr = atOrBefore.slice(0, -1);
+            startKey = prevArr.length ? prevArr[prevArr.length - 1] : fmtOff(-28);
+            endKey = cur;
+            const opt = rangeEl?.querySelector('option[value="between"]');
+            if (opt) opt.textContent = `上次～本次（${startKey.slice(5).replace('-', '/')} ~ ${endKey.slice(5).replace('-', '/')}）`;
         }
         else if (range === 'recent') { startKey = fmtOff(-42); endKey = fmtOff(42); }
         else if (range === '3m') { startKey = fmtOff(-90); endKey = fmtOff(90); }
@@ -642,7 +652,8 @@ export function createProcList(deps) {
         const cnt = { pending: 0, done: 0, dc: 0 };
         dated.forEach(r => cnt[stOf(r)]++);
         const statusEl = document.getElementById(ids.status);
-        const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')} 起 · ` : '';
+        const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')} 起 · `
+            : (range === 'between' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '');
         if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${overdueCnt ? ` · ⏰逾期 ${overdueCnt}（見待做）` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
 
         if (!list.length && !showUndated.length) {
