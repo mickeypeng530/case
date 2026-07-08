@@ -509,6 +509,7 @@ export function createProcList(deps) {
     let _procTrackSched = {};
     let procView = 'bydate';
     let uiBound = false;
+    let _liveUnsub = null, _liveDebounce = null;  // ②即時同步 listener
 
     const getAllVisits = deps.getAllVisits || (async () => {
         if (_visitsCache && Date.now() - _visitsCache.at < TTL) return _visitsCache.data;
@@ -656,7 +657,8 @@ export function createProcList(deps) {
             const { key, track, schedKey } = procTrackOf(row);
             const st = stOf(row);
             const isSchedOnly = row.sched && !row.srcVisit;
-            const med = isSchedOnly ? (row.schedCase?.medState || '') : (track?.med || '');
+            // ②A 領藥顯示：OPD 手動點過(track.med)優先，沒點過就鏡射排程 medState（合併列＝行事曆點的領藥會顯示過來）
+            const med = isSchedOnly ? (row.schedCase?.medState || '') : (track?.med || row.schedCase?.medState || '');
             const overdue = row.procDate && st === 'pending' && row.procDate < todayStr;
             const schedType = row.schedCase?.type || '';
             // 類別列色：檢查（MRI/CT）紫、Arthro 黃（沿用舊 caselist 視覺語彙）
@@ -899,5 +901,23 @@ export function createProcList(deps) {
         });
     }
 
-    return { render, bind, invalidateSched: () => { _schedCache = null; } };
+    // ②「⚡即時同步」開關：ON → 掛 scheduler/cellData listener（行事曆改 medState 即時反映到清單）
+    //   snapshot 直接更新 cache 的 cells（不另發 get）+ 300ms debounce 重畫；OFF → 卸掉、零流量
+    //   預設 OFF（平常只看 OPD 零成本）；user 門診後整理、同時開兩頁時才開
+    function setLiveSync(on) {
+        if (on && !_liveUnsub && fb.onValue) {
+            _liveUnsub = fb.onValue(fb.ref(fb.db, 'scheduler/cellData'), (snap) => {
+                if (_schedCache) { _schedCache.cells = snap.val() || {}; _schedCache.at = Date.now(); }
+                else { _schedCache = null; }
+                clearTimeout(_liveDebounce);
+                _liveDebounce = setTimeout(() => render(), 300);
+            });
+        } else if (!on && _liveUnsub) {
+            _liveUnsub(); _liveUnsub = null;
+            clearTimeout(_liveDebounce);
+        }
+        return !!_liveUnsub;
+    }
+
+    return { render, bind, invalidateSched: () => { _schedCache = null; }, setLiveSync, isLive: () => !!_liveUnsub };
 }

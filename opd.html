@@ -145,6 +145,7 @@
                 <option value="3m">前後 3 個月</option>
                 <option value="all">全部</option>
             </select>
+            <button id="proc-live-btn" class="pv-chip" title="同時在行事曆改領藥時打開，即時反映到清單">⚡ 即時同步</button>
             <span style="flex:1"></span>
             <span id="proc-status" style="color: var(--text-muted); font-size: 0.8rem;"></span>
         </div>
@@ -503,6 +504,7 @@
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     // Procedure 清單共用模組（推導規則 + 渲染 + 狀態循環都住那裡一份；index.html 掛同一張清單）
     import { createProcList, deriveProcRows, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
+    const PROC_LIVE_KEY = 'opd:procLiveSync';  // ⚡即時同步開關記憶
 
     // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
     const PAGE_BUILD = '__BUILD__'.indexOf('BUILD') >= 0 ? 'dev' : '__BUILD__';
@@ -755,7 +757,7 @@
             setTimeout(updateClinicToolbarHeight, 50);
         }
         // 切到 Procedure 分頁 → 重新推導（資料吃 getCachedAllVisits，5min cache 內免流量）
-        if (panelId === 'panel-proc') procList.render();
+        if (panelId === 'panel-proc') { procList.invalidateSched(); procList.render(); }  // 開 🗂 強制刷新排程快取 → 一定看到行事曆最新領藥
         // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
         if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
             // 已有結果就不重算（避免每次切回來都重跑）
@@ -909,6 +911,8 @@
         loadAdHocClinicDates();
         loadBackupMeta();
         procList.bind();
+        document.getElementById('proc-live-btn')?.addEventListener('click', toggleProcLive);
+        if (localStorage.getItem(PROC_LIVE_KEY) === '1') updateProcLiveBtn(procList.setLiveSync(true));
         bindPatientUI();
         bindClinicDayUI();
         bindImportUI();
@@ -2580,13 +2584,27 @@
 
     // procList 實例：Firebase 與頁面服務注入；渲染/綁定/狀態循環全在模組內
     const procList = createProcList({
-        fb: { db: fbDb, ref, get, update },
+        fb: { db: fbDb, ref, get, update, onValue },
         getAllVisits: () => getCachedAllVisits(),
         getPatients: () => state.patients,
         jumpToVisit,
         setStatus: (msg) => setStatus('connected', msg),
         reportError: (err, label) => reportWriteError(err, label)
     });
+
+    // ⚡即時同步開關（②）：ON 掛排程 listener、行事曆改領藥即時反映；預設 OFF，狀態記 localStorage
+    function updateProcLiveBtn(on) {
+        const btn = document.getElementById('proc-live-btn');
+        if (!btn) return;
+        btn.textContent = on ? '⚡ 即時同步中' : '⚡ 即時同步';
+        btn.classList.toggle('active', on);
+        btn.title = on ? '正在即時同步行事曆領藥（整理完可關掉省流量）' : '同時在行事曆改領藥時打開，即時反映到清單';
+    }
+    function toggleProcLive() {
+        const on = procList.setLiveSync(!procList.isLive());
+        localStorage.setItem(PROC_LIVE_KEY, on ? '1' : '0');
+        updateProcLiveBtn(on);
+    }
 
     // ========== 匯出 docx (本日 OPD 名單) ==========
     function exportOpdDocx() {

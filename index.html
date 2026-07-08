@@ -1775,6 +1775,7 @@
                 <option value="3m">前後 3 個月</option>
                 <option value="all">全部</option>
             </select>
+            <button id="proc-live-btn" class="pv-chip" title="同時在行事曆改領藥時打開，即時反映到清單">⚡ 即時同步</button>
             <span style="flex:1"></span>
             <span id="proc-status" style="color:var(--text-muted); font-size:0.8rem;"></span>
             <button id="proc-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-family:inherit; font-size:0.82rem;">✕ 關閉</button>
@@ -4203,16 +4204,30 @@
         // ========== 🗂 Procedure 清單（proclist-core.js 掛載） ==========
         // 排程頁沒有 OPD 的 visits/patients cache → 不注入 getAllVisits/getPatients，模組自建 TTL 5min cache
         let procListInst = null;
+        const PROC_LIVE_KEY = 'sched:procLiveSync';
+        function updateProcLiveBtn(on) {
+            const btn = document.getElementById('proc-live-btn');
+            if (!btn) return;
+            btn.textContent = on ? '⚡ 即時同步中' : '⚡ 即時同步';
+            btn.classList.toggle('active', on);
+        }
         function openProcPanel() {
             document.getElementById('proc-overlay').style.display = 'block';
             if (!procListInst) {
                 procListInst = createProcList({
-                    fb: { db: fbDb, ref, get, update },
+                    fb: { db: fbDb, ref, get, update, onValue },
                     jumpToVisit: (date, rec) => window.open(`opd.html?date=${encodeURIComponent(date)}&rec=${encodeURIComponent(rec)}`, '_blank'),
                     reportError: (err, label) => alert(`${label} 寫入失敗：${err?.message || err}`)
                 });
                 procListInst.bind();
+                document.getElementById('proc-live-btn')?.addEventListener('click', () => {
+                    const on = procListInst.setLiveSync(!procListInst.isLive());
+                    localStorage.setItem(PROC_LIVE_KEY, on ? '1' : '0');
+                    updateProcLiveBtn(on);
+                });
+                if (localStorage.getItem(PROC_LIVE_KEY) === '1') updateProcLiveBtn(procListInst.setLiveSync(true));
             }
+            procListInst.invalidateSched();  // 開面板強制刷新排程快取
             procListInst.render();
         }
 
