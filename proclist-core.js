@@ -554,7 +554,9 @@ export function createProcList(deps) {
         const view = procView;
         const rangeEl = document.getElementById(ids.range);
         const range = rangeEl?.value || 'recent';
-        wrap.innerHTML = '<div class="empty-hint">推導中...</div>';
+        // stale-while-revalidate：已有內容就保留舊畫面，直到 :795 一次 swap——「推導中」只在首次渲染
+        //（即時同步 echo 每次 render 都先清空 → 清單塌陷閃爍的 root cause，2026-07-09 修）
+        if (!wrap.firstChild) wrap.innerHTML = '<div class="empty-hint">推導中...</div>';
         const allByDate = await getAllVisits();
         const patients = await resolvePatients();
         const today = new Date();
@@ -922,7 +924,13 @@ export function createProcList(deps) {
                 if (_schedCache) { _schedCache.cells = snap.val() || {}; _schedCache.at = Date.now(); }
                 else { _schedCache = null; }
                 clearTimeout(_liveDebounce);
-                _liveDebounce = setTimeout(() => render(), 300);
+                _liveDebounce = setTimeout(() => {
+                    // 編輯中（註記/Arthro inline input）→ 跳過這輪重畫，防 echo 重建 DOM 打斷輸入（同 caselist pattern）
+                    const ae = document.activeElement;
+                    const wrapEl = document.getElementById(ids.list);
+                    if (ae && wrapEl && wrapEl.contains(ae) && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
+                    render();
+                }, 300);
             });
         } else if (!on && _liveUnsub) {
             _liveUnsub(); _liveUnsub = null;
