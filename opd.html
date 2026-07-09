@@ -1350,8 +1350,12 @@
     }
 
     function parseQuickRoster(raw) {
+        // ① NFKC 折疊全形數字/括號/表意空格(U+3000→space)；② 剝零寬/隱形/bidi 字元
+        //   醫院系統複製常在「病歷號 (姓)」同一行夾隱形字元(ZWSP 等)，\s 切不掉、trim 也去不掉 →
+        //   病歷號 token 尾帶隱形字元 → 分類器全不中 → 整筆漏掉或病歷號被污染（= user 回報「後兩筆找不到」）
+        const clean = (raw || '').normalize('NFKC').replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '');
         // 括號姓氏黏在病歷號上（A62189(周)）先斷開
-        const tokens = (raw || '').replace(/[（(]/g, ' (').replace(/[）)]/g, ') ')
+        const tokens = clean.replace(/[（(]/g, ' (').replace(/[）)]/g, ') ')
             .split(/\s+/).map(t => t.trim()).filter(Boolean);
         const entries = [];
         let curOrder = null;
