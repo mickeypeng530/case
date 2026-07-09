@@ -189,6 +189,61 @@ const PROC_MED_META = { '': '－', pending: '🟠 未領', collected: '🟢 已�
 const PROC_FAMILIES = [['CT NB', 'pRF'], ['TAME', 'cTAME', 'sTAME'], ['SONO'], ['CT Bx']];
 const SCHED_TYPE_TAGS = { 'sono': ['SONO'], 'ct-nb': ['CT NB'], 'ct-nb-prf': ['CT NB', 'pRF'], 'stame': ['sTAME'], 'ctame': ['cTAME'], 'arthro': ['Arthro'], 'mri': ['MRI'], 'ct': ['CT'] };
 
+// 病歷號正規化（去重/配對用）：大寫、剝非英數、去 leading-0
+const normRec = (r) => String(r || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^0+/, '');
+
+// 錨點三訊號（取最後命中行）：① [本次] 標記 ② visit 自身日期的 RTC 行 ③ 行首=visit 自身日期。
+// deriveProcRows 與 findSameDayPlanLine 共用——改訊號規則只改這裡（曾是兩套掃描器漂移的坑）
+function findAnchorIdx(planLines, vDate) {
+    let anchorIdx = -1;
+    const vYr = parseInt(vDate.slice(0, 4), 10), vMo = parseInt(vDate.slice(5, 7), 10), vDd = parseInt(vDate.slice(8, 10), 10);
+    const selfDateHead = new RegExp(`^[-*\\s]*(?:${String(vYr).slice(2)}\\/)?0?${vMo}\\/0?${vDd}\\b`);
+    planLines.forEach((l, i) => {
+        if (/\[本次\]/.test(l)) { anchorIdx = i; return; }
+        const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC/i);
+        if (m && parseInt(m[2], 10) === vMo && parseInt(m[3], 10) === vDd && (!m[1] || 2000 + parseInt(m[1], 10) === vYr)) {
+            anchorIdx = i;
+            return;
+        }
+        if (selfDateHead.test(l.trim())) anchorIdx = i;
+    });
+    return anchorIdx;
+}
+
+// 顯示層模糊配對（2026-07-09）：排程原生列「病歷號|日期」配對落空時，查同病人 procDate 當天
+// visit 錨點段有無同家族關鍵字行。「當次即做」的行（無日期、或行內日期=當天）推導器不生列
+//（需嚴格未來日期），但 plan 其實有寫 → 撈出來補 plan 欄顯示（507510 SONO PM1255 案例）。
+// 只影響 plan 欄顯示，不動推導/去重/狀態。
+export function findSameDayPlanLine(allByDate, rec, procDate, schedType) {
+    const famTags = SCHED_TYPE_TAGS[schedType] || [];
+    const fam = PROC_FAMILIES.find(f => famTags.some(t => f.includes(t)));
+    if (!fam) return '';                                       // mri/ct/arthro/other：無對應 proc 家族
+    const dayVisits = allByDate[procDate] || {};
+    const vKey = Object.keys(dayVisits).find(k => normRec(k) === normRec(rec));
+    const v = vKey ? dayVisits[vKey] : null;
+    if (!v || !v.plan) return '';
+    const planLines = v.plan.split(/\r?\n/);
+    const aIdx = findAnchorIdx(planLines, procDate);
+    const scan = aIdx >= 0 ? planLines.slice(aIdx) : planLines;
+    const famRes = PROC_LINE_RES.filter(k => fam.includes(k.name));
+    const mo = parseInt(procDate.slice(5, 7), 10), dd = parseInt(procDate.slice(8, 10), 10);
+    const hit = scan.find(l => {
+        const t = l.trim();
+        if (!t || (t.startsWith('-') && DISCUSS_PATTERN.test(t))) return false;
+        if (!famRes.some(k => k.re.test(t))) return false;
+        // 行內日期閘：無日期（當次即做）或含 procDate 當天才算；帶其他日期的行屬於別列，別誤抓
+        const td = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
+        const dre = /\b(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})\b/g;
+        let m, any = false;
+        while ((m = dre.exec(td)) !== null) {
+            any = true;
+            if (parseInt(m[1], 10) === mo && parseInt(m[2], 10) === dd) return true;
+        }
+        return !any;
+    });
+    return hit ? hit.trim() : '';
+}
+
 // ===== 純推導（export：opd buildProcHistory + 迴歸測試用）=====
 // 核心規則（第三版「錨點段落法」，決策見 DECISION_LOG 2026-07-08）：只掃「最後一個本次錨點起」的段落。
 // 錨點三訊號：① [本次] 標記 ② visit 自身日期的 RTC 行 ③ 行首是 visit 自身日期的行。都沒有 → 整份 fallback。
@@ -209,18 +264,7 @@ export function deriveProcRows(allByDate) {
             const vTags = new Set((v.tags || []).map(normalizeTag));
             const tagAllowed = (t) => (PROC_FAMILIES.find(f => f.includes(t)) || [t]).some(x => vTags.has(x));
             const planLines = (v.plan || '').split(/\r?\n/);
-            let anchorIdx = -1;
-            const vYr = parseInt(vDate.slice(0, 4), 10), vMo = parseInt(vDate.slice(5, 7), 10), vDd = parseInt(vDate.slice(8, 10), 10);
-            const selfDateHead = new RegExp(`^[-*\\s]*(?:${String(vYr).slice(2)}\\/)?0?${vMo}\\/0?${vDd}\\b`);
-            planLines.forEach((l, i) => {
-                if (/\[本次\]/.test(l)) { anchorIdx = i; return; }
-                const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC/i);
-                if (m && parseInt(m[2], 10) === vMo && parseInt(m[3], 10) === vDd && (!m[1] || 2000 + parseInt(m[1], 10) === vYr)) {
-                    anchorIdx = i;
-                    return;
-                }
-                if (selfDateHead.test(l.trim())) anchorIdx = i;
-            });
+            const anchorIdx = findAnchorIdx(planLines, vDate);
             const scanLines = anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines;
             scanLines.forEach(line => {
                 const t = line.trim();
@@ -608,7 +652,6 @@ export function createProcList(deps) {
             schedNote = '（⚠ 排程節點讀取失敗，此頁僅顯示 OPD 衍生列）';
             console.warn('讀取排程節點失敗', e);
         }
-        const normRec = (r) => String(r || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^0+/, '');
         const opdByKey = new Map();
         opdRows.forEach(r => opdByKey.set(normRec(r.rec) + '|' + r.procDate, r));
         const datedAll = [...opdRows];
@@ -620,6 +663,8 @@ export function createProcList(deps) {
                 hit.schedCase = sr.schedCase;                               // 領藥顯示用
                 return;
             }
+            // 日期配對落空 → 顯示層模糊配對：當天 visit 錨點段的同家族行（若有）補進 plan 欄
+            sr.fuzzyLine = sr.rec ? findSameDayPlanLine(allByDate, sr.rec, sr.procDate, sr.schedCase?.type) : '';
             datedAll.push(sr);
         });
         datedAll.sort((a, b) => a.procDate.localeCompare(b.procDate) || (a.time || '99:99').localeCompare(b.time || '99:99') || a.rec.localeCompare(b.rec));
@@ -718,7 +763,10 @@ export function createProcList(deps) {
                     planHtml = `<div class="plc-arthro-row">部位${inp('arthroRegion', 76, '部位')} 體重${inp('arthroWeight', 44, 'kg')}kg MRI${inp('arthroMriTime', 56, '時間')} 藥量${inp('arthroContrast', 56, 'ml')}</div>`;
                 }
             } else {
-                planHtml = row.planScratch ? escapeHtml(row.planScratch).replace(/\n/g, '<br>') : `<span style="color:var(--text-muted,#64748b);">🔗 排程登記（OPD plan 無對應行）</span>`;
+                // planScratch（舊 caselist 手寫）> 模糊配對的當日 plan 行（保留 🔗 標來源是排程）> 真的沒有才顯示 note
+                planHtml = row.planScratch ? escapeHtml(row.planScratch).replace(/\n/g, '<br>')
+                    : (row.fuzzyLine ? `🔗 ${highlightPlanLine(row.fuzzyLine)}`
+                        : `<span style="color:var(--text-muted,#64748b);">🔗 排程登記（OPD plan 無對應行）</span>`);
             }
             const dataAttrs = isSchedOnly
                 ? `data-pc-schedkey="${escapeAttr(schedKey)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-now="${escapeAttr(st)}"`
