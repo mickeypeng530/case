@@ -232,12 +232,14 @@ export function findSameDayPlanLine(allByDate, rec, procDate, schedType) {
         if (!t || (t.startsWith('-') && DISCUSS_PATTERN.test(t))) return false;
         if (!famRes.some(k => k.re.test(t))) return false;
         // 行內日期閘：無日期（當次即做）或含 procDate 當天才算；帶其他日期的行屬於別列，別誤抓
+        // 前導字元閘 (^|[^\d./A-Za-z])：脊椎節位「L3/4/5」的 4/5 前面是「/」→ 不算日期（1736240 案例）；
+        // 也擋 lab 值 9.5/0.8（前面是 .）——同 lineHasInvalidDate 的 context 閘思路 + 字母
         const td = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
-        const dre = /\b(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})\b/g;
+        const dre = /(^|[^\d./A-Za-z])(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})\b/g;
         let m, any = false;
         while ((m = dre.exec(td)) !== null) {
             any = true;
-            if (parseInt(m[1], 10) === mo && parseInt(m[2], 10) === dd) return true;
+            if (parseInt(m[2], 10) === mo && parseInt(m[3], 10) === dd) return true;
         }
         return !any;
     });
