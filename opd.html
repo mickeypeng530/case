@@ -239,6 +239,24 @@
         </div>
         <div id="import-preview"></div>
 
+        <h3 style="margin: 24px 0 12px;">🔢 快速建名單（診號 + 病歷號）</h3>
+        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 10px;">
+                貼上掛號名單即可（診號、病歷號、姓 任意排列/換行都能解析）。<b>只建 visit 骨架</b>——已有病人沿用主表資料、新病人建空殼，看診時再補 plan/tag/抽血。
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">門診日期：</label>
+                <input type="date" id="roster-clinic-date" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
+                <span id="roster-date-hint" style="font-size: 0.78rem; color: var(--text-muted);"></span>
+            </div>
+            <textarea id="roster-input" placeholder="例：&#10;1&#10;A62189(周)&#10;3&#10;945471&#10;(鄧)&#10;5&#10;1044665 (張)" style="width: 100%; min-height: 120px; font-family: monospace; font-size: 0.82rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px;"></textarea>
+            <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center;">
+                <button class="primary" id="roster-parse-btn">🔍 解析預覽</button>
+                <span id="roster-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+            </div>
+            <div id="roster-preview"></div>
+        </div>
+
         <h3 style="margin: 24px 0 12px;">📤 匯出 Procedure List（待實作）</h3>
         <div style="color: var(--text-muted); font-size: 0.9rem;">下個 commit 實作。</div>
     </div>
@@ -917,6 +935,7 @@
         bindPatientUI();
         bindClinicDayUI();
         bindImportUI();
+        bindQuickRosterUI();
         initClinicDateSelector();
         // toolbar 量測：初始 + resize 時更新
         setTimeout(updateClinicToolbarHeight, 100);
@@ -1309,6 +1328,172 @@
             status.textContent = `❌ 失敗：${err.message}`;
             status.style.color = 'var(--color-danger)';
         }
+    }
+
+    // ========== 快速建名單（診號 + 病歷號）==========
+    // 只給掛號名單就批次建 draft visit。輸入不拘排列：診號(1~2 位純數字)、病歷號(含字母或 ≥3 位數字)、姓(括號或純中文)混排換行都能解析
+    let rosterParsed = [];  // [{order, rec, surname, canonRec, exists, dupRec, badRec}]
+
+    // 病歷號變體（opd.html 沒有 index 的 recVariants；就地簡版：原樣 + 去 leading-0）
+    function rosterRecVariants(rec) {
+        const set = new Set([rec]);
+        const stripped = rec.replace(/^0+/, '');
+        if (stripped && stripped !== rec) set.add(stripped);
+        return [...set];
+    }
+    // 在 state.patients 找既有病人（回既有 canonical rec，避免重複建 052158 vs 52158）
+    function rosterResolvePatient(rec) {
+        for (const v of rosterRecVariants(rec)) {
+            if (state.patients[v]) return v;
+        }
+        return null;
+    }
+
+    function parseQuickRoster(raw) {
+        // 括號姓氏黏在病歷號上（A62189(周)）先斷開
+        const tokens = (raw || '').replace(/[（(]/g, ' (').replace(/[）)]/g, ') ')
+            .split(/\s+/).map(t => t.trim()).filter(Boolean);
+        const entries = [];
+        let curOrder = null;
+        const attachSurname = (name) => {
+            if (entries.length && !entries[entries.length - 1].surname) entries[entries.length - 1].surname = name;
+        };
+        tokens.forEach(tok => {
+            const paren = tok.match(/^\((.+)\)$/);
+            if (paren) { attachSurname(paren[1].trim()); return; }
+            if (/^\d{1,2}$/.test(tok)) { curOrder = parseInt(tok, 10); return; }   // 診號：1~2 位純數字
+            if (/[A-Za-z]/.test(tok) || /^\d{3,}$/.test(tok)) {                    // 病歷號：含字母 或 ≥3 位數字
+                entries.push({ order: curOrder, rec: tok, surname: '' });
+                curOrder = null;
+                return;
+            }
+            if (/^[一-鿿]{1,3}$/.test(tok)) { attachSurname(tok); return; } // 裸中文姓
+            // 其餘 token 忽略（散字/雜訊）
+        });
+        // 標記存在性 / 重複 / 格式
+        const seen = new Map();
+        entries.forEach(e => {
+            e.badRec = !isValidRecordNumber(e.rec);
+            e.canonRec = e.badRec ? e.rec : (rosterResolvePatient(e.rec) || e.rec);
+            e.exists = !e.badRec && !!rosterResolvePatient(e.rec);
+            const k = e.canonRec.toUpperCase();
+            e.dupRec = seen.has(k);
+            if (!e.dupRec) seen.set(k, true);
+        });
+        return entries;
+    }
+
+    function renderQuickRosterPreview() {
+        const wrap = document.getElementById('roster-preview');
+        if (!rosterParsed.length) { wrap.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">沒解析到任何病歷號。</div>'; return; }
+        const rows = rosterParsed.map((e, i) => {
+            const p = e.exists ? (state.patients[e.canonRec] || {}) : {};
+            let st, stColor;
+            if (e.badRec) { st = '⚠ 病歷號格式怪'; stColor = 'var(--color-danger)'; }
+            else if (e.dupRec) { st = '⚠ 名單內重複'; stColor = 'var(--color-danger)'; }
+            else if (e.exists) { st = `✓ 已有病人${e.canonRec !== e.rec ? `（併入 ${e.canonRec}）` : ''}`; stColor = 'var(--color-confirmed)'; }
+            else { st = '＋ 新病人（建空殼）'; stColor = 'var(--text-secondary)'; }
+            const dbSurname = e.exists ? (p.surname || '') : '';
+            const dbAge = e.exists ? (p.ageSex || '') : '';
+            const canWrite = !e.badRec && !e.dupRec;
+            return `<tr style="${canWrite ? '' : 'opacity:0.5;'}">
+                <td style="text-align:center;">${e.order != null ? `#${e.order}` : '—'}</td>
+                <td style="font-family:monospace;">${escapeHtml(e.rec)}</td>
+                <td>${escapeHtml(e.surname || dbSurname || '')}</td>
+                <td style="color:var(--text-muted);font-size:0.8rem;">${escapeHtml(dbAge)}</td>
+                <td style="color:${stColor};font-size:0.82rem;">${st}</td>
+            </tr>`;
+        }).join('');
+        const okCount = rosterParsed.filter(e => !e.badRec && !e.dupRec).length;
+        const newCount = rosterParsed.filter(e => !e.badRec && !e.dupRec && !e.exists).length;
+        wrap.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:8px;">
+                <thead><tr style="border-bottom:1px solid var(--border);color:var(--text-secondary);text-align:left;">
+                    <th style="padding:4px;text-align:center;">診號</th><th style="padding:4px;">病歷號</th><th style="padding:4px;">姓</th><th style="padding:4px;">年齡性別</th><th style="padding:4px;">狀態</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+                <button class="primary" id="roster-confirm-btn">✓ 建立 ${okCount} 筆 visit（含 ${newCount} 新病人）</button>
+                <span style="font-size:0.8rem;color:var(--text-muted);">已存在的 visit 會跳過（不覆蓋）</span>
+            </div>`;
+        document.getElementById('roster-confirm-btn').onclick = writeQuickRoster;
+    }
+
+    async function writeQuickRoster() {
+        const date = document.getElementById('roster-clinic-date').value;
+        if (!date) { alert('請先選門診日期'); return; }
+        const toWrite = rosterParsed.filter(e => !e.badRec && !e.dupRec);
+        if (!toWrite.length) { alert('沒有可建立的病歷號'); return; }
+        if (!confirm(`要在 ${date} 建立 ${toWrite.length} 筆 visit 嗎？\n\n- 已有病人：沿用主表資料\n- 新病人：建空殼（姓）\n- 已存在的 visit 跳過`)) return;
+
+        const status = document.getElementById('roster-status');
+        status.textContent = '建立中...'; status.style.color = 'var(--text-secondary)';
+
+        // 該日已存在的 visit（跳過不覆蓋）
+        const snap = await get(ref(fbDb, `opd/visits/${date}`));
+        const existingVisits = snap.val() || {};
+        const now = Date.now();
+        const isPast = date < formatDate(new Date());
+        const updates = {};
+        let written = 0, skipped = 0, newPt = 0;
+
+        toWrite.forEach(e => {
+            const rec = e.canonRec;
+            if (existingVisits[rec]) { skipped++; return; }
+            // 新病人 → 建空殼（既有病人完全不碰主表，資料自動沿用）
+            if (!e.exists) {
+                updates[`opd/patients/${rec}`] = {
+                    recordNumber: rec, surname: e.surname || '', ageSex: '', birthYear: null, sex: '',
+                    referrer: '', labs: '', pastHistory: '', boneScore: '',
+                    anticoagState: 'unknown', anticoagulants: [], bonePlanSummary: '', painPlanSummary: '',
+                    firstVisitDate: date, createdAt: now, updatedAt: now
+                };
+                newPt++;
+            }
+            updates[`opd/visits/${date}/${rec}`] = {
+                recordNumber: rec, date, orderInClinic: e.order || null,
+                examEducation: '', plan: '', tags: [], procedureStatuses: {},
+                status: isPast ? 'confirmed' : 'draft', noShow: false,
+                createdAt: now, updatedAt: now, confirmedAt: isPast ? now : null
+            };
+            updates[`opd/patientVisitIndex/${rec}/${date}`] = true;
+            written++;
+        });
+        if (!isRegularClinicDate(date)) {
+            updates[`opd/clinicDates/${date}`] = { date, type: 'ad-hoc', note: '快速建名單', createdAt: now };
+        }
+
+        try {
+            await update(ref(fbDb), updates);
+            status.textContent = `✅ 完成：建 ${written} 筆 visit（新病人 ${newPt}）${skipped ? `，跳過 ${skipped} 已存在` : ''}`;
+            status.style.color = 'var(--color-confirmed)';
+            setTimeout(() => {
+                state.currentClinicDate = date;
+                localStorage.setItem('opd:currentClinicDate', date);
+                document.querySelector('.tab[data-panel="panel-visits"]')?.click();
+            }, 900);
+        } catch (err) {
+            status.textContent = `❌ 寫入失敗：${err.message}`;
+            status.style.color = 'var(--color-danger)';
+        }
+    }
+
+    function bindQuickRosterUI() {
+        const parseBtn = document.getElementById('roster-parse-btn');
+        if (!parseBtn) return;
+        const dateInput = document.getElementById('roster-clinic-date');
+        parseBtn.addEventListener('click', () => {
+            const raw = document.getElementById('roster-input').value;
+            rosterParsed = parseQuickRoster(raw);
+            const status = document.getElementById('roster-status');
+            const ok = rosterParsed.filter(e => !e.badRec && !e.dupRec).length;
+            const bad = rosterParsed.length - ok;
+            status.textContent = `解析到 ${rosterParsed.length} 筆${bad ? `（${bad} 筆需檢查）` : ''}`;
+            status.style.color = 'var(--text-secondary)';
+            if (dateInput && !dateInput.value) dateInput.value = state.currentClinicDate || '';
+            renderQuickRosterPreview();
+        });
     }
 
     function bindImportUI() {
