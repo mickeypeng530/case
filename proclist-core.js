@@ -306,14 +306,13 @@ export function deriveProcRows(allByDate) {
                 if (futureDates.length) {
                     if (!isConfirmed) return;  // ④A：未確認來源不列（不標 datedGlobal，讓真正 confirmed 的漏網照抓）
                     tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
-                    const autoDone = /^\*/.test(t) || /\[[^\]]*已\s*\]/.test(t);
                     const tm = tForDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
                     const lineTime = tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '';
                     futureDates.forEach(ld => candidates.push({
                         rec: v.recordNumber, procDate: ld,
                         tags: gated.length ? [...gated] : [...tags],
                         noTag: !gated.length, time: lineTime,
-                        srcDate: vDate, srcVisit: v, line: t, autoDone
+                        srcDate: vDate, srcVisit: v, line: t
                     }));
                 } else if (v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
                     // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
@@ -337,7 +336,7 @@ export function deriveProcRows(allByDate) {
         if (!prev) {
             rows.set(key, c);
         } else {
-            if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; prev.line = c.line; prev.autoDone = c.autoDone; }
+            if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; prev.line = c.line; }
             if (!prev.time && c.time) prev.time = c.time;
             prev.tags = [...new Set([...prev.tags, ...c.tags])];
             prev.noTag = prev.noTag && c.noTag;
@@ -371,7 +370,7 @@ export function buildSchedRows(sched) {
                 rec: String(c.chartNo || '').trim().toUpperCase(),
                 procDate: m[1],
                 time: c.time || '',
-                tags: [...tags], noTag: false, autoDone: false,
+                tags: [...tags], noTag: false,
                 tentative: c.status === 'tentative', // 排程暫定 → 「待排」視圖專屬，不進主清單
                 sched: true, schedCase: c, cellKey,
                 fallbackStatus: cl?.status === 'done' ? 'done' : (cl?.status === 'dc' ? 'dc' : null),
@@ -689,13 +688,16 @@ export function createProcList(deps) {
         });
         datedAll.sort((a, b) => a.procDate.localeCompare(b.procDate) || (a.time || '99:99').localeCompare(b.time || '99:99') || a.rec.localeCompare(b.rec));
 
-        // 有效狀態：手動 procTrack > 舊 caselist 狀態(fallback) > plan 標記(*/[已]) > 檢查類過期自動已執行 > 待做
+        // 有效狀態：手動 procTrack > 舊 caselist 狀態(fallback) > 檢查類過期自動已執行 > 過去逾一週自動完成 > 待做
+        //   ⚠ 不再用 plan 的 * / [已] 判完成——user 的 *=「這是 procedure」、[已]=「已安排」，都不是「做完」（見 DECISION_LOG 2026-07-11）
+        //   完成 = 手動點；但過去逾一週沒點的不當待做累積（沒做的早該 DC/取消，留著的就是做了忘了點）
+        const staleCutoff = fmtOff(-7);
         const stOf = (row) => {
             const t = procTrackOf(row).track;
             if (t?.status) return t.status;
             if (row.fallbackStatus) return row.fallbackStatus;
-            if (row.autoDone) return 'done';
             if (row.sched && (row.schedCase?.type === 'mri' || row.schedCase?.type === 'ct') && row.procDate < todayStr) return 'done';
+            if (row.procDate && row.procDate < staleCutoff) return 'done';  // 過去逾一週 → 假設已做，不累積待做
             return 'pending';
         };
         // 排程「暫定」（未確認）→ 只住「📝 待排」視圖
@@ -792,7 +794,7 @@ export function createProcList(deps) {
                 ? `data-pc-schedkey="${escapeAttr(schedKey)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-now="${escapeAttr(st)}"`
                 : `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
             const noteIn = `<input class="plc-note-in" data-plc-note ${dataAttrs} value="${escapeAttr(noteVal)}" placeholder="📝 註記…">`;
-            const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.autoDone ? 'plan 標記自動判定（*/[已]），點擊改手動' : ''));
+            const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.procDate && row.procDate < staleCutoff ? '過去逾一週自動視為完成，點擊改手動' : ''));
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
             // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 可點
             const medBtn = (isSchedOnly && (schedType === 'mri' || schedType === 'ct'))
@@ -876,7 +878,7 @@ export function createProcList(deps) {
             const cur = snap.val() || {};
             const updates = { at: Date.now() };
             if (kind === 'st') {
-                // DB 沒手動狀態時，從畫面上的有效狀態（可能是 autoDone）接著循環
+                // DB 沒手動狀態時，從畫面上的有效狀態（可能是過去逾一週自動完成）接著循環
                 updates.status = PROC_ST_META[cur.status || nowSt || 'pending'].next;
             } else {
                 updates.med = cur.med === 'pending' ? 'collected' : (cur.med === 'collected' ? null : 'pending');
