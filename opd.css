@@ -928,6 +928,11 @@
         .plan-line.plan { color: var(--text-secondary); }
         .plan-line.rtc-line { color: #93c5fd; font-weight: 500; }
 
+        /* 📍 本次實際 pin：procedure 行尾；淡=未填、亮=已填 */
+        .proc-pin { background: none; border: none; cursor: pointer; padding: 0 1px; font-size: 0.82em; line-height: 1; opacity: 0.32; filter: grayscale(1); vertical-align: baseline; }
+        .proc-pin:hover { opacity: 0.7; }
+        .proc-pin.has { opacity: 1; filter: none; }
+
         /* Inline badge inside plan body — 由 [X] 渲染 */
         .inline-badge {
             display: inline-block;
