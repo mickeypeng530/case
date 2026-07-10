@@ -594,7 +594,25 @@ export function createProcList(deps) {
         return { key, track: row.srcVisit.procTrack?.[key] || null };
     }
 
-    async function render() {
+    // 捲到今天：只在「開啟 / 切視圖 / 換範圍」時捲（opts.scroll=true）；echo / 狀態循環用 bare render() 不捲，
+    // 免得看清單時被扯回今天。錨點 = bydate 視圖的 .pc-group-today；今天沒 proc 就找第一個 data-date >= today 的組
+    function scrollToTodayInList() {
+        const wrap = document.getElementById(ids.list);
+        if (!wrap) return;
+        const desktop = wrap.querySelector('.proc-desktop');
+        const scope = (desktop && desktop.offsetParent !== null) ? desktop : wrap.querySelector('.proc-mobile');
+        if (!scope) return;
+        const today = formatDate(new Date());
+        let target = scope.querySelector('.pc-group-today');
+        if (!target) {
+            const groups = [...scope.querySelectorAll('[data-date]')];
+            target = groups.find(g => g.dataset.date >= today) || groups[groups.length - 1];
+        }
+        if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    }
+
+    async function render(opts = {}) {
+        const wantScroll = !!opts.scroll;
         const wrap = document.getElementById(ids.list);
         if (!wrap) return;
         const view = procView;
@@ -833,11 +851,11 @@ export function createProcList(deps) {
             list.forEach(r => { (byDate[r.procDate] = byDate[r.procDate] || []).push(r); });
             const keys = Object.keys(byDate).sort();
             desktopHtml = tableWrap(undatedBlockD + keys.map(d =>
-                `<tr class="pc-group-row${d === todayStr ? ' pc-group-today' : ''}"><td colspan="7">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length} 筆</td></tr>` +
+                `<tr class="pc-group-row${d === todayStr ? ' pc-group-today' : ''}" data-date="${d}"><td colspan="7">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length} 筆</td></tr>` +
                 byDate[d].map(r => rowHtml(r, false)).join('')
             ).join(''));
             mobileHtml = undatedBlockM + keys.map(d =>
-                `<div class="pc-group-header${d === todayStr ? ' pc-group-today' : ''}">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length}</div>` +
+                `<div class="pc-group-header${d === todayStr ? ' pc-group-today' : ''}" data-date="${d}">${escapeHtml(fmtD(d))}${d === todayStr ? '（今天）' : ''} · ${byDate[d].length}</div>` +
                 byDate[d].map(r => rowHtml(r, true)).join('')
             ).join('');
         } else {
@@ -845,6 +863,7 @@ export function createProcList(deps) {
             mobileHtml = undatedBlockM + overdueBlockM + list.map(r => rowHtml(r, true)).join('');
         }
         wrap.innerHTML = `<div class="plc-scope"><div class="proc-desktop">${desktopHtml}</div><div class="proc-mobile">${mobileHtml}</div></div>`;
+        if (wantScroll) scrollToTodayInList();
     }
 
     // 狀態 / 領藥循環：寫來源 visit 的 procTrack/{key}（欄位級 update），寫完改本地 cache 直接重畫
@@ -934,9 +953,9 @@ export function createProcList(deps) {
             if (!chip) return;
             procView = chip.dataset.view;
             document.querySelectorAll(`#${ids.chips} .pv-chip`).forEach(c => c.classList.toggle('active', c === chip));
-            render();
+            render({ scroll: true });
         });
-        document.getElementById(ids.range)?.addEventListener('change', render);
+        document.getElementById(ids.range)?.addEventListener('change', () => render({ scroll: true }));
         const listEl = document.getElementById(ids.list);
         listEl?.addEventListener('click', (e) => {
             const cyc = e.target.closest('[data-pc-cycle]');

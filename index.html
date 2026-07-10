@@ -4229,7 +4229,7 @@
                 if (localStorage.getItem(PROC_LIVE_KEY) === '1') updateProcLiveBtn(procListInst.setLiveSync(true));
             }
             procListInst.invalidateSched();  // 開面板強制刷新排程快取
-            procListInst.render();
+            procListInst.render({ scroll: true });  // 開 overlay 捲到今天
         }
 
         // Event Listeners

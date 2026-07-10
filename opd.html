@@ -776,7 +776,7 @@
             setTimeout(updateClinicToolbarHeight, 50);
         }
         // 切到 Procedure 分頁 → 重新推導（資料吃 getCachedAllVisits，5min cache 內免流量）
-        if (panelId === 'panel-proc') { procList.invalidateSched(); procList.render(); }  // 開 🗂 強制刷新排程快取 → 一定看到行事曆最新領藥
+        if (panelId === 'panel-proc') { procList.invalidateSched(); procList.render({ scroll: true }); }  // 開 🗂 強制刷新排程快取 → 一定看到行事曆最新領藥；切分頁捲到今天
         // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
         if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
             // 已有結果就不重算（避免每次切回來都重跑）
