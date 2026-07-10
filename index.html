@@ -2049,6 +2049,10 @@
         const otherSubtypes = ['PICC', 'Bone', 'Drain', 'PCN', 'Lung Biopsy'];
         const DEFAULT_SLOTS_PER_CELL = 2;
         let eventsBound = false;  // 防止重複綁定事件
+        // 換日自動重畫 past-date 斜線：renderTabContent 的 past 判定是 render 當下算的、凍結在 DOM，
+        // 掛著過夜沒資料變動就不會重算。用「回到分頁 focus 檢查」+「午夜 timer」補跨日重畫（純本地，0 Firebase）
+        let _lastRenderedDay = '';
+        let _midnightTimer = null;
 
         // Init
         async function init() {
@@ -2064,6 +2068,7 @@
             if (!eventsBound) {
                 setupEventListeners();
                 setupReadingListEvents();
+                setupDayRolloverWatch();
                 eventsBound = true;
             }
             
@@ -2453,9 +2458,28 @@
             
             // 手機版：設定週切換
             updateMobileWeekView(numWeeks);
-            
+
             // 更新統計欄
             renderStatsBar();
+
+            _lastRenderedDay = formatDateForInput(new Date());  // 記這次重畫是哪天算的 past-date（換日 watch 用）
+        }
+
+        // 換日重畫（focus 檢查 + 午夜 timer）——只在「今天」跨過上次重畫那天時才重畫，純本地零 Firebase
+        function refreshIfDayChanged() {
+            const today = formatDateForInput(new Date());
+            if (_lastRenderedDay && today !== _lastRenderedDay) renderTabContent();
+        }
+        function scheduleMidnightRefresh() {
+            clearTimeout(_midnightTimer);
+            const now = new Date();
+            const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5); // 明天 00:00:05
+            _midnightTimer = setTimeout(() => { refreshIfDayChanged(); scheduleMidnightRefresh(); }, next - now);
+        }
+        function setupDayRolloverWatch() {
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshIfDayChanged(); });
+            window.addEventListener('focus', refreshIfDayChanged);
+            scheduleMidnightRefresh();
         }
         
         // 統計欄
