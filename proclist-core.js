@@ -435,6 +435,19 @@ const PLC_CSS = `
 .plc-note-in::placeholder { color: var(--text-muted,#64748b); opacity: 0.55; }
 .plc-note-in:focus { border-style: solid; border-color: var(--color-info,#3b82f6); outline: none; }
 .plc-scope .plc-note-ro { margin-top: 4px; font-size: 0.9em; color: var(--text-secondary,#94a3b8); }
+/* 📍 本次實際 pin：淡=未填、亮=已填 */
+.plc-pin { background: none; border: none; cursor: pointer; padding: 0 1px; font-size: 0.9em; line-height: 1; opacity: 0.32; filter: grayscale(1); vertical-align: baseline; }
+.plc-pin:hover { opacity: 0.7; }
+.plc-pin.has { opacity: 1; filter: none; }
+/* 📍 popover（模組自帶，不依賴 opd.css） */
+.plc-actual-pop { position: fixed; z-index: 10000; width: 300px; background: var(--bg-secondary,#1e293b); border: 1px solid var(--border,#475569); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 10px 12px; font-size: 0.85rem; color: var(--text-primary,#f1f5f9); }
+.plc-actual-pop .plc-pop-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; margin-bottom: 4px; gap: 8px; }
+.plc-actual-pop .plc-pop-x { background: none; border: none; color: var(--text-muted,#94a3b8); font-size: 1.1rem; cursor: pointer; line-height: 1; }
+.plc-actual-pop .plc-pop-hint { font-size: 0.72rem; color: var(--text-muted,#94a3b8); margin-bottom: 6px; }
+.plc-actual-pop .plc-pop-ta { width: 100%; box-sizing: border-box; background: var(--bg-primary,#0f172a); color: var(--text-primary,#f1f5f9); border: 1px solid var(--border,#475569); border-radius: 6px; padding: 6px; font-family: inherit; font-size: 0.86rem; resize: vertical; }
+.plc-actual-pop .plc-pop-actions { display: flex; gap: 8px; margin-top: 8px; }
+.plc-actual-pop .plc-pop-actions button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border,#475569); background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); cursor: pointer; font-family: inherit; font-size: 0.82rem; }
+.plc-actual-pop .plc-pop-actions button[data-a="save"] { background: var(--color-info,#3b82f6); border-color: var(--color-info,#3b82f6); color: #fff; }
 .proc-desktop { display: block; }
 .proc-mobile { display: none; }
 /* 直立醫院螢幕（≤1280）：側欄收窄，plan 自動變寬 */
@@ -794,6 +807,12 @@ export function createProcList(deps) {
                 ? `data-pc-schedkey="${escapeAttr(schedKey)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-now="${escapeAttr(st)}"`
                 : `data-pc-src="${escapeAttr(row.srcDate)}" data-pc-rec="${escapeAttr(row.rec)}" data-pc-key="${escapeAttr(key)}" data-pc-now="${escapeAttr(st)}"`;
             const noteIn = `<input class="plc-note-in" data-plc-note ${dataAttrs} value="${escapeAttr(noteVal)}" placeholder="📝 註記…">`;
+            // 📍 本次實際：這列 procedure 做完可記實際做了什麼（存 patients/{rec}/procActual/{procDate}，永久、下次同列看得到）
+            //   ≤ 今天（今天要做的 + 過去的）才長；未來還沒做不長
+            const procActual = (row.rec && p.procActual) ? (p.procActual[row.procDate] || '') : '';
+            const pinHtml = (row.rec && row.procDate && row.procDate <= todayStr)
+                ? ` <button type="button" class="plc-pin${procActual ? ' has' : ''}" data-plc-pinrec="${escapeAttr(row.rec)}" data-plc-pindate="${escapeAttr(row.procDate)}" title="${procActual ? '本次實際：' + escapeAttr(procActual) : '記錄本次實際做了什麼'}">📍</button>`
+                : '';
             const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.procDate && row.procDate < staleCutoff ? '過去逾一週自動視為完成，點擊改手動' : ''));
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
             // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 可點
@@ -817,7 +836,7 @@ export function createProcList(deps) {
                     </div>
                     ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${fmtLabDates(escapeHtml(labs.split('\n')[0] || ''))}</div>` : ''}
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
-                    ${planHtml ? `<div class="pc-card-plan">${planHtml}</div>` : ''}
+                    ${(planHtml || pinHtml) ? `<div class="pc-card-plan">${planHtml}${pinHtml}</div>` : ''}
                     ${noteVal ? `<div class="plc-note-ro">📝 ${escapeHtml(noteVal)}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
                 </div>`;
@@ -830,7 +849,7 @@ export function createProcList(deps) {
                 </td>
                 <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${fmtLabDates(escapeHtml(labs))}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
-                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}</div>${noteIn}</td>
+                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}${pinHtml}</div>${noteIn}</td>
                 <td class="pc-c-st">${stBtn}</td>
                 <td class="pc-c-med">${medBtn}</td>
             </tr>`;
@@ -947,6 +966,52 @@ export function createProcList(deps) {
         }
     }
 
+    // 📍 本次實際 popover（模組內建，opd + index 兩宿主通用）：看/填「這次實際做了什麼」→ patients/{rec}/procActual/{procDate}
+    async function openProcActualPopover(pinEl) {
+        document.querySelectorAll('.plc-actual-pop').forEach(p => p.remove());
+        const rec = pinEl.dataset.plcPinrec, procDate = pinEl.dataset.plcPindate;
+        const patients = await resolvePatients();
+        const cur = patients[rec]?.procActual?.[procDate] || '';
+        const md = procDate.slice(5).replace('-', '/');
+        const pop = document.createElement('div');
+        pop.className = 'plc-actual-pop plc-scope';
+        pop.innerHTML = `
+            <div class="plc-pop-head">📍 本次實際 · ${escapeHtml(rec)} · ${escapeHtml(md)}<button class="plc-pop-x" title="關閉">×</button></div>
+            <div class="plc-pop-hint">跟計畫一樣可留空；不同才填（如 L5/S, S1/2）。不寫進 plan</div>
+            <textarea class="plc-pop-ta" rows="2" placeholder="實際做了什麼…">${escapeHtml(cur)}</textarea>
+            <div class="plc-pop-actions"><button data-a="save">✓ 存</button>${cur ? '<button data-a="clear">清除</button>' : ''}</div>`;
+        document.body.appendChild(pop);
+        const r = pinEl.getBoundingClientRect();
+        pop.style.left = Math.max(8, Math.min(window.innerWidth - 300 - 8, r.left - 40)) + 'px';
+        pop.style.top = (r.bottom + 6) + 'px';
+        const ph = pop.offsetHeight;
+        if (window.innerHeight - r.bottom < ph + 12 && r.top > ph + 12) pop.style.top = (r.top - ph - 6) + 'px';
+        const ta = pop.querySelector('.plc-pop-ta');
+        ta.focus();
+        pop.querySelector('.plc-pop-x').addEventListener('click', () => pop.remove());
+        pop.querySelector('[data-a="save"]').addEventListener('click', () => { saveProcActual(rec, procDate, ta.value); pop.remove(); });
+        pop.querySelector('[data-a="clear"]')?.addEventListener('click', () => { saveProcActual(rec, procDate, ''); pop.remove(); });
+        const close = (ev) => {
+            if (ev && ev.type === 'mousedown' && pop.contains(ev.target)) return;
+            if (ev && ev.type === 'keydown' && ev.key !== 'Escape') return;
+            pop.remove(); document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close);
+        };
+        setTimeout(() => { document.addEventListener('mousedown', close); document.addEventListener('keydown', close); }, 0);
+    }
+    async function saveProcActual(rec, procDate, value) {
+        const v = value.trim();
+        try {
+            await fb.update(fb.ref(fb.db, `opd/patients/${rec}`), { [`procActual/${procDate}`]: v || null });
+            const patients = await resolvePatients();
+            if (patients[rec]) {
+                patients[rec].procActual = patients[rec].procActual || {};
+                if (v) patients[rec].procActual[procDate] = v; else delete patients[rec].procActual[procDate];
+            }
+            render();
+            setStatus(v ? `📍 ${rec} 本次實際已存` : `📍 ${rec} 本次實際已清除`);
+        } catch (err) { reportError(err, '本次實際'); }
+    }
+
     function bind() {
         if (uiBound) return;
         uiBound = true;
@@ -960,6 +1025,8 @@ export function createProcList(deps) {
         document.getElementById(ids.range)?.addEventListener('change', () => render({ scroll: true }));
         const listEl = document.getElementById(ids.list);
         listEl?.addEventListener('click', (e) => {
+            const pin = e.target.closest('.plc-pin');
+            if (pin) { openProcActualPopover(pin); return; }
             const cyc = e.target.closest('[data-pc-cycle]');
             if (cyc) {
                 cycleProcTrack(cyc.dataset.pcCycle, cyc.dataset.pcSrc, cyc.dataset.pcRec, cyc.dataset.pcKey, cyc.dataset.pcNow, cyc.dataset.pcSchedkey || null);
