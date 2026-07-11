@@ -457,6 +457,10 @@ const PLC_CSS = `
 .plc-note-in::placeholder { color: var(--text-muted,#64748b); opacity: 0.55; }
 .plc-note-in:focus { border-style: solid; border-color: var(--color-info,#3b82f6); outline: none; }
 .plc-scope .plc-note-ro { margin-top: 4px; font-size: 0.9em; color: var(--text-secondary,#94a3b8); }
+/* 門診 / 下次門診 跳轉 chip */
+.plc-vchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+.plc-vchip { display: inline-flex; align-items: center; padding: 0px 6px; border-radius: 8px; font-size: 0.68rem; cursor: pointer; background: var(--bg-tertiary,#334155); color: var(--text-secondary,#94a3b8); border: 1px solid var(--border,#475569); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plc-vchip:hover { color: var(--color-info,#3b82f6); border-color: var(--color-info,#3b82f6); }
 /* 📍 本次實際 pin：淡=未填、亮=已填 */
 .plc-pin { background: none; border: none; cursor: pointer; padding: 0 1px; font-size: 0.9em; line-height: 1; opacity: 0.32; filter: grayscale(1); vertical-align: baseline; }
 .plc-pin:hover { opacity: 0.7; }
@@ -836,6 +840,13 @@ export function createProcList(deps) {
             const pinHtml = (row.rec && row.procDate && row.procDate <= todayStr)
                 ? ` <button type="button" class="plc-pin${procActual ? ' has' : ''}" data-plc-pinrec="${escapeAttr(row.rec)}" data-plc-pindate="${escapeAttr(row.procDate)}" title="${procActual ? '本次實際：' + escapeAttr(procActual) : '記錄本次實際做了什麼'}">📍</button>`
                 : '';
+            // 門診日（srcDate）/ 下次門診日（srcVisit.propagatedTo）跳轉 chip——複用 data-pc-jump（現有 handler 通吃）
+            const mdc = (iso) => iso ? iso.slice(5).replace('-', '/') : '';
+            const nextDate = row.srcVisit?.propagatedTo || '';
+            const visitJumpChips = (row.srcVisit && jump) ? `<div class="plc-vchips">`
+                + `<span class="plc-vchip" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到門診 ${escapeAttr(row.srcDate)}">📅 ${mdc(row.srcDate)} 門診</span>`
+                + (nextDate ? `<span class="plc-vchip" data-pc-jump="${escapeAttr(nextDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到下次門診 ${escapeAttr(nextDate)}">→ ${mdc(nextDate)} 下次</span>` : '')
+                + `</div>` : '';
             const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.procDate && row.procDate < staleCutoff ? '過去逾一週自動視為完成，點擊改手動' : ''));
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
             // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 可點
@@ -860,6 +871,7 @@ export function createProcList(deps) {
                     ${(labs || acHtml) ? `<div class="pc-card-labs">${acHtml}${acHtml && labs ? ' ' : ''}${fmtLabDates(escapeHtml(labs.split('\n')[0] || ''))}</div>` : ''}
                     <div class="visit-tags" style="margin-top:5px;">${tagChips}</div>
                     ${(planHtml || pinHtml) ? `<div class="pc-card-plan">${planHtml}${pinHtml}</div>` : ''}
+                    ${visitJumpChips}
                     ${noteVal ? `<div class="plc-note-ro">📝 ${escapeHtml(noteVal)}</div>` : ''}
                     <div class="pc-card-actions">${stBtn}${medBtn}</div>
                 </div>`;
@@ -872,7 +884,7 @@ export function createProcList(deps) {
                 </td>
                 <td class="pc-c-labs">${acHtml ? `<div class="pc-ac">${acHtml}</div>` : ''}${fmtLabDates(escapeHtml(labs))}</td>
                 <td class="pc-c-tags"><div class="visit-tags">${tagChips}</div></td>
-                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}${pinHtml}</div>${noteIn}</td>
+                <td class="pc-c-plan"><div class="pc-plan-body">${planHtml}${pinHtml}</div>${visitJumpChips}${noteIn}</td>
                 <td class="pc-c-st">${stBtn}</td>
                 <td class="pc-c-med">${medBtn}</td>
             </tr>`;
