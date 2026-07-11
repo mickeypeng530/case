@@ -187,6 +187,7 @@ const PROC_ST_META = {
 };
 const PROC_MED_META = { '': '－', pending: '🟠 未領', collected: '🟢 已領' };
 const PROC_FAMILIES = [['CT NB', 'pRF'], ['TAME', 'cTAME', 'sTAME'], ['SONO'], ['CT Bx']];
+const PROC_FAMILY_FLAT = new Set(PROC_FAMILIES.flat());  // 所有 procedure tag（判「當日做」用）
 const SCHED_TYPE_TAGS = { 'sono': ['SONO'], 'ct-nb': ['CT NB'], 'ct-nb-prf': ['CT NB', 'pRF'], 'stame': ['sTAME'], 'ctame': ['cTAME'], 'arthro': ['Arthro'], 'mri': ['MRI'], 'ct': ['CT'] };
 
 // 病歷號正規化（去重/配對用）：大寫、剝非英數、去 leading-0
@@ -268,6 +269,8 @@ export function deriveProcRows(allByDate) {
             const planLines = (v.plan || '').split(/\r?\n/);
             const anchorIdx = findAnchorIdx(planLines, vDate);
             const scanLines = anchorIdx >= 0 ? planLines.slice(anchorIdx) : planLines;
+            const visitFutureTags = new Set();   // 這次 visit 有排「未來日期」的 tag → 不再當「當日做」
+            const sameDayLineByTag = new Map();  // tag → 該 tag 的行文（無未來日期 = 當日做，供顯示）
             scanLines.forEach(line => {
                 const t = line.trim();
                 if (!t) return;
@@ -305,7 +308,7 @@ export function deriveProcRows(allByDate) {
                 const gated = tags.filter(tagAllowed);
                 if (futureDates.length) {
                     if (!isConfirmed) return;  // ④A：未確認來源不列（不標 datedGlobal，讓真正 confirmed 的漏網照抓）
-                    tags.forEach(tg => datedGlobal.add(v.recordNumber + '|' + tg));
+                    tags.forEach(tg => { datedGlobal.add(v.recordNumber + '|' + tg); visitFutureTags.add(tg); });
                     const tm = tForDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
                     const lineTime = tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '';
                     futureDates.forEach(ld => candidates.push({
@@ -314,17 +317,35 @@ export function deriveProcRows(allByDate) {
                         noTag: !gated.length, time: lineTime,
                         srcDate: vDate, srcVisit: v, line: t
                     }));
-                } else if (v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
-                    // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
-                    gated.forEach(tg => {
-                        const uk = v.recordNumber + '|' + tg;
-                        const prev = undated.get(uk);
-                        if (!prev || vDate > prev.srcDate) {
-                            undated.set(uk, { rec: v.recordNumber, procDate: null, tags: [tg], srcDate: vDate, srcVisit: v, line: t });
-                        }
-                    });
+                } else {
+                    // 無未來日期：記該 tag 的行文（當日做的顯示用，取第一筆）
+                    (gated.length ? gated : tags).forEach(tg => { if (!sameDayLineByTag.has(tg)) sameDayLineByTag.set(tg, t); });
+                    if (v.status === 'confirmed' && vDate >= recent60 && /待|約/.test(t) && !/已/.test(t)) {
+                        // 漏網偵測：門診看完（確）應該都約好了 → 還有「待/約」無日期 = 掉出流程
+                        gated.forEach(tg => {
+                            const uk = v.recordNumber + '|' + tg;
+                            const prev = undated.get(uk);
+                            if (!prev || vDate > prev.srcDate) {
+                                undated.set(uk, { rec: v.recordNumber, procDate: null, tags: [tg], srcDate: vDate, srcVisit: v, line: t });
+                            }
+                        });
+                    }
                 }
             });
+            // 「當日做」列：visit 有 procedure tag 但這次沒排未來日期行 → 當天做掉（無獨立列）→ 補一列，procDate = 門診日
+            //   → 讓 📍 有地方掛、下次門診看得到（tag 是同日 procedure 的可靠訊號）
+            if (isConfirmed && vDate <= todayStr) {
+                vTags.forEach(tg => {
+                    if (!PROC_FAMILY_FLAT.has(tg)) return;                     // 只處理 procedure tag（SONO/CT NB/TAME/pRF/CT Bx）
+                    const fam = PROC_FAMILIES.find(f => f.includes(tg)) || [tg];
+                    if (fam.some(x => visitFutureTags.has(x))) return;         // 有未來行 = 那筆才是 occurrence，不補當日
+                    candidates.push({
+                        rec: v.recordNumber, procDate: vDate, tags: [tg],
+                        noTag: false, time: '', srcDate: vDate, srcVisit: v,
+                        line: sameDayLineByTag.get(tg) || '', sameDay: true
+                    });
+                });
+            }
         });
     });
 
@@ -336,10 +357,11 @@ export function deriveProcRows(allByDate) {
         if (!prev) {
             rows.set(key, c);
         } else {
-            if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; prev.line = c.line; }
+            if (c.srcDate > prev.srcDate) { prev.srcDate = c.srcDate; prev.srcVisit = c.srcVisit; if (c.line) prev.line = c.line; }
             if (!prev.time && c.time) prev.time = c.time;
             prev.tags = [...new Set([...prev.tags, ...c.tags])];
             prev.noTag = prev.noTag && c.noTag;
+            prev.sameDay = prev.sameDay || c.sameDay;
         }
     });
     const undatedRows = [...undated.values()].filter(r => !datedGlobal.has(r.rec + '|' + r.tags[0]));
@@ -709,6 +731,7 @@ export function createProcList(deps) {
             const t = procTrackOf(row).track;
             if (t?.status) return t.status;
             if (row.fallbackStatus) return row.fallbackStatus;
+            if (row.sameDay) return 'done';  // 當日做（tag 佐證）本來就完成
             if (row.sched && (row.schedCase?.type === 'mri' || row.schedCase?.type === 'ct') && row.procDate < todayStr) return 'done';
             if (row.procDate && row.procDate < staleCutoff) return 'done';  // 過去逾一週 → 假設已做，不累積待做
             return 'pending';

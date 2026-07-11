@@ -2031,31 +2031,8 @@
         return `<span class="${cls}">${withBadges}</span>`;
     }
 
-    // ===== 📍 本次實際（date-based，跟 * 無關）=====
-    // procedure 行（有 CT NB/SONO/TAME/pRF/CT Bx 關鍵字）+ 日期 ≤ 今天 → 尾端長 📍。點 📍 記/看「實際做了什麼」。
-    // 存 opd/patients/{rec}/procActual/{procDate}（病人層、永久，plan 帶到下次時 📍 自然再長出來）。
-    // ⚠ 實際內容不寫進 plan（S1/2 等節位會被日期掃描器誤判）；日期抽取用 leading-char gate 防 L3/4/5 誤判
-    const PROC_LINE_KW = /\bCT\s*(?:NB|Bx|biopsy)\b|\bSONO\b|\b[cs]?TAME\b|\bp?RF\b/i;
-    function extractProcLineDate(line, visitDate) {
-        if (!PROC_LINE_KW.test(line)) return null;
-        const t = line.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, ''); // 剝 RTC 日期
-        const vYr = parseInt((visitDate || formatDate(new Date())).slice(0, 4), 10);
-        const re = /(^|[^\d./A-Za-z])(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\b/g;
-        let m;
-        while ((m = re.exec(t)) !== null) {
-            const yy = m[2] ? 2000 + parseInt(m[2], 10) : vYr;
-            const mo = parseInt(m[3], 10), dd = parseInt(m[4], 10);
-            if (!isRealDate(yy, mo, dd)) continue;
-            return `${yy}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-        }
-        return null;
-    }
-    function procActualPinHtml(line, rec, visitDate) {
-        const iso = extractProcLineDate(line, visitDate);
-        if (!iso || iso > formatDate(new Date())) return '';  // 非 procedure 行 / 未來還沒做 → 不長
-        const actual = state.patients[rec]?.procActual?.[iso] || '';
-        return ` <button type="button" class="proc-pin${actual ? ' has' : ''}" data-pin-rec="${escapeAttr(rec)}" data-pin-date="${escapeAttr(iso)}" title="${actual ? '本次實際（點看/改）' : '記錄本次實際做了什麼'}">📍</button>`;
-    }
+    // 📍 本次實際已移到 procedure list（每列 .plc-pin，2026-07-11）——看診畫面 inline 📍 因 plan slicing +
+    // 日期常與 procedure 分行而失效，已移除。當日做的 procedure 靠 tag 在 proc list 補「當日列」承接。
 
     function pickBadgeClass(c) {
         // 「本次」 anchor
@@ -2458,11 +2435,10 @@
                     }${showLines.map(line => {
                         const html = highlightPlanLine(line);
                         if (!html) return '';
-                        const pin = procActualPinHtml(line, v.recordNumber, date);
                         if (v.propagatedTo && /回診/.test(line)) {
-                            return html + ` <span class="jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>` + pin;
+                            return html + ` <span class="jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedTo)}" title="點擊跳到 ${escapeAttr(v.propagatedTo)}">→ ${escapeHtml(v.propagatedTo.slice(5))}</span>`;
                         }
-                        return html + pin;
+                        return html;
                     }).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 `}</td>
                 <td class="col-tags tag-edit-trigger" data-record="${escapeAttr(v.recordNumber)}" title="雙擊編輯標籤"><div class="visit-tags">${txDot}${tagChips}${jumpChips}</div></td>
@@ -2501,7 +2477,7 @@
             : '<span class="status-badge draft">草稿</span>';
         const acLine = (p.anticoagState === 'yes' && (p.anticoagulants || []).length)
             ? `<div class="vm-ac">🩸 ${(p.anticoagulants || []).map(escapeHtml).join(' / ')}</div>` : '';
-        const planHtml = showLines.map(l => { const h = highlightPlanLine(l); return h ? h + procActualPinHtml(l, v.recordNumber, date) : ''; }).filter(Boolean).join('<br>');
+        const planHtml = showLines.map(l => highlightPlanLine(l)).filter(Boolean).join('<br>');
         let extraHtml = '';
         if (expanded) {
             const blocks = [];
@@ -3049,59 +3025,6 @@
     }
 
     // 📍 本次實際 popover：看/填「這次實際做了什麼」→ 存 opd/patients/{rec}/procActual/{procDate}
-    function openProcActualPopover(pinEl) {
-        document.querySelectorAll('.proc-actual-popover').forEach(p => p.remove());
-        const rec = pinEl.dataset.pinRec;
-        const procDate = pinEl.dataset.pinDate;
-        const cur = state.patients[rec]?.procActual?.[procDate] || '';
-        const pop = document.createElement('div');
-        pop.className = 'stats-pt-popover proc-actual-popover';
-        pop.innerHTML = `
-            <div class="pp-head">
-                <span>📍 本次實際 · ${escapeHtml(rec)} · ${escapeHtml(formatDateLabel(procDate))}</span>
-                <button class="pp-close" title="關閉">×</button>
-            </div>
-            <div style="font-size:0.75rem;color:var(--text-muted);margin:2px 0 6px;">跟計畫一樣可留空；不同才填（如 L5/S, S1/2）。不寫進 plan，只記在病人層</div>
-            <textarea class="pa-input" rows="2" placeholder="實際做了什麼…" style="width:100%;font-family:inherit;font-size:0.86rem;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:6px;">${escapeHtml(cur)}</textarea>
-            <div class="pp-actions"><button data-action="save">✓ 存</button>${cur ? '<button data-action="clear">清除</button>' : ''}</div>
-        `;
-        document.body.appendChild(pop);
-        const r = pinEl.getBoundingClientRect();
-        const pw = 320;
-        pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left - 40)) + 'px';
-        pop.style.top = (r.bottom + 6) + 'px';
-        const ph = pop.offsetHeight;
-        if (window.innerHeight - r.bottom < ph + 12 && r.top > ph + 12) pop.style.top = (r.top - ph - 6) + 'px';
-        const ta = pop.querySelector('.pa-input');
-        ta.focus();
-        pop.querySelector('.pp-close').addEventListener('click', () => pop.remove());
-        pop.querySelector('[data-action="save"]').addEventListener('click', () => { saveProcActual(rec, procDate, ta.value); pop.remove(); });
-        pop.querySelector('[data-action="clear"]')?.addEventListener('click', () => { saveProcActual(rec, procDate, ''); pop.remove(); });
-        const close = (ev) => {
-            if (ev && ev.type === 'mousedown' && pop.contains(ev.target)) return;
-            if (ev && ev.type === 'keydown' && ev.key !== 'Escape') return;
-            pop.remove();
-            document.removeEventListener('mousedown', close);
-            document.removeEventListener('keydown', close);
-        };
-        setTimeout(() => { document.addEventListener('mousedown', close); document.addEventListener('keydown', close); }, 0);
-    }
-
-    async function saveProcActual(rec, procDate, value) {
-        const v = value.trim();
-        try {
-            await update(ref(fbDb, `opd/patients/${rec}`), { [`procActual/${procDate}`]: v || null });
-            // 本地 state 同步 + 重畫（📍 亮/淡跟著變）
-            const p = state.patients[rec] = state.patients[rec] || {};
-            p.procActual = p.procActual || {};
-            if (v) p.procActual[procDate] = v; else delete p.procActual[procDate];
-            renderVisitList();
-            setStatus('connected', v ? `📍 ${rec} 本次實際已存` : `📍 ${rec} 本次實際已清除`);
-        } catch (err) {
-            reportWriteError(err, '本次實際');
-        }
-    }
-
     async function openStatsPatientPopover(rowEl) {
         document.querySelectorAll('.stats-pt-popover').forEach(p => p.remove());
         const recordNumber = rowEl.dataset.ptRecord;
@@ -3503,13 +3426,6 @@
             if (txDotEl) {
                 e.stopPropagation();
                 cycleTxOutcome(txDotEl.dataset.txRecord);
-                return;
-            }
-            // 📍 本次實際 pin
-            const pinEl = e.target.closest('.proc-pin');
-            if (pinEl) {
-                e.stopPropagation();
-                openProcActualPopover(pinEl);
                 return;
             }
             // 手機卡片：展開/收合
