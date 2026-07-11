@@ -2031,8 +2031,16 @@
         return `<span class="${cls}">${withBadges}</span>`;
     }
 
-    // 📍 本次實際已移到 procedure list（每列 .plc-pin，2026-07-11）——看診畫面 inline 📍 因 plan slicing +
-    // 日期常與 procedure 分行而失效，已移除。當日做的 procedure 靠 tag 在 proc list 補「當日列」承接。
+    // 📍 本次實際：記錄在 procedure list（每列 .plc-pin）。看診畫面只做「上次實際提醒」（唯讀）——
+    // 顯示「上次門診(propagatedFrom)那次做的實際」，窗 [propFrom, 本次) → 只提醒上次那次、不翻舊帳（9/9 不會顯示 7/8）。
+    // 不解析 plan 行、不管 slicing（直接讀 procActual by date），徹底避開「日期分行寫 + [本次] 切掉」兩個死結。
+    function procActualReminder(p, propFrom, visitDate) {
+        const pa = (p && p.procActual) || {};
+        if (!propFrom) return '';
+        const ds = Object.keys(pa).filter(d => d >= propFrom && d < visitDate && pa[d]).sort();
+        if (!ds.length) return '';
+        return `<div class="proc-actual-reminder">${ds.map(d => `📍 上次 ${escapeHtml(d.slice(5).replace('-', '/'))}：${escapeHtml(pa[d])}`).join('<br>')}</div>`;
+    }
 
     function pickBadgeClass(c) {
         // 「本次」 anchor
@@ -2430,7 +2438,7 @@
                     `;
                 })()}</td>
                 <td class="col-plan">${state.planEditMode ? `<textarea class="plan-edit" data-record="${escapeAttr(v.recordNumber)}" data-date="${escapeAttr(date)}" rows="${Math.max(3, planLines.length)}" spellcheck="false">${escapeHtml(v.plan || '')}</textarea>` : `
-                    <div class="plan-body">${
+                    <div class="plan-body">${procActualReminder(p, v.propagatedFrom, date)}${
                         (v.propagatedFrom ? `<span class="jump-chip clickable" data-jump-date="${escapeAttr(v.propagatedFrom)}" title="點擊跳回 ${escapeAttr(v.propagatedFrom)}">← 回診 ${escapeHtml(v.propagatedFrom.slice(5))}</span><br>` : '')
                     }${showLines.map(line => {
                         const html = highlightPlanLine(line);
@@ -2500,6 +2508,7 @@
             </div>
             ${acLine}
             ${tagChips ? `<div class="vm-tags visit-tags">${tagChips}</div>` : ''}
+            ${procActualReminder(p, v.propagatedFrom, date)}
             ${planHtml ? `<div class="vm-plan">${planHtml}</div>` : ''}
             ${extraHtml}
             <button type="button" class="vm-expand" data-vm-expand="${escapeAttr(v.recordNumber)}">${toggleLabel}</button>
