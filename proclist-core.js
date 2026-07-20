@@ -413,7 +413,9 @@ const PLC_CSS = `
 .pv-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .pv-chip { padding: 6px 14px; background: var(--bg-secondary,#1e293b); border: 1px solid var(--border,#475569); color: var(--text-secondary,#94a3b8); border-radius: 16px; font-family: inherit; font-size: 0.85rem; cursor: pointer; }
 .pv-chip.active { background: rgba(99,102,241,0.2); border-color: var(--color-tag-default,#6366f1); color: var(--text-primary,#f1f5f9); font-weight: 600; }
-.proc-table-wrapper { overflow-x: auto; }
+/* ⚠ 不要加 overflow（含 overflow-x:auto）——會讓 wrapper 變成 scroll container，thead 的 sticky 就黏在
+   一個不垂直捲的容器裡＝失效。table-layout:fixed + width:100% 本來就不會橫向溢出（手機走卡片） */
+.proc-table-wrapper { overflow: visible; }
 .proc-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.85rem; }
 .proc-table col.pc-c-date { width: 82px; }
 .proc-table col.pc-c-rec { width: 118px; }
@@ -423,7 +425,12 @@ const PLC_CSS = `
 .proc-table col.pc-c-st { width: 5.6rem; }
 .proc-table col.pc-c-med { width: 5.8rem; }
 /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
-.proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border,#475569); position: sticky; top: 0; z-index: 1; }
+.proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; position: sticky; top: 0; z-index: 5; box-shadow: inset 0 -1px 0 var(--border,#475569); }
+/* 區間 procedure 台數（針類 + Arthro）：塞在最寬的 plan 欄表頭右側空位，跟著凍結表頭常駐 */
+.plc-hdr-cnt { float: right; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; cursor: help; }
+.plc-hdr-cnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
+.plc-mcnt { padding: 6px 4px; font-size: 0.85rem; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; }
+.plc-mcnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
 .proc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border,#475569); vertical-align: top; word-break: break-word; }
 .proc-table .pc-c-labs { white-space: pre-line; font-size: 0.78rem; color: var(--text-secondary,#94a3b8); }
 .pc-plan-body { line-height: 1.5; font-size: 0.82rem; }
@@ -760,6 +767,19 @@ export function createProcList(deps) {
         // 統計列
         const cnt = { pending: 0, done: 0, dc: 0 };
         dated.forEach(r => cnt[stOf(r)]++);
+        // 區間 procedure 台數「針類+Arthro」（user 慣用記法 ex 8+3）：
+        //   針類 = PROC_FAMILY_FLAT（SONO/TAME/cTAME/sTAME/CT NB/pRF/CT Bx）；MRI/CT 純影像預約不計
+        //   分母用 dated（＝範圍內、非暫定），不隨視圖 chip 變；DC＝取消不做 → 不計
+        const isArthroRow = (r) => r.schedCase?.type === 'arthro' || (r.tags || []).includes('Arthro');
+        let nNeedle = 0, nArthro = 0;
+        dated.forEach(r => {
+            if (stOf(r) === 'dc') return;
+            if (isArthroRow(r)) nArthro++;
+            else if ((r.tags || []).some(t => PROC_FAMILY_FLAT.has(normalizeTag(t)))) nNeedle++;
+        });
+        const cntTitle = `此範圍 procedure 台數\n針類 ${nNeedle}（SONO / TAME / CT NB / pRF / CT Bx）\nArthro ${nArthro}\n不含：MRI/CT 影像預約、DC、暫定、未定日期`;
+        const cntHtml = `<span class="plc-hdr-cnt" title="${escapeAttr(cntTitle)}"><span class="plc-cnt-lb">本區間</span>${nNeedle}+${nArthro}</span>`;
+        const cntHtmlM = `<div class="plc-mcnt" title="${escapeAttr(cntTitle)}"><span class="plc-cnt-lb">本區間 procedure</span>${nNeedle}+${nArthro}</div>`;
         const statusEl = document.getElementById(ids.status);
         const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')} 起 · `
             : (range === 'between' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '');
@@ -892,7 +912,7 @@ export function createProcList(deps) {
 
         const tableWrap = (bodyHtml) => `<div class="proc-table-wrapper"><table class="proc-table">
             <colgroup><col class="pc-c-date"><col class="pc-c-rec"><col class="pc-c-labs"><col class="pc-c-tags"><col class="pc-c-plan"><col class="pc-c-st"><col class="pc-c-med"></colgroup>
-            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Procedure 行 / 註記</th><th>狀態</th><th>藥</th></tr></thead>
+            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Procedure 行 / 註記${cntHtml}</th><th>狀態</th><th>藥</th></tr></thead>
             <tbody>${bodyHtml}</tbody></table></div>`;
 
         let desktopHtml = '';
@@ -918,7 +938,8 @@ export function createProcList(deps) {
             desktopHtml = tableWrap(undatedBlockD + overdueBlockD + list.map(r => rowHtml(r, false)).join(''));
             mobileHtml = undatedBlockM + overdueBlockM + list.map(r => rowHtml(r, true)).join('');
         }
-        wrap.innerHTML = `<div class="plc-scope"><div class="proc-desktop">${desktopHtml}</div><div class="proc-mobile">${mobileHtml}</div></div>`;
+        // 手機沒有表頭可掛 → 台數改成清單頂端一條（同一份 cntTitle）
+        wrap.innerHTML = `<div class="plc-scope"><div class="proc-desktop">${desktopHtml}</div><div class="proc-mobile">${cntHtmlM}${mobileHtml}</div></div>`;
         if (wantScroll) scrollToTodayInList();
     }
 
