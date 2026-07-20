@@ -427,7 +427,7 @@ const PLC_CSS = `
 /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
 .proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; position: sticky; top: 0; z-index: 5; box-shadow: inset 0 -1px 0 var(--border,#475569); }
 /* 區間 procedure 台數（針類 + Arthro）：塞在最寬的 plan 欄表頭右側空位，跟著凍結表頭常駐 */
-.plc-hdr-cnt { float: right; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; cursor: help; }
+.plc-hdr-cnt { margin-left: 10px; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; cursor: help; white-space: nowrap; }
 .plc-hdr-cnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
 .plc-mcnt { padding: 6px 4px; font-size: 0.85rem; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; }
 .plc-mcnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
