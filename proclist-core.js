@@ -195,7 +195,7 @@ const normRec = (r) => String(r || '').toUpperCase().replace(/[^A-Z0-9]/g, '').r
 
 // 錨點三訊號（取最後命中行）：① [本次] 標記 ② visit 自身日期的 RTC 行 ③ 行首=visit 自身日期。
 // deriveProcRows 與 findSameDayPlanLine 共用——改訊號規則只改這裡（曾是兩套掃描器漂移的坑）
-function findAnchorIdx(planLines, vDate) {
+export function findAnchorIdx(planLines, vDate) {
     let anchorIdx = -1;
     const vYr = parseInt(vDate.slice(0, 4), 10), vMo = parseInt(vDate.slice(5, 7), 10), vDd = parseInt(vDate.slice(8, 10), 10);
     const selfDateHead = new RegExp(`^[-*\\s]*(?:${String(vYr).slice(2)}\\/)?0?${vMo}\\/0?${vDd}\\b`);

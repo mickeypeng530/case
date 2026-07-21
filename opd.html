@@ -522,7 +522,7 @@
         ref, set, get, update, remove, onValue
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     // Procedure 清單共用模組（推導規則 + 渲染 + 狀態循環都住那裡一份；index.html 掛同一張清單）
-    import { createProcList, deriveProcRows, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
+    import { createProcList, deriveProcRows, findAnchorIdx, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
     const PROC_LIVE_KEY = 'opd:procLiveSync';  // ⚡即時同步開關記憶
 
     // 版本戳：workflow 部署時把 __BUILD__ 換成 git short SHA（本地未替換 → 'dev'）
@@ -2015,11 +2015,37 @@
     //     統計卻直接吃 summarizePlan().nextRTC（整份掃 + 取最早）→ 累積型 plan 的歷史行
     //     無年份被補成今年，去年的 08/13 壓過本次寫的 10/28。
     // ① plan 中「回診」標記行的未來日期（user 明示，最優先）
-    // ② 沒標記 → summarizePlan 的未來 RTC 取最早（幽靈年風險仍在，待 B 階段加錨點閘）
-    // 回傳 { date, marked, summary }；marked=true 代表來自「回診」標記（呼叫端據此決定要不要 fallback）
+    // ② 沒標記 → 只掃「錨點之後」的段落（累積型 plan 的歷史行全住錨點上方）
+    // ③ 段內「明確帶年份 / 當年即成立」的未來 RTC 取最早
+    // ④ 都沒有才用跨年推斷（無年份 MM/DD 且比門診日早 ≥6 個月 → 補明年）取最早
+    //    ⚠ ④ 必須墊底：W61564 案例若讓推斷與明確年份平起平坐，去年的 04/09 會壓過真正的 26/04/22
+    // ⑤ 全空 → null（顯示「無」，不亂猜）
+    // 回傳 { date, marked, candidates, summary }；marked=true 代表來自「回診」標記
+    // 全備份實測（933 筆可驗證 visit，ground truth = 實際下次就診日）：
+    //   舊解 命中 594 / 猜錯 127 / 無答案 212；D 解 命中 645 / 猜錯 107 / 無答案 181，零退步
+    function collectFutureRTC(text, refDate) {
+        // 「5/27 or 6/10 RTC」→ 兩個日期都吃得到（跟 summarizePlan 同一條預處理）
+        const expanded = (text || '').replace(
+            /(\d{1,2}\/\d{1,2})(\s*(?:or|或|,|，|\/|／)\s*)(\d{1,2}\/\d{1,2})(\s*RTC)/gi, '$1$4$2$3$4');
+        const solid = [], guess = [];
+        const iso = (y, mo, dd) => `${y}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+        for (const m of expanded.matchAll(RTC_PATTERN)) {
+            const yy = m[1] ? 2000 + parseInt(m[1], 10) : parseInt(refDate.slice(0, 4), 10);
+            const mo = parseInt(m[2], 10), dd = parseInt(m[3], 10);
+            if (!isRealDate(yy, mo, dd)) continue;                    // 4/31 等不收
+            const s = iso(yy, mo, dd);
+            if (s > refDate) { solid.push(s); continue; }
+            if (!m[1] && parseInt(refDate.slice(5, 7), 10) - mo >= 6 && isRealDate(yy + 1, mo, dd)) {
+                guess.push(iso(yy + 1, mo, dd));                      // 12 月門診寫 1/15 回診
+            }
+        }
+        return { solid: [...new Set(solid)].sort(), guess: [...new Set(guess)].sort() };
+    }
+
     function resolveNextRTC(plan, visitDate, summary) {
         const sum = summary || summarizePlan(plan, visitDate);
-        for (const line of (plan || '').split(/\r?\n/)) {
+        const lines = (plan || '').split(/\r?\n/);
+        for (const line of lines) {
             if (!/回診/.test(line)) continue;
             if (/\bself\s*RTC\b/i.test(line)) continue;   // 該行本身是 self RTC 才略過
             const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
@@ -2027,9 +2053,14 @@
             const yy = m[1] ? `20${m[1]}` : new Date(visitDate).getFullYear().toString();
             if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) continue; // 4/31 不能當回診日
             const cand = `${yy}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-            if (cand > visitDate) return { date: cand, marked: true, summary: sum };
+            if (cand > visitDate) return { date: cand, marked: true, candidates: [cand], summary: sum };
         }
-        return { date: sum.nextRTC || null, marked: false, summary: sum };
+        // 錨點法（findAnchorIdx 從 proclist-core.js 共用——推導器同源，別再開第四份掃描器）
+        const a = findAnchorIdx(lines, visitDate);
+        const seg = (a >= 0 ? lines.slice(a + 1) : lines).join('\n');
+        const { solid, guess } = collectFutureRTC(seg, visitDate);
+        const candidates = solid.length ? solid : guess;
+        return { date: candidates[0] || null, marked: false, candidates, summary: sum };
     }
 
     function highlightPlanLine(line) {
@@ -2325,6 +2356,9 @@
     function renderVisitRow(v, date) {
             const p = state.patients[v.recordNumber] || {};
             const summary = summarizePlan(v.plan, date);
+            // 「下次 RTC」/「多 RTC」pill 一律走 resolveNextRTC —— 跟回診日統計、✓確認同一套
+            // （summary.nextRTC/rtcDates 是整份掃的原始值，會把去年的 RTC 行當成今年的未來）
+            const rtcInfo = resolveNextRTC(v.plan, date, summary);
             const planLines = (v.plan || '').split(/\r?\n/);
             // 去除前後空行避免顯示空白
             while (planLines.length && !planLines[0].trim()) planLines.shift();
@@ -2337,8 +2371,8 @@
 
             const summaryPills = [
                 ...summary.items.map(it => `<span class="pill">${escapeHtml(it.name)}×${it.count}</span>`),
-                summary.nextRTC ? `<span class="pill rtc">下次 RTC: ${summary.nextRTC.slice(5)}</span>` : '',
-                summary.hasMultiRTC ? `<span class="pill warn">多 RTC ${summary.rtcDates.length}</span>` : '',
+                rtcInfo.date ? `<span class="pill rtc">下次 RTC: ${rtcInfo.date.slice(5)}</span>` : '',
+                rtcInfo.candidates.length > 1 ? `<span class="pill warn">多 RTC ${rtcInfo.candidates.length}</span>` : '',
                 summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
             ].filter(Boolean).join('');
 
@@ -2365,7 +2399,7 @@
                 v.status === 'confirmed' ? '<span class="status-badge confirmed">已確認</span>' : '<span class="status-badge draft">草稿</span>',
                 p.firstVisitDate === v.date ? '<span class="status-badge first-visit">初診</span>' : '',
                 summary.isSelfRTC ? '<span class="status-badge self-rtc">自約</span>' : '',
-                summary.hasMultiRTC ? '<span class="status-badge warning">多 RTC</span>' : ''
+                rtcInfo.candidates.length > 1 ? '<span class="status-badge warning">多 RTC</span>' : ''
             ].filter(Boolean).join('');
             const jumpChips = '';
 
@@ -2693,26 +2727,28 @@
             return;
         }
 
-        // 沒「回診」標記 → fallback 用 RTC_PATTERN 抓的：單一 RTC 直接用、多 RTC 跳 prompt
+        // 沒「回診」標記 → fallback 用 resolveNextRTC 的候選（已過錨點閘，不含歷史行的幽靈年）
+        // ⚠ 別再用 summary.rtcDates —— 那是整份掃的原始清單，會把去年的 RTC 行也列進 prompt
+        const cands = resolved.candidates || [];
         if (!nextRTC) {
-            if (!summary.rtcDates || summary.rtcDates.length === 0) {
+            if (cands.length === 0) {
                 setStatus('connected', '✓ 確認（plan 無 RTC 日期 / 無「回診」標記）');
                 return;
             }
-            if (summary.rtcDates.length === 1) {
-                nextRTC = summary.rtcDates[0];
+            if (cands.length === 1) {
+                nextRTC = cands[0];
             } else {
                 const choice = prompt(
-                    `本次 plan 有 ${summary.rtcDates.length} 個未來 RTC：\n${summary.rtcDates.join('\n')}\n\n` +
+                    `本次 plan 有 ${cands.length} 個未來 RTC：\n${cands.join('\n')}\n\n` +
                     `（提示：在 plan 該日期那行加「回診」可自動選定）\n\n` +
                     `請輸入要傳遞的日期（YYYY-MM-DD）；留空取消傳遞：`,
-                    summary.rtcDates[0]
+                    cands[0]
                 );
                 if (!choice) {
                     setStatus('connected', '✓ 確認（已取消 RTC 傳遞）');
                     return;
                 }
-                if (!summary.rtcDates.includes(choice)) {
+                if (!cands.includes(choice)) {
                     alert(`「${choice}」不在 RTC 候選日期，取消傳遞`);
                     return;
                 }
