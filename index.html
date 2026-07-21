@@ -123,12 +123,12 @@
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
         }
+        /* ⚠ 節點是 appendChild 到 <body> 的（繞 tabs-container overflow 的 iOS Safari bug），
+           所以 absolute 的 top:100%/right:0 會以 body 為基準跑到頁面右下角。改 fixed，
+           座標由 positionOldTabsDropdown() 依按鈕 rect 算；手機 ≤768px 走 @media 底部抽屜（該函式會清掉 inline） */
         .old-tabs-dropdown {
             display: none;
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 4px;
+            position: fixed;
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -4386,7 +4386,8 @@
                             dropdown.classList.remove('show');
                             overlay?.classList.remove('show');
                         } else {
-                            dropdown.classList.add('show');
+                            dropdown.classList.add('show');   // 先 show 才量得到 offsetWidth
+                            positionOldTabsDropdown(oldTabsBtn);
                             overlay?.classList.add('show');
                         }
                     }
@@ -4426,6 +4427,12 @@
                 }
             });
 
+            // fixed 定位在捲動/改視窗大小後會失準（按鈕動了、選單沒動）→ 直接收起來
+            // （手機是 CSS 底部抽屜，不受捲動影響 → 不收）
+            const hideOldTabsIfDesktop = () => { if (window.innerWidth > 768) hideOldTabsDropdown(); };
+            window.addEventListener('resize', hideOldTabsDropdown);
+            window.addEventListener('scroll', hideOldTabsIfDesktop, { passive: true });
+
             // 下拉選單已附到 body，事件需另外綁
             document.addEventListener('click', (e) => {
                 const closeItem = e.target.closest('.old-tabs-dropdown .old-tab-close');
@@ -4452,6 +4459,20 @@
                 document.getElementById('old-tabs-overlay')?.classList.add('show');
             }
             
+            // 下拉選單附在 body → 定位基準不是按鈕，開啟時自己算（fixed 座標）
+            // ⚠ 手機 ≤768px 走 CSS 底部抽屜，必須把 inline 座標清掉，否則 inline 會壓過 @media
+            function positionOldTabsDropdown(btn) {
+                const dd = document.getElementById('old-tabs-dropdown');
+                if (!dd || !btn) return;
+                if (window.innerWidth <= 768) { dd.style.top = ''; dd.style.left = ''; dd.style.right = ''; return; }
+                const r = btn.getBoundingClientRect();
+                dd.style.right = 'auto';
+                dd.style.top = `${Math.round(r.bottom + 4)}px`;
+                // 靠按鈕右緣對齊；貼近視窗邊緣時往內收（窄螢幕不溢出）
+                const w = dd.offsetWidth || 180;
+                dd.style.left = `${Math.round(Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)))}px`;
+            }
+
             function hideOldTabsDropdown() {
                 document.getElementById('old-tabs-dropdown')?.classList.remove('show');
                 document.getElementById('old-tabs-overlay')?.classList.remove('show');
