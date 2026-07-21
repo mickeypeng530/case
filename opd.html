@@ -2010,6 +2010,28 @@
         };
     }
 
+    // 「下次回診日」的單一解析來源 —— 回診日統計與「✓ 確認」的 RTC 傳遞共用。
+    //   ⚠ 曾是兩套實作打架的坑（2026-07-21 F70697）：propagateRTC 有看「回診」標記、
+    //     統計卻直接吃 summarizePlan().nextRTC（整份掃 + 取最早）→ 累積型 plan 的歷史行
+    //     無年份被補成今年，去年的 08/13 壓過本次寫的 10/28。
+    // ① plan 中「回診」標記行的未來日期（user 明示，最優先）
+    // ② 沒標記 → summarizePlan 的未來 RTC 取最早（幽靈年風險仍在，待 B 階段加錨點閘）
+    // 回傳 { date, marked, summary }；marked=true 代表來自「回診」標記（呼叫端據此決定要不要 fallback）
+    function resolveNextRTC(plan, visitDate, summary) {
+        const sum = summary || summarizePlan(plan, visitDate);
+        for (const line of (plan || '').split(/\r?\n/)) {
+            if (!/回診/.test(line)) continue;
+            if (/\bself\s*RTC\b/i.test(line)) continue;   // 該行本身是 self RTC 才略過
+            const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
+            if (!m) continue;
+            const yy = m[1] ? `20${m[1]}` : new Date(visitDate).getFullYear().toString();
+            if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) continue; // 4/31 不能當回診日
+            const cand = `${yy}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+            if (cand > visitDate) return { date: cand, marked: true, summary: sum };
+        }
+        return { date: sum.nextRTC || null, marked: false, summary: sum };
+    }
+
     function highlightPlanLine(line) {
         const trimmed = line.trim();
         if (!trimmed) return '';
@@ -2127,8 +2149,9 @@
             if (v.propagatedTo && /^\d{4}-\d{2}-\d{2}$/.test(v.propagatedTo)) {
                 rtcDate = v.propagatedTo;
             } else {
-                const sum = summarizePlan(v.plan, date);
-                if (sum.nextRTC && /^\d{4}-\d{2}-\d{2}$/.test(sum.nextRTC)) rtcDate = sum.nextRTC;
+                // 跟「✓ 確認」同一套解析（resolveNextRTC）：「回診」標記優先，別再各走各的
+                const r = resolveNextRTC(v.plan, date);
+                if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) rtcDate = r.date;
             }
             if (rtcDate) (rtcMap[rtcDate] = rtcMap[rtcDate] || []).push(v);
         });
@@ -2658,23 +2681,11 @@
     async function propagateRTC(date, recordNumber, visit) {
         const summary = summarizePlan(visit.plan, date);
 
-        // 找 plan 中標記「回診」的那行 → 它的未來日期是傳遞目標（優先於 self RTC 全域旗標）
-        let nextRTC = null;
-        const planLines = (visit.plan || '').split(/\r?\n/);
-        for (const line of planLines) {
-            if (!/回診/.test(line)) continue;
-            // 該行本身若是 self RTC 才略過
-            if (/\bself\s*RTC\b/i.test(line)) continue;
-            const m = line.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})/);
-            if (!m) continue;
-            const yy = m[1] ? `20${m[1]}` : new Date(date).getFullYear().toString();
-            if (!isRealDate(parseInt(yy, 10), parseInt(m[2], 10), parseInt(m[3], 10))) continue; // 4/31 不能當傳遞目標
-            const cand = `${yy}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-            if (cand > date) {
-                nextRTC = cand;
-                break;
-            }
-        }
+        // 標記「回診」的那行 → 它的未來日期是傳遞目標（優先於 self RTC 全域旗標）
+        // 解析抽到 resolveNextRTC（與回診日統計共用）；這裡只採「有標記」的結果，
+        // 無標記時仍走下面的 self RTC / 單一 RTC / 多 RTC prompt 三層 fallback
+        const resolved = resolveNextRTC(visit.plan, date, summary);
+        let nextRTC = resolved.marked ? resolved.date : null;
 
         // 沒「回診」標記 → 才檢查 plan 全域 self RTC 旗標
         if (!nextRTC && summary.isSelfRTC) {
