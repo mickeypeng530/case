@@ -35,6 +35,9 @@ function escapeAttr(s) {
     return String(s ?? '').replace(/"/g, '&quot;');
 }
 const DISCUSS_PATTERN = /\b(consider|may|discuss|favor|build|建議|考慮|可能|可考慮|商量|討論)\b/i;
+// 排程標記 [… 已] / [… 待]：user 已經（或確定要）把這件事排進行事曆，比 may/consider 的
+// 試探語氣更強。用來翻案 dash 討論行（見 deriveProcRows）。⚠ [自費]/[本次] 不含 已/待，不會誤中
+const SCHED_MARK_RE = /\[[^\]]*[已待][^\]]*\]/;
 function lineHasInvalidDate(line) {
     const re = /(^|[^\d./])(?:(\d{2,4})\/)?(\d{1,2})\/(\d{1,2})(?![\d./])/g;
     let m;
@@ -274,7 +277,13 @@ export function deriveProcRows(allByDate) {
             scanLines.forEach(line => {
                 const t = line.trim();
                 if (!t) return;
-                if (t.startsWith('-') && DISCUSS_PATTERN.test(t)) return; // 討論/規劃行不算排定
+                // 討論/規劃行不算排定。但 user 常在同一行同時寫試探語氣與排程標記
+                //（1111716：「- may TAME 07/23 0800 [TAME 已]」）——[已]/[待] 是更強的訊號，
+                // 代表這件事真的排了。**只有「帶排程標記 + 有未來日期」才翻案**（見下方 isDiscuss 判斷），
+                // 無日期的討論行維持原樣（否則「- may consider CT NB [待]」會灌爆漏網偵測）
+                const isDiscuss = t.startsWith('-') && DISCUSS_PATTERN.test(t);
+                const hasSchedMark = SCHED_MARK_RE.test(t);
+                if (isDiscuss && !hasSchedMark) return;
                 const tags = [];
                 for (const k of PROC_LINE_RES) {
                     if (!k.re.test(t)) continue;
@@ -305,6 +314,8 @@ export function deriveProcRows(allByDate) {
                     }
                     if (iso > vDate && !futureDates.includes(iso)) futureDates.push(iso);
                 }
+                // 帶排程標記的討論行：有未來日期才翻案成列；沒日期就回到原本的「討論行跳過」
+                if (isDiscuss && !futureDates.length) return;
                 const gated = tags.filter(tagAllowed);
                 if (futureDates.length) {
                     if (!isConfirmed) return;  // ④A：未確認來源不列（不標 datedGlobal，讓真正 confirmed 的漏網照抓）
