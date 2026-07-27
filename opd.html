@@ -673,15 +673,17 @@
     }
 
     // ========== 資料備份（防單點故障）==========
-    // 讀 opd + scheduler + readings 全樹 → 下載成 JSON。
-    // 用現有登入 session（rules 只允許讀這三個節點，root 讀不到，故分開抓）。
+    // 讀 opd + scheduler 全樹 → 下載成 JSON。
+    // 用現有登入 session（rules 只允許讀這兩個節點，root 讀不到，故分開抓）。
+    // ⚠ 曾列第三個節點 'readings'：RTDB 裡根本不存在、rules 也沒有它 → 每次備份都白發一個
+    //   注定 Permission denied 的請求（被下面的 try/catch 靜默吞掉）。2026-07-27 移除。
     async function downloadBackup(silent = false) {
         const statusEl = document.getElementById('backup-status');
         const setMsg = (m) => { if (statusEl) statusEl.textContent = m; };
         if (!fbDb) { setMsg('⚠ 尚未連線'); return false; }
         try {
             setMsg('讀取中…');
-            const nodes = ['opd', 'scheduler', 'readings'];
+            const nodes = ['opd', 'scheduler'];
             const out = { _meta: { exportedAt: new Date().toISOString(), app: 'OPD', nodes } };
             for (const n of nodes) {
                 try {
