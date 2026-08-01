@@ -76,38 +76,42 @@
             border-radius: 10px;
         }
 
+        /* ⚠ 緊湊尺寸是為了「最近 5 個分頁 + 舊分頁鈕 + ＋新增」在 1000px 容器內維持**單行**。
+           實測（Noto Sans TC 載入後）：單 tab 106px、舊分頁鈕 122px、＋新增 61px，5 組總寬 743px
+           → 單行 48px，一路到 viewport 780px 都不換行；用回 8px/14px + .85rem 則 900px 就會斷成兩行(95px)。
+           改 padding / font-size 前先確認 5 組還能單行。手機 ≤768px 另有 override（.78rem + 橫捲），不受影響 */
         .tab {
-            padding: 8px 14px;
+            padding: 6px 10px;
             background: transparent;
             border: none;
             color: var(--text-secondary);
             font-family: inherit;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             cursor: pointer;
             border-radius: 6px;
             transition: all 0.15s;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
         }
 
         .tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
         .tab.active { background: var(--color-ct-nb); color: #1a1a2e; font-weight: 600; }
 
         .tab .close-tab {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             opacity: 0.6;
-            margin-left: 4px;
+            margin-left: 2px;
         }
         .tab .close-tab:hover { opacity: 1; }
 
         .add-tab {
-            padding: 8px 12px;
+            padding: 6px 9px;
             background: transparent;
             border: 1px dashed var(--border);
             color: var(--text-muted);
             font-family: inherit;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             cursor: pointer;
             border-radius: 6px;
             transition: all 0.15s;
@@ -141,11 +145,33 @@
         .old-tabs-dropdown.show {
             display: block;
         }
+        /* 年份分組標頭：tab 名稱只有 MM/DD，跨年會撞名（2027 的 05/12-05/23 跟 2026 的一模一樣）
+           → 年份放這裡，點一下收合/展開。sticky 黏 dropdown 自身的捲軸 */
+        .old-tab-group-hd {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .old-tab-group-hd:hover { color: var(--text-primary); }
+        .old-tab-group-hd .caret { display: inline-block; width: 10px; font-size: 0.65rem; }
+        .old-tab-group-count { opacity: 0.7; font-weight: 400; }
+
         .old-tab-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 12px;
+            padding: 10px 12px 10px 22px;
             cursor: pointer;
             border-bottom: 1px solid var(--border);
             font-size: 0.85rem;
@@ -1385,9 +1411,13 @@
                 margin: 12px auto;
             }
             .old-tab-item {
-                padding: 14px 16px;
+                padding: 14px 16px 14px 26px;
             }
-            
+            .old-tab-group-hd {
+                padding: 10px 16px;
+                font-size: 0.8rem;
+            }
+
             /* 手機版顯示時加入背景遮罩 */
             .old-tabs-overlay {
                 display: none;
@@ -2292,6 +2322,14 @@
             return `${formatDateMD(start)}-${formatDateMD(end)}`;
         }
 
+        // 分頁年份（舊分頁下拉分組用）。⚠ getTabName 只有 MM/DD，而且還餵 docx 檔名（exportToDocx），不要動它
+        function tabYear(tab) {
+            return String(tab.statsStartDate || tab.startDate || '').slice(0, 4) || '—';
+        }
+        // 舊分頁下拉展開中的年份；oldTabsYearsInit = 是否已套過預設（之後尊重使用者收合）
+        const oldTabsExpandedYears = new Set();
+        let oldTabsYearsInit = false;
+
         function getActiveTab() {
             return state.tabs.find(t => t.id === state.activeTabId);
         }
@@ -2329,6 +2367,9 @@
 
         function deleteTab(tabId) {
             state.tabs = state.tabs.filter(t => t.id !== tabId);
+            // caseList 是綁 tabId 的（cellData 是日期索引，不受影響）→ 不一起刪就變孤兒，
+            // 永遠留在 scheduler 節點被每次 onValue 重複下載。saveToStorage 是整包 set，刪掉 key 就會消失
+            if (state.caseList) delete state.caseList[tabId];
             if (state.activeTabId === tabId) {
                 state.activeTabId = state.tabs[0]?.id || null;
             }
@@ -2361,11 +2402,14 @@
                 return dateA - dateB;
             });
             
-            // 分成最新 4 個和舊分頁
-            const recentTabs = sortedTabs.slice(-4);
-            const oldTabs = sortedTabs.slice(0, -4);
-            
-            // 渲染最新 4 個分頁
+            // 分成最新 5 個和舊分頁
+            // ⚠ 5 是「不讓 tab bar 換行」的上限（見 .tab 的緊湊尺寸註解）：5 組總寬 743px < 容器 984px。
+            //   要再加到 6 之前先量——6 組總寬 853px，viewport <920px 就會斷成兩行
+            const RECENT_TAB_COUNT = 5;
+            const recentTabs = sortedTabs.slice(-RECENT_TAB_COUNT);
+            const oldTabs = sortedTabs.slice(0, -RECENT_TAB_COUNT);
+
+            // 渲染最新 5 個分頁
             recentTabs.forEach(tab => {
                 const tabEl = document.createElement('button');
                 tabEl.className = `tab ${tab.id === state.activeTabId ? 'active' : ''}`;
@@ -2390,18 +2434,44 @@
                 dropdown.className = 'old-tabs-dropdown';
                 dropdown.id = 'old-tabs-dropdown';
                 
-                // 舊分頁列表（最新的在上面）
-                oldTabs.reverse().forEach(tab => {
-                    const item = document.createElement('div');
-                    item.className = `old-tab-item ${tab.id === state.activeTabId ? 'active' : ''}`;
-                    item.dataset.tabId = tab.id;
-                    item.innerHTML = `
-                        <span class="old-tab-name">${getTabName(tab)}</span>
-                        <span class="old-tab-close" data-tab-id="${tab.id}">✕</span>
-                    `;
-                    dropdown.appendChild(item);
+                // 舊分頁列表：依年份分組（最新年在上，組內最新在上）
+                const byYear = new Map();
+                [...oldTabs].reverse().forEach(tab => {
+                    const y = tabYear(tab);
+                    if (!byYear.has(y)) byYear.set(y, []);
+                    byYear.get(y).push(tab);
                 });
-                
+                const years = [...byYear.keys()].sort().reverse();
+
+                // 首次渲染才決定預設展開（最新年 + 目前分頁那年）；之後尊重使用者收合，別每次重畫又打開
+                if (!oldTabsYearsInit) {
+                    oldTabsYearsInit = true;
+                    if (years.length) oldTabsExpandedYears.add(years[0]);
+                    const act = state.tabs.find(t => t.id === state.activeTabId);
+                    if (act) oldTabsExpandedYears.add(tabYear(act));
+                }
+
+                years.forEach(y => {
+                    const open = oldTabsExpandedYears.has(y);
+                    const hd = document.createElement('div');
+                    hd.className = 'old-tab-group-hd';
+                    hd.dataset.year = y;
+                    hd.innerHTML = `<span><span class="caret">${open ? '▾' : '▸'}</span> ${escapeHtml(y)}</span>`
+                        + `<span class="old-tab-group-count">${byYear.get(y).length}</span>`;
+                    dropdown.appendChild(hd);
+                    if (!open) return;
+                    byYear.get(y).forEach(tab => {
+                        const item = document.createElement('div');
+                        item.className = `old-tab-item ${tab.id === state.activeTabId ? 'active' : ''}`;
+                        item.dataset.tabId = tab.id;
+                        item.innerHTML = `
+                            <span class="old-tab-name">${getTabName(tab)}</span>
+                            <span class="old-tab-close" data-tab-id="${tab.id}">✕</span>
+                        `;
+                        dropdown.appendChild(item);
+                    });
+                });
+
                 oldTabsWrapper.appendChild(oldTabsBtn);
                 container.appendChild(oldTabsWrapper);
 
@@ -4435,6 +4505,19 @@
 
             // 下拉選單已附到 body，事件需另外綁
             document.addEventListener('click', (e) => {
+                // 年份分組收合／展開（renderTabs 會重建整個 dropdown 節點 → 重畫後要自己把 show 與座標補回來）
+                const grpHd = e.target.closest('.old-tabs-dropdown .old-tab-group-hd');
+                if (grpHd) {
+                    e.stopPropagation();
+                    const y = grpHd.dataset.year;
+                    if (oldTabsExpandedYears.has(y)) oldTabsExpandedYears.delete(y);
+                    else oldTabsExpandedYears.add(y);
+                    renderTabs();
+                    document.getElementById('old-tabs-dropdown')?.classList.add('show');
+                    positionOldTabsDropdown(document.querySelector('.old-tabs-btn'));
+                    document.getElementById('old-tabs-overlay')?.classList.add('show');
+                    return;
+                }
                 const closeItem = e.target.closest('.old-tabs-dropdown .old-tab-close');
                 if (closeItem) {
                     e.stopPropagation();
