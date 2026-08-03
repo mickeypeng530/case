@@ -4949,6 +4949,7 @@
         const cameByBucket = {}, dcByBucket = {};
         const patientCountInRange = {};  // recordNumber → visit 次數
         const patientFirstByRec = {};    // recordNumber → earliest date in range
+        const patientDatesInRange = {};  // recordNumber → 期間內實際到診日 []（算到診間隔用；已排未來、noShow 不計）
         const yoyMatrix = {};            // year-month-key → procedure 總數（用於 YoY）
         monthList.forEach(m => { cameByBucket[m.key] = 0; dcByBucket[m.key] = 0; });
 
@@ -4999,6 +5000,8 @@
                 if (!r) return;
                 patientCountInRange[r] = (patientCountInRange[r] || 0) + 1;
                 if (!patientFirstByRec[r] || dateStr < patientFirstByRec[r]) patientFirstByRec[r] = dateStr;
+                // 到診間隔只認「已經發生」的日子（未來已排的不算，否則間隔會被拉長）
+                if (dateStr <= procStatsToday) (patientDatesInRange[r] ||= []).push(dateStr);
             });
             Object.values(allByDate[dateStr]).forEach(v => {
                 if (v.noShow) return;
@@ -5484,6 +5487,51 @@
         // 全時間 view 提示：既有 = 0 是正常
         const isAllTime = rangeVal === 'all';
 
+        // ===== Stats 進階三項（2026-08-01）=====
+        // ① 到診間隔：所有病人「連續兩次到診」的天數。**看中位數不看平均** —— 少數隔一年
+        //    才回來的會把平均拉歪；未來已排的日子已在累加時排除，否則間隔會被灌大。
+        const gaps = [];
+        Object.values(patientDatesInRange).forEach(ds => {
+            const s = [...new Set(ds)].sort();
+            for (let i = 1; i < s.length; i++) {
+                gaps.push(Math.round((new Date(s[i] + 'T00:00') - new Date(s[i - 1] + 'T00:00')) / 86400000));
+            }
+        });
+        gaps.sort((a, b) => a - b);
+        const gapN = gaps.length;
+        const gapMed = gapN ? gaps[Math.floor(gapN / 2)] : null;
+        const gapMean = gapN ? Math.round(gaps.reduce((a, b) => a + b, 0) / gapN) : null;
+        const gapP25 = gapN ? gaps[Math.floor(gapN * 0.25)] : null;
+        const gapP75 = gapN ? gaps[Math.floor(gapN * 0.75)] : null;
+
+        // ② 首診→多次轉化率：首診落在區間內的人，後來有沒有再回來。
+        //    ⚠ 剛來的人還沒機會回診 → 另算「首診滿 90 天」的成熟世代，那個才是可比的數字。
+        const MATURE_DAYS = 90;
+        const matureCut = formatDate(new Date(Date.now() - MATURE_DAYS * 86400000));
+        const newRecs = [];
+        let newAllRepeat = 0, newMature = 0, newMatureRepeat = 0;
+        recsInRange.forEach(r => {
+            const earliest = earliestByRec[r] || state.patients[r]?.firstVisitDate || null;
+            if (!earliest || earliest < startKey) return;      // 不是區間內首診
+            newRecs.push(r);
+            const repeat = (patientCountInRange[r] || 0) >= 2;
+            if (repeat) newAllRepeat++;
+            if (earliest <= matureCut) { newMature++; if (repeat) newMatureRepeat++; }
+        });
+        const convAll = newRecs.length ? Math.round(newAllRepeat / newRecs.length * 100) : null;
+        const convMature = newMature ? Math.round(newMatureRepeat / newMature * 100) : null;
+
+        // ③ 首診來源：只看區間內首診者的 referrer。自由文字欄位，讀取時 normalize 大小寫
+        //    （web / Web 現在會併成一根，先前分開算過導致誤讀）。
+        const refCount = {};
+        newRecs.forEach(r => {
+            const k = (state.patients[r]?.referrer || '').trim().toLowerCase() || '(未記)';
+            refCount[k] = (refCount[k] || 0) + 1;
+        });
+        const refTop = Object.entries(refCount).sort((a, b) => b[1] - a[1]);
+        const refKnown = refTop.filter(([k]) => k !== '(未記)').reduce((s, [, n]) => s + n, 0);
+        const refUnknown = refCount['(未記)'] || 0;
+
         let extrasHtml = `<div style="display:flex; gap:14px; margin-top:18px; flex-wrap:wrap;">
             <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
                 <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">📊 病人結構（區間內）</div>
@@ -5522,6 +5570,49 @@
             <div id="tame-anatomy-section" style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
                 <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;">🧭 TAME 部位分佈（區間內）</div>
                 <div style="color:var(--text-muted);font-size:0.85rem;">載入中...</div>
+            </div>
+            <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:8px;">⏱ 到診間隔（區間內）</div>
+                ${gapN === 0 ? '<div style="color:var(--text-muted);font-size:0.85rem;">區間內沒有同一病人的第二次到診</div>' : `
+                <div style="font-size:1.6rem; font-weight:700; color:var(--text-primary); line-height:1.2;">${gapMed} <span style="font-size:0.9rem; font-weight:400; color:var(--text-muted);">天（中位數）</span></div>
+                <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">
+                    四分位 ${gapP25}–${gapP75} 天 · 平均 ${gapMean} 天 · 樣本 ${gapN} 個間隔
+                </div>
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; padding-top:6px; border-top:1px dashed var(--border);">
+                    ※ 看中位數，平均會被少數隔很久才回來的拉高。未來已排的日期不計。
+                </div>`}
+            </div>
+            <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:8px;">🔄 首診 → 多次轉化（區間內首診者）</div>
+                ${newRecs.length === 0 ? '<div style="color:var(--text-muted);font-size:0.85rem;">區間內沒有首診病人</div>' : `
+                <div style="font-size:1.6rem; font-weight:700; color:#a855f7; line-height:1.2;">${convMature !== null ? convMature + '%' : '—'}
+                    <span style="font-size:0.85rem; font-weight:400; color:var(--text-muted);">（首診滿 ${MATURE_DAYS} 天者）</span></div>
+                <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">
+                    ${convMature !== null ? `${newMatureRepeat} / ${newMature} 人回診 ≥2 次` : `尚無滿 ${MATURE_DAYS} 天的首診世代`}
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px;">
+                    全部首診者：<strong>${convAll}%</strong>（${newAllRepeat} / ${newRecs.length}）
+                </div>
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; padding-top:6px; border-top:1px dashed var(--border);">
+                    ※ 以「滿 ${MATURE_DAYS} 天」那個為準 —— 剛來的人還沒機會回診，會把整體數字壓低。
+                </div>`}
+            </div>
+            <div style="flex:1; min-width:280px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+                <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:8px;">🧭 首診來源（區間內首診者）</div>
+                ${newRecs.length === 0 ? '<div style="color:var(--text-muted);font-size:0.85rem;">區間內沒有首診病人</div>' : `
+                ${refTop.slice(0, 8).map(([k, n], i) => {
+                    const pct = Math.round(n / newRecs.length * 100);
+                    const unk = k === '(未記)';
+                    return `<div style="display:flex; gap:8px; align-items:center; padding:2px 0; font-size:0.84rem; border-top:${i === 0 ? '0' : '1px dashed var(--border)'};">
+                        <span style="flex:1; color:${unk ? 'var(--text-muted)' : 'var(--text-primary)'};">${escapeHtml(k)}</span>
+                        <span style="width:110px; height:6px; background:var(--border); border-radius:3px; overflow:hidden;"><span style="display:block; height:100%; width:${pct}%; background:${unk ? 'var(--text-muted)' : 'var(--accent)'};"></span></span>
+                        <span style="color:var(--text-secondary); font-weight:600; min-width:52px; text-align:right;">${n} (${pct}%)</span>
+                    </div>`;
+                }).join('')}
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; padding-top:6px; border-top:1px dashed var(--border);">
+                    有記錄 ${refKnown} / ${newRecs.length}（未記 ${refUnknown}）。
+                    ※ <code>web</code> = <strong>網路掛號</strong>，不是「從網路找到我」—— 那批人的真實來源不明。
+                </div>`}
             </div>
         </div>`;
         html += extrasHtml;
