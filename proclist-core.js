@@ -293,23 +293,26 @@ export function deriveProcRows(allByDate) {
                 if (!tags.length) return;
                 // 先剝掉「X/Y RTC」的日期 —— 「07/09 RTC, 07/18 15:00 SONO」要取 07/18 不是回診日
                 const tForDate = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
+                // 前導字元閘 (^|[^\d./A-Za-z])：與 findSameDayPlanLine 同一條規則（2026-08-01 補齊）。
+                // 只用 \b 的話「L3/4/5」的 4/5 會被當成 4 月 5 日（`/`→`4` 是 word boundary），
+                // 3~6 月的 visit 就會長出幽靈未來列；血壓「130/85/60」也會被 eraRe 讀成 2085 年代錨。
                 let eraYear = null;
-                const eraRe = /\b(\d{2})\/(\d{1,2})\/(\d{1,2})\b/g;
+                const eraRe = /(^|[^\d./A-Za-z])(\d{2})\/(\d{1,2})\/(\d{1,2})\b/g;
                 let em;
                 while ((em = eraRe.exec(tForDate)) !== null) {
-                    const y = 2000 + parseInt(em[1], 10);
+                    const y = 2000 + parseInt(em[2], 10);
                     if (eraYear === null || y < eraYear) eraYear = y;
                 }
                 const futureDates = [];
-                const dre = /\b(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\b/g;
+                const dre = /(^|[^\d./A-Za-z])(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\b/g;
                 let dm;
                 while ((dm = dre.exec(tForDate)) !== null) {
-                    const yy0 = dm[1] ? 2000 + parseInt(dm[1], 10) : (eraYear ?? parseInt(vDate.slice(0, 4), 10));
-                    const mo = parseInt(dm[2], 10), dd = parseInt(dm[3], 10);
+                    const yy0 = dm[2] ? 2000 + parseInt(dm[2], 10) : (eraYear ?? parseInt(vDate.slice(0, 4), 10));
+                    const mo = parseInt(dm[3], 10), dd = parseInt(dm[4], 10);
                     if (!isRealDate(yy0, mo, dd)) continue;
                     let iso = `${yy0}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
                     // 無年份、無 era 錨、比 visit 日早逾半年 → 視為明年（系列治療跨年）
-                    if (!dm[1] && eraYear === null && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
+                    if (!dm[2] && eraYear === null && iso < vDate && (parseInt(vDate.slice(5, 7), 10) - mo) >= 6) {
                         iso = `${yy0 + 1}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
                     }
                     if (iso > vDate && !futureDates.includes(iso)) futureDates.push(iso);
