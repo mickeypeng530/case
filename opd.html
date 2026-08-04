@@ -5812,6 +5812,32 @@
         confirmCallback: null  // confirm modal callback
     };
 
+    // 「來源」下拉 = 種子 ∪ 資料中出現過的值（用過一次就進清單）。
+    // 為何動態：靜態清單漏掉的來源只能自己打字，同一個來源就會散成多個變體
+    //（2026-08-01 清掉 6 筆：張friend / 于平姑姑 / 648860 mom …）。列出用過的值，
+    // 第二個同來源病人會用選的，變體從源頭就不會產生。**新增來源不必再改程式。**
+    const REFERRER_SEED = ['Buo', 'Hsu', 'Huang', 'web', 'phone', 'friend', 'other'];
+    function rebuildReferrerOptions() {
+        const dl = document.getElementById('referrer-options');
+        if (!dl) return;
+        const byLower = new Map();   // 小寫 → { label, n }
+        const bump = (raw, n) => {
+            const v = String(raw || '').trim();
+            if (!v) return;
+            const k = v.toLowerCase();
+            const cur = byLower.get(k);
+            // 同一個值大小寫不一致時，取出現次數多的那種寫法當顯示值
+            if (!cur) byLower.set(k, { label: v, n });
+            else { cur.n += n; if (n > 0 && v !== cur.label && cur.n === n) cur.label = v; }
+        };
+        REFERRER_SEED.forEach(v => bump(v, 0));
+        Object.values(state.patients || {}).forEach(p => bump(p?.referrer, 1));
+        const opts = [...byLower.values()]
+            .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+            .slice(0, 40);
+        dl.innerHTML = opts.map(o => `<option value="${escapeAttr(o.label)}"></option>`).join('');
+    }
+
     // ========== 病人主表 Firebase ==========
     function loadPatients() {
         if (!fbDb) return;
@@ -5820,6 +5846,7 @@
         const unsub = onValue(ref(fbDb, 'opd/patients'), (snap) => {
             state.patients = snap.val() || {};
             renderPatientMaster();
+            rebuildReferrerOptions();   // 來源下拉跟著資料長（存檔後 echo 回來就會含新值）
             // firstVisitDate 變動時，門診日下拉的規律日範圍也要跟著重算
             if (typeof renderClinicDateSelector === 'function') renderClinicDateSelector();
             setStatus('connected', '已連線');
