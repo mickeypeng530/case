@@ -84,3 +84,6 @@ Thumbs.db
 
 # PHI guard（本機工具，含病歷號比對邏輯，不需 public）
 phi_guard.js
+
+# Claude Code 專案指示（本機，同 CLAUDE.md 性質）
+AGENTS.md
