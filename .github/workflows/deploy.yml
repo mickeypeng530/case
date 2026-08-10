@@ -36,21 +36,36 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Stage site（白名單）
+        # ⚠ 這一步是刻意的安全設計，不要改回 path: '.'。
+        #   舊版直接上傳 repo 根目錄 = 「只要進 git 就自動公開」，新檔預設公開。
+        #   改成把要公開的檔案明確複製到 _site/ → 預設不公開，要公開必須列進來。
+        #   （2026-08-11 稽核：whole 專案曾因 "public": "." 把整個 .git/ 公開 7 週）
+        #   cp 失敗會讓整個 step 失敗（bash -e）→ 少檔案是大聲報錯，不是靜默漏部署。
+        run: |
+          mkdir -p _site
+          cp opd.html opd.css index.html proclist-core.js firebase-init.js \
+             opd.webmanifest scheduler.webmanifest .nojekyll _site/
+          cp -r icons _site/
+          echo "── 將公開的檔案 ──"
+          find _site -type f | sort
+
       - name: Stamp build version
         # __SHA__  → 7 碼 git SHA（網址安全，用於 opd.css / proclist-core.js 的 ?v= 快取破壞）
         # __BUILD__→ SHA + 台灣時間（顯示用；頁面 settings 顯示「版本」）
         # 版本化資產 URL = opd.html 一新就自動拉新 CSS/JS，根治「各檔分開快取」staleness
+        # ⚠ 對 _site/ 內的副本做，不動 checkout
         run: |
           SHA="${GITHUB_SHA:0:7}"
           BUILD="${SHA} $(TZ='Asia/Taipei' date +%m/%d\ %H:%M)"
-          sed -i "s|__SHA__|${SHA}|g; s|__BUILD__|${BUILD}|g" opd.html index.html proclist-core.js
+          sed -i "s|__SHA__|${SHA}|g; s|__BUILD__|${BUILD}|g" \
+            _site/opd.html _site/index.html _site/proclist-core.js
           echo "stamped: SHA=${SHA}  BUILD=${BUILD}"
 
       - name: Upload artifact
-        # 整個 repo 根目錄即網站（tracked 檔：opd.html/opd.css/index.html/proclist-core.js/firebase-init.js/manifests/icons）
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment

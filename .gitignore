@@ -81,3 +81,6 @@ tmp_*.js
 ~$*
 .DS_Store
 Thumbs.db
+
+# PHI guard（本機工具，含病歷號比對邏輯，不需 public）
+phi_guard.js
