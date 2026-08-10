@@ -249,7 +249,7 @@
                 <input type="date" id="roster-clinic-date" style="padding: 5px 8px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit;">
                 <span id="roster-date-hint" style="font-size: 0.78rem; color: var(--text-muted);"></span>
             </div>
-            <textarea id="roster-input" placeholder="例：&#10;1&#10;A62189(周)&#10;3&#10;945471&#10;(鄧)&#10;5&#10;1044665 (張)" style="width: 100%; min-height: 120px; font-family: monospace; font-size: 0.82rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px;"></textarea>
+            <textarea id="roster-input" placeholder="例：&#10;1&#10;A00001(王)&#10;3&#10;9000002&#10;(林)&#10;5&#10;9000003 (陳)" style="width: 100%; min-height: 120px; font-family: monospace; font-size: 0.82rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px;"></textarea>
             <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center;">
                 <button class="primary" id="roster-parse-btn">🔍 解析預覽</button>
                 <span id="roster-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
@@ -314,7 +314,7 @@
 
         <div class="field">
             <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
-            <input type="text" id="pt-record-number" placeholder="例：W61564">
+            <input type="text" id="pt-record-number" placeholder="例：W12345">
         </div>
         <div class="field">
             <label>姓</label>
@@ -374,7 +374,7 @@
             </div>
             <div class="field inline">
                 <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
-                <input type="text" id="v-record-number" placeholder="W61564">
+                <input type="text" id="v-record-number" placeholder="W12345">
             </div>
         </div>
         <div class="field-row">
@@ -539,7 +539,7 @@
         if (/^CT\s*(?:biopsy|bx)$/i.test(t)) return 'CT Bx'; // CT biopsy / CTBx / CT BX → CT Bx
         return t;
     }
-    // 病歷號合法性：只允許英數（涵蓋 leading-0 與字母前綴如 A10971）。
+    // 病歷號合法性：只允許英數（涵蓋 leading-0 與字母前綴如 A12345）。
     // 重點是擋 Firebase 路徑特殊字元 —— 含 / 會「默默」寫進錯誤的深層路徑（不會報錯），. # $ [ ] 會 throw
     function isValidRecordNumber(rec) {
         return /^[A-Za-z0-9]{2,15}$/.test(rec);
@@ -1343,7 +1343,7 @@
         if (stripped && stripped !== rec) set.add(stripped);
         return [...set];
     }
-    // 在 state.patients 找既有病人（回既有 canonical rec，避免重複建 052158 vs 52158）
+    // 在 state.patients 找既有病人（回既有 canonical rec，避免重複建 0xxxxx vs xxxxx）
     function rosterResolvePatient(rec) {
         for (const v of rosterRecVariants(rec)) {
             if (state.patients[v]) return v;
@@ -1356,7 +1356,7 @@
         //   醫院系統複製常在「病歷號 (姓)」同一行夾隱形字元(ZWSP 等)，\s 切不掉、trim 也去不掉 →
         //   病歷號 token 尾帶隱形字元 → 分類器全不中 → 整筆漏掉或病歷號被污染（= user 回報「後兩筆找不到」）
         const clean = (raw || '').normalize('NFKC').replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '');
-        // 括號姓氏黏在病歷號上（A62189(周)）先斷開
+        // 括號姓氏黏在病歷號上（A00001(王)）先斷開
         const tokens = clean.replace(/[（(]/g, ' (').replace(/[）)]/g, ') ')
             .split(/\s+/).map(t => t.trim()).filter(Boolean);
         const entries = [];
@@ -2013,14 +2013,14 @@
     }
 
     // 「下次回診日」的單一解析來源 —— 回診日統計與「✓ 確認」的 RTC 傳遞共用。
-    //   ⚠ 曾是兩套實作打架的坑（2026-07-21 F70697）：propagateRTC 有看「回診」標記、
+    //   ⚠ 曾是兩套實作打架的坑（2026-07-21，見 DECISION_LOG）：propagateRTC 有看「回診」標記、
     //     統計卻直接吃 summarizePlan().nextRTC（整份掃 + 取最早）→ 累積型 plan 的歷史行
     //     無年份被補成今年，去年的 08/13 壓過本次寫的 10/28。
     // ① plan 中「回診」標記行的未來日期（user 明示，最優先）
     // ② 沒標記 → 只掃「錨點之後」的段落（累積型 plan 的歷史行全住錨點上方）
     // ③ 段內「明確帶年份 / 當年即成立」的未來 RTC 取最早
     // ④ 都沒有才用跨年推斷（無年份 MM/DD 且比門診日早 ≥6 個月 → 補明年）取最早
-    //    ⚠ ④ 必須墊底：W61564 案例若讓推斷與明確年份平起平坐，去年的 04/09 會壓過真正的 26/04/22
+    //    ⚠ ④ 必須墊底：W12345 案例（去識別化代號）若讓推斷與明確年份平起平坐，去年的 04/09 會壓過真正的 26/04/22
     // ⑤ 全空 → null（顯示「無」，不亂猜）
     // 回傳 { date, marked, candidates, summary }；marked=true 代表來自「回診」標記
     // 全備份實測（933 筆可驗證 visit，ground truth = 實際下次就診日）：
@@ -2459,7 +2459,7 @@
                         return true;
                     });
                     // Pain 歷史 pills：per-patient tag 統計（次數 + 最近實際 procedure 日 + 療效色）。
-                    // 不再被手寫 pain 摘要抑制——舊規則是「自動不準」年代的 workaround，會讓過時手寫蓋住準確統計（339804 案例）
+                    // 不再被手寫 pain 摘要抑制——舊規則是「自動不準」年代的 workaround，會讓過時手寫蓋住準確統計（見 DECISION_LOG 2026-07-08）
                     const histPills = (() => {
                         const hist = state.procHistoryByRec?.[v.recordNumber];
                         if (!hist) return '';
@@ -5689,7 +5689,7 @@
     function detectTagsFromVisit(v, dateStr, loose = false) {
         if (v.noShow) return new Set();
         // ⚠ 偵測清單必須對齊 DEFAULT_TAGS：選單移除某 tag 時這裡要同步拿掉，
-        //    否則 plan 一寫到關鍵字就自動長回 legacy tag（純 TAME 復活案例：933657）
+        //    否則 plan 一寫到關鍵字就自動長回 legacy tag（純 TAME 復活案例，見 CLAUDE.md §4）
         const detectors = [
             { tag: 'CT NB', re: /\bCT\s*NB\b/i },
             { tag: 'CT Bx', re: /\bCT\s*(?:biopsy|bx)\b/i },
@@ -5814,7 +5814,7 @@
 
     // 「來源」下拉 = 種子 ∪ 資料中出現過的值（用過一次就進清單）。
     // 為何動態：靜態清單漏掉的來源只能自己打字，同一個來源就會散成多個變體
-    //（2026-08-01 清掉 6 筆：張friend / 于平姑姑 / 648860 mom …）。列出用過的值，
+    //（2026-08-01 清掉 6 筆家屬／親友變體）。列出用過的值，
     // 第二個同來源病人會用選的，變體從源頭就不會產生。**新增來源不必再改程式。**
     const REFERRER_SEED = ['Buo', 'Hsu', 'Huang', 'web', 'phone', 'friend', 'other'];
     function rebuildReferrerOptions() {

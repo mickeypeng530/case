@@ -216,7 +216,7 @@ export function findAnchorIdx(planLines, vDate) {
 
 // 顯示層模糊配對（2026-07-09）：排程原生列「病歷號|日期」配對落空時，查同病人 procDate 當天
 // visit 錨點段有無同家族關鍵字行。「當次即做」的行（無日期、或行內日期=當天）推導器不生列
-//（需嚴格未來日期），但 plan 其實有寫 → 撈出來補 plan 欄顯示（507510 SONO PM1255 案例）。
+//（需嚴格未來日期），但 plan 其實有寫 → 撈出來補 plan 欄顯示（SONO PM1255 案例，見 DECISION_LOG 2026-07-09）。
 // 只影響 plan 欄顯示，不動推導/去重/狀態。
 export function findSameDayPlanLine(allByDate, rec, procDate, schedType) {
     const famTags = SCHED_TYPE_TAGS[schedType] || [];
@@ -236,7 +236,7 @@ export function findSameDayPlanLine(allByDate, rec, procDate, schedType) {
         if (!t || (t.startsWith('-') && DISCUSS_PATTERN.test(t))) return false;
         if (!famRes.some(k => k.re.test(t))) return false;
         // 行內日期閘：無日期（當次即做）或含 procDate 當天才算；帶其他日期的行屬於別列，別誤抓
-        // 前導字元閘 (^|[^\d./A-Za-z])：脊椎節位「L3/4/5」的 4/5 前面是「/」→ 不算日期（1736240 案例）；
+        // 前導字元閘 (^|[^\d./A-Za-z])：脊椎節位「L3/4/5」的 4/5 前面是「/」→ 不算日期（見 DECISION_LOG 2026-07-09）；
         // 也擋 lab 值 9.5/0.8（前面是 .）——同 lineHasInvalidDate 的 context 閘思路 + 字母
         const td = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
         const dre = /(^|[^\d./A-Za-z])(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})\b/g;
@@ -278,7 +278,7 @@ export function deriveProcRows(allByDate) {
                 const t = line.trim();
                 if (!t) return;
                 // 討論/規劃行不算排定。但 user 常在同一行同時寫試探語氣與排程標記
-                //（1111716：「- may TAME 07/23 0800 [TAME 已]」）——[已]/[待] 是更強的訊號，
+                //（案例：「- may TAME 07/23 0800 [TAME 已]」）——[已]/[待] 是更強的訊號，
                 // 代表這件事真的排了。**只有「帶排程標記 + 有未來日期」才翻案**（見下方 isDiscuss 判斷），
                 // 無日期的討論行維持原樣（否則「- may consider CT NB [待]」會灌爆漏網偵測）
                 const isDiscuss = t.startsWith('-') && DISCUSS_PATTERN.test(t);
