@@ -252,6 +252,7 @@
             <textarea id="roster-input" placeholder="例：&#10;1&#10;A00001(王)&#10;3&#10;9000002&#10;(林)&#10;5&#10;9000003 (陳)" style="width: 100%; min-height: 120px; font-family: monospace; font-size: 0.82rem; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px;"></textarea>
             <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center;">
                 <button class="primary" id="roster-parse-btn">🔍 解析預覽</button>
+                <button id="roster-clear-btn" title="清空貼上的名單與預覽（日期保留）">🧹 清空</button>
                 <span id="roster-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
             </div>
             <div id="roster-preview"></div>
@@ -1500,8 +1501,8 @@
             if (orderUpdated) parts.push(`更新診號 ${orderUpdated}`);
             if (newPt) parts.push(`新病人 ${newPt}`);
             if (unchanged) parts.push(`無變動 ${unchanged}`);
-            status.textContent = `✅ 完成：${parts.join('、')}`;
-            status.style.color = 'var(--color-confirmed)';
+            // 寫入成功才清空（update 是原子的，失敗等於沒寫 → 保留輸入讓你重試）
+            resetQuickRoster(`✅ ${date} 完成：${parts.join('、')}`);
             setTimeout(() => {
                 state.currentClinicDate = date;
                 localStorage.setItem('opd:currentClinicDate', date);
@@ -1525,10 +1526,38 @@
         });
     }
 
+    // 清空快速建名單的輸入與預覽。**日期刻意保留** —— 同一天常要補貼第二批。
+    // 寫入成功後會自動呼叫：舊名單留著 + 只改日期就按確認 = 把上一批寫到新日期，
+    // 而預覽不會警告（動作欄是舊日期算的）。歸零是根除那條路徑最省事的做法。
+    function resetQuickRoster(msg = '') {
+        rosterParsed = [];
+        const ta = document.getElementById('roster-input');
+        if (ta) ta.value = '';
+        const pv = document.getElementById('roster-preview');
+        if (pv) pv.innerHTML = '';
+        const st = document.getElementById('roster-status');
+        if (st) { st.textContent = msg; st.style.color = msg ? 'var(--color-confirmed)' : 'var(--text-muted)'; }
+    }
+
     function bindQuickRosterUI() {
         const parseBtn = document.getElementById('roster-parse-btn');
         if (!parseBtn) return;
         const dateInput = document.getElementById('roster-clinic-date');
+
+        document.getElementById('roster-clear-btn')?.addEventListener('click', () => resetQuickRoster());
+
+        // 日期改變 → 重新標註 + 重畫預覽。
+        // ⚠ 沒有這段的話：解析完再改日期，動作欄（＋建 / ↻更新診號 / ＝無變動）還是舊日期算的，
+        //   新日期明明已有 visit 卻顯示「＋建」。重新標註而不是清空 —— 「貼完才發現日期選錯」
+        //   是常見動線，清空等於逼你重貼一次。
+        dateInput?.addEventListener('change', async () => {
+            if (!rosterParsed.length) return;
+            const st = document.getElementById('roster-status');
+            if (st) { st.textContent = '重新比對該日 visit…'; st.style.color = 'var(--text-secondary)'; }
+            await annotateRosterVisits(dateInput.value);
+            renderQuickRosterPreview();
+            if (st) { st.textContent = `已依 ${dateInput.value || '（未選日期）'} 重新比對`; st.style.color = 'var(--text-secondary)'; }
+        });
         parseBtn.addEventListener('click', async () => {
             const raw = document.getElementById('roster-input').value;
             rosterParsed = parseQuickRoster(raw);
