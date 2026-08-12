@@ -100,6 +100,10 @@
     <!-- 門診日 -->
     <div class="panel active" id="panel-clinic">
         <div class="toolbar">
+            <div class="toolbar-group qtab-group">
+                <button class="qtab" data-panel="panel-clinic" title="門診日">📅</button>
+                <button class="qtab" data-panel="panel-proc" title="Procedure 清單">🗂</button>
+            </div>
             <div class="toolbar-group nav-group">
                 <select id="clinic-year-select" style="min-width: 80px;"></select>
                 <select id="clinic-md-select" style="min-width: 140px;"></select>
@@ -132,6 +136,10 @@
     <!-- Procedure 清單（OPD plan 衍生；同資料多視角） -->
     <div class="panel" id="panel-proc">
         <div class="toolbar" style="flex-wrap: wrap; gap: 8px;">
+            <div class="toolbar-group qtab-group">
+                <button class="qtab" data-panel="panel-clinic" title="門診日">📅</button>
+                <button class="qtab" data-panel="panel-proc" title="Procedure 清單">🗂</button>
+            </div>
             <div class="pv-chips" id="proc-view-chips">
                 <button class="pv-chip" data-view="all">📋 全部</button>
                 <button class="pv-chip active" data-view="bydate">📅 依日期</button>
@@ -772,14 +780,14 @@
 
     // ========== Tab 切換 ==========
     function activateTab(panelId) {
-        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
+        // .qtab = sticky toolbar 內的分頁快切複本（📅/🗂），active 狀態跟真 tab 一起切
+        document.querySelectorAll('.tab, .qtab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
         document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === panelId));
-        // 切到門診日 → 量測 toolbar 高度（display:none 時量不到，display 後才準）
-        if (panelId === 'panel-clinic' && typeof updateClinicToolbarHeight === 'function') {
-            setTimeout(updateClinicToolbarHeight, 50);
-        }
         // 切到 Procedure 分頁 → 重新推導（資料吃 getCachedAllVisits，5min cache 內免流量）
-        if (panelId === 'panel-proc') { procList.invalidateSched(); procList.render({ scroll: true }); }  // 開 🗂 強制刷新排程快取 → 一定看到行事曆最新領藥；切分頁捲到今天
+        if (panelId === 'panel-proc') {
+            procList.invalidateSched(); procList.render({ scroll: true });  // 開 🗂 強制刷新排程快取
+            setTimeout(updateProcToolbarHeight, 50);   // display:none 時量不到，display 後才準
+        }
         // 切到統計分頁 → 自動跑一次計算（避免每次都要按重新計算）
         if (panelId === 'panel-stats' && typeof computeAndRenderStats === 'function') {
             // 已有結果就不重算（避免每次切回來都重跑）
@@ -900,7 +908,7 @@
         document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
 
         // Tab
-        document.querySelectorAll('.tab').forEach(t => {
+        document.querySelectorAll('.tab, .qtab').forEach(t => {
             t.addEventListener('click', () => activateTab(t.dataset.panel));
         });
 
@@ -908,12 +916,13 @@
     });
 
     // ========== 登入後初始化 ==========
-    // 量測門診日 toolbar 實際高度，寫進 CSS var → thead 的 sticky top 對齊
-    function updateClinicToolbarHeight() {
-        const tb = document.querySelector('#panel-clinic .toolbar');
+    // 量測 Procedure toolbar 實際高度 → proc 表頭 sticky top 對齊（toolbar 會 flex-wrap，高度不固定）
+    // ⚠ 舊的 --clinic-toolbar-h 已移除：visit thead 早就不 sticky（opd.css「不再 sticky」），那個 var 全專案沒人讀
+    function updateProcToolbarHeight() {
+        const tb = document.querySelector('#panel-proc .toolbar');
         if (!tb) return;
         const h = tb.getBoundingClientRect().height;
-        document.documentElement.style.setProperty('--clinic-toolbar-h', `${Math.ceil(h)}px`);
+        document.documentElement.style.setProperty('--proc-toolbar-h', `${Math.ceil(h)}px`);
     }
 
     function renderVersionInfo() {
@@ -941,8 +950,11 @@
         bindQuickRosterUI();
         initClinicDateSelector();
         // toolbar 量測：初始 + resize 時更新
-        setTimeout(updateClinicToolbarHeight, 100);
-        window.addEventListener('resize', updateClinicToolbarHeight);
+        setTimeout(updateProcToolbarHeight, 100);
+        window.addEventListener('resize', updateProcToolbarHeight);
+        // ⚠ 字型未載入完就量會得到廢值（emoji 撐寬 → toolbar 假換行，實測量到 695px 而非 53px）
+        //   → 表頭會黏在 695px 處。fonts.ready 後補量一次
+        document.fonts?.ready?.then(updateProcToolbarHeight);
         // Deep-link：?date=YYYY-MM-DD&rec=XXXXXX → 自動切到該日 + 開 visit modal
         try {
             const params = new URLSearchParams(window.location.search);
@@ -1506,7 +1518,9 @@
             setTimeout(() => {
                 state.currentClinicDate = date;
                 localStorage.setItem('opd:currentClinicDate', date);
-                document.querySelector('.tab[data-panel="panel-visits"]')?.click();
+                activateTab('panel-clinic');
+                renderClinicDateSelector();
+                onClinicDateChanged(date);
             }, 900);
         } catch (err) {
             status.textContent = `❌ 寫入失敗：${err.message}`;

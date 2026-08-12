@@ -594,8 +594,10 @@
             font-size: 0.82rem;
             z-index: 10;
         }
-        /* 門診日 toolbar：往下滑時固定在最上排，背景實心遮掩底下內容 */
-        #panel-clinic .toolbar {
+        /* 門診日 / Procedure toolbar：往下滑時固定在最上排，背景實心遮掩底下內容 */
+        /* ⚠ 兩個都要 sticky —— 只做門診日的話 📅⇄🗂 快切變單向（跳過去就回不來，得捲回頂）*/
+        #panel-clinic .toolbar,
+        #panel-proc .toolbar {
             position: sticky;
             top: 0;
             z-index: 30;
@@ -605,8 +607,36 @@
             margin-bottom: 8px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.25);
         }
-        :root[data-theme="light"] #panel-clinic .toolbar {
+        :root[data-theme="light"] #panel-clinic .toolbar,
+        :root[data-theme="light"] #panel-proc .toolbar {
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        /* 分頁快切（.qtab）：sticky toolbar 內的 📅/🗂 複本，捲到名單中段也能互跳。
+           不是獨立狀態 —— activateTab() 用 '.tab, .qtab' 一起切 active，只有一個真相 */
+        .toolbar button.qtab {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 8px;
+            min-width: 34px;
+            font-size: 0.95rem;
+            line-height: 1.2;
+        }
+        .toolbar button.qtab:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        .toolbar button.qtab.active {
+            background: var(--bg-tertiary);
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+        /* 手機不放快切：實測 <560px 時 toolbar 會多換一行（門診日 144→184px、Procedure 147→187px），
+           而它是 sticky —— 等於 812px 手機永久少 40px。≥560px（含 iPad、醫院直立 1080 寬）成本是 0，所以只砍手機。
+           量法：把真實 toolbar markup 抽進 harness 逐寬度量 with/without。要改回來就刪這條 media query */
+        @media (max-width: 559px) {
+            .toolbar .qtab-group { display: none; }
         }
         .visit-table tbody td {
             padding: 6px 8px;

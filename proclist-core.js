@@ -439,7 +439,9 @@ const PLC_CSS = `
 .proc-table col.pc-c-st { width: 5.6rem; }
 .proc-table col.pc-c-med { width: 5.8rem; }
 /* pc-c-plan 不設寬 → 自動吃剩餘空間 */
-.proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; position: sticky; top: 0; z-index: 5; box-shadow: inset 0 -1px 0 var(--border,#475569); }
+/* top 用 var：opd.html 的 Procedure toolbar 是 sticky，表頭要黏在它下面（值由 updateProcToolbarHeight 量測寫入）。
+   index.html 的 overlay 沒有 sticky toolbar 也沒設這個 var → fallback 0px，行為不變 */
+.proc-table th { background: var(--bg-tertiary,#334155); color: var(--text-primary,#f1f5f9); padding: 6px 8px; text-align: left; position: sticky; top: var(--proc-toolbar-h, 0px); z-index: 5; box-shadow: inset 0 -1px 0 var(--border,#475569); }
 /* 區間 procedure 台數（針類 + Arthro）：塞在最寬的 plan 欄表頭右側空位，跟著凍結表頭常駐 */
 .plc-hdr-cnt { margin-left: 10px; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; cursor: help; white-space: nowrap; }
 .plc-hdr-cnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
