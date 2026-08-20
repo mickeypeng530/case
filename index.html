@@ -390,6 +390,12 @@
         .case-tag:active { cursor: grabbing; }
         .case-tag.dragging { opacity: 0.5; }
         .case-tag.tentative { opacity: 0.6; border: 1px dashed rgba(255,255,255,0.3); }
+        /* DC = 排了但取消，留在原位留痕（真的排錯才按 X 刪除）。
+           狀態存 opd/procTrackSched/{caseId}，與 Procedure 清單同一份資料
+           —— 不是兩邊同步，是同一份的兩個畫面 */
+        .case-tag.dc { opacity: 0.5; filter: grayscale(0.85); cursor: default; }
+        .case-tag.dc .case-detail { text-decoration: line-through; }
+        .case-tag .dc-mark { font-size: 0.7rem; margin-right: 2px; flex: 0 0 auto; }
 
         /* 領藥狀態左條（三態：一般灰 → 未領琥珀 → 已領綠，點擊循環） */
         .case-tag.has-med { padding-left: 11px; }
@@ -1655,6 +1661,7 @@
             selectedCell: null,
             selectedSlotIndex: null,
             cellData: {},
+            procTrack: {},      // opd/procTrackSched 鏡射（DC / 完成 / 領藥），與 Procedure 清單同一份
             mobileWeekIndex: 0  // 手機版目前顯示的週數
         };
         
@@ -1718,6 +1725,14 @@
                         renderTabContent();
                     }
                     showStatus('已同步', false);
+                });
+
+                // 監聽 procedure 疊加層：DC / 完成 / 領藥 / 註記。與 OPD 的 Procedure 清單寫同一個
+                // 節點，所以行事曆按 DC 那邊立刻同步、反之亦然。約 13KB，DC 很少動
+                if (state.procTrackListener) state.procTrackListener();
+                state.procTrackListener = onValue(ref(fbDb, 'opd/procTrackSched'), (snap) => {
+                    state.procTrack = snap.val() || {};
+                    renderTabContent();
                 });
 
                 // 監聽閱讀清單
@@ -2153,6 +2168,8 @@
                     if (cellData?.cases) {
                         const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
                         cases.forEach(c => {
+                            // DC = 取消不做 -> 不計入台數（與 Procedure 清單的「本區間 N+M」同口徑）
+                            if (c && c.id && state.procTrack[c.id]?.status === 'dc') return;
                             if (c && c.type && c.type !== 'slot' && !c.isEmpty && validTypes.includes(c.type)) {
                                 // ct-nb-prf 合併到 ct-nb，stame/ctame 合併到 tame，ct（CT 檢查）併入 mri 桶 → 顯示 CT/MRI
                                 let statsType = c.type;
@@ -2802,10 +2819,14 @@
                 }
             }
 
+            // DC 讀疊加層，不是 case 自己的欄位 —— case.status 是 tentative/confirmed，另一條軸
+            const isDc = !isEmpty && caseData.id && state.procTrack[caseData.id]?.status === 'dc';
+            const canDc = !isEmpty && caseData.type !== 'note';
             const actionsHTML = isEmpty ? '' : `
                 <div class="case-actions">
                     <button class="case-action-btn edit-btn" title="編輯">✎</button>
-                    <button class="case-action-btn delete-btn" title="刪除">✕</button>
+                    ${canDc ? `<button class="case-action-btn dc-btn" title="${isDc ? '取消 DC（改回待做）' : 'DC：取消但保留紀錄'}">⊘</button>` : ''}
+                    <button class="case-action-btn delete-btn" title="刪除（不留紀錄；要留痕請按 ⊘）">✕</button>
                 </div>
             `;
 
@@ -2819,12 +2840,13 @@
                 ? `<div class="med-strip ${medState}" title="領藥：${medLabel}（點擊循環）"></div>` : '';
 
             return `
-                <div class="case-tag ${typeClass} ${tentativeClass} ${fullWidthClass} ${showMed ? 'has-med' : ''}"
-                     draggable="${!isEmpty}"
+                <div class="case-tag ${typeClass} ${tentativeClass} ${fullWidthClass} ${showMed ? 'has-med' : ''} ${isDc ? 'dc' : ''}"
+                     draggable="${!isEmpty && !isDc}"
                      data-cell-key="${cellKey}"
                      data-index="${index}"
                      data-is-empty="${isEmpty}">
                     ${medStripHTML}
+                    ${isDc ? '<span class="dc-mark" title="已 DC（取消）">⊘</span>' : ''}
                     <div class="case-info">
                         <span class="case-detail" data-mobile="${escapeHtml(mobileText)}">${isEmpty ? '＋' : escapeHtml(displayText)}</span>
                     </div>
@@ -3232,9 +3254,13 @@
             document.addEventListener('click', (e) => {
                 const editBtn = e.target.closest('.edit-btn');
                 const deleteBtn = e.target.closest('.delete-btn');
+                const dcBtn = e.target.closest('.dc-btn');
                 const caseTag = e.target.closest('.case-tag');
 
-                if (deleteBtn && caseTag) {
+                if (dcBtn && caseTag) {
+                    e.stopPropagation();
+                    toggleCaseDc(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
+                } else if (deleteBtn && caseTag) {
                     e.stopPropagation();
                     deleteCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                 } else if (editBtn && caseTag) {
@@ -3581,6 +3607,7 @@
             const idx = cases.findIndex(c => c && c.id === id);
             if (idx !== -1) {
                 cases.splice(idx, 1);
+                dropProcTrack(id);
                 saveCell(cellKey);
                 renderTabContent();
             }
@@ -3605,6 +3632,41 @@
             renderTabContent();
         }
 
+        // DC 循環：無 -> dc -> 無。寫 opd/procTrackSched/{caseId}.status，就是 Procedure 清單
+        // 在用的那一格 -> 兩邊必然一致（同一份資料，不是同步）
+        async function toggleCaseDc(cellKey, index) {
+            const cellData = state.cellData[cellKey];
+            if (!cellData) return;
+            let cases = cellData.cases;
+            if (!Array.isArray(cases)) {
+                cases = Object.values(cases || {});
+                state.cellData[cellKey].cases = cases;
+            }
+            const c = cases.filter(x => x && x.type !== 'slot' && !x.isEmpty)[index];
+            if (!c) return;
+            if (!c.id) { c.id = genCaseId(); saveCell(cellKey); }   // 舊 case 沒 id 就沒地方掛狀態
+            const prev = state.procTrack[c.id] || null;
+            const next = prev?.status === 'dc' ? null : 'dc';
+            // 樂觀更新先重畫（listener echo 回來會是同一個值）
+            state.procTrack[c.id] = { ...(prev || {}), status: next };
+            renderTabContent();
+            try {
+                await update(ref(fbDb, `opd/procTrackSched/${c.id}`), { status: next, at: Date.now() });
+            } catch (err) {
+                console.error('DC 寫入失敗', err);
+                if (prev) state.procTrack[c.id] = prev; else delete state.procTrack[c.id];
+                renderTabContent();
+                alert('DC 寫入失敗：' + (err?.message || err) + '\n\n請檢查網路後重試。');
+            }
+        }
+
+        // 真刪 case -> 一併清疊加紀錄，否則變孤兒永遠留在 opd/procTrackSched 被每次讀取下載
+        function dropProcTrack(id) {
+            if (!id || !state.procTrack[id]) return;
+            delete state.procTrack[id];
+            remove(ref(fbDb, `opd/procTrackSched/${id}`)).catch(err => console.warn('清 procTrackSched 失敗', err));
+        }
+
         function deleteCase(cellKey, index) {
             const cellData = state.cellData[cellKey];
             if (!cellData) return;
@@ -3626,6 +3688,7 @@
             const originalIndex = cases.findIndex(c => c === caseToDelete);
             if (originalIndex !== -1) {
                 cases.splice(originalIndex, 1);
+                dropProcTrack(caseToDelete.id);
                 saveCell(cellKey);
                 renderTabContent();
             }
