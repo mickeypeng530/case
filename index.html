@@ -3734,17 +3734,17 @@
             });
             if (allCases.length === 0) { alert('此區間內沒有案例可匯出'); return; }
 
-            // 顯示進度（可能要 fetch 30+ OPD reads）
-            const statusEl = document.getElementById('caselist-status');
-            const setProgress = (t) => { if (statusEl) statusEl.textContent = t; };
+            // 顯示進度（可能要 fetch 30+ OPD reads）。舊版寫在 caselist modal 的 status 欄，
+            // 該 modal 已退役 → 改用 header 常駐狀態列
+            const setProgress = (t) => showStatus(t, true);
             setProgress(`匯出中：抓 OPD 資料... 0/${allCases.length}`);
 
-            // 建 caselist lookup（user 已 curate 的資料）
-            const tabCaselist = state.caseList[tab.id] || {};
-            const caselistByChart = {};
-            Object.values(tabCaselist).forEach(c => {
-                if (c.chartNo) caselistByChart[c.chartNo.trim()] = c;
-            });
+            // 手寫 plan 來源：舊版讀 caselist row 的 planScratch（按病歷號配對）。
+            // 舊 caselist 退役後改讀 procTrackSched overlay（按 case id 配對 —— 同一天同病人
+            // 排兩台時，病歷號配對本來就會抓錯，id 配對順便修掉這個）
+            let schedTrack = {};
+            try { schedTrack = (await get(ref(fbDb, 'opd/procTrackSched'))).val() || {}; }
+            catch (err) { console.warn('讀 procTrackSched 失敗（plan 欄改用 OPD visit）', err); }
 
             // 批次抓 OPD patient 主表 + 該 case 嚴格 < caseDate 的最近 prev visit
             // （取前次門診 plan = 決定 procedure 那次，含預想要做的事；不取 caseDate 當日的執行後紀錄）
@@ -3805,7 +3805,6 @@
             // 計算 ageSex
             const getAgeSex = (c) => {
                 const rec = (c.chartNo || '').trim();
-                if (caselistByChart[rec]?.ageSex) return caselistByChart[rec].ageSex;
                 const p = opdPatients[rec];
                 if (p) {
                     if (p.birthYear) return `${c.date.getFullYear() - p.birthYear}/${p.sex || ''}`;
@@ -3901,10 +3900,10 @@
             // 組 col 6 plan：caselist.planScratch > OPD ≤ caseDate 最近 visit plan
             const getPlanLines = (c) => {
                 const rec = (c.chartNo || '').trim();
-                const cl = caselistByChart[rec];
+                const ps = c.id ? (schedTrack[c.id]?.planScratch || '').trim() : '';
                 let raw = '';
-                if (cl?.planScratch?.trim()) {
-                    raw = cl.planScratch.trim();
+                if (ps) {
+                    raw = ps;
                 } else {
                     const cacheKey = `${rec}__${formatDateForInput(c.date)}`;
                     raw = prevVisits[cacheKey]?.plan || '';
