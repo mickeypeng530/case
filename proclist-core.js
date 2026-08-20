@@ -402,6 +402,7 @@ export function buildSchedRows(sched) {
                 else return;
             }
             const cl = c.id ? clByCaseId[c.id] : null;
+            const tr = c.id ? ((sched.track || {})[c.id] || {}) : {};   // overlay 是 planScratch 退役後的新家
             rows.push({
                 rec: String(c.chartNo || '').trim().toUpperCase(),
                 procDate: m[1],
@@ -410,7 +411,7 @@ export function buildSchedRows(sched) {
                 tentative: c.status === 'tentative', // 排程暫定 → 「待排」視圖專屬，不進主清單
                 sched: true, schedCase: c, cellKey,
                 fallbackStatus: cl?.status === 'done' ? 'done' : (cl?.status === 'dc' ? 'dc' : null),
-                planScratch: (cl?.planScratch || '').trim(),
+                planScratch: (tr.planScratch || cl?.planScratch || '').trim(),   // overlay 優先；舊 caselist 退役後 || 右半永遠是 ''
                 // Arthro 四欄位住在舊 caselist row 上（不在排程 case）——當 fallback 顯示；編輯走 procTrackSched overlay
                 arthro: c.type === 'arthro' && cl ? { region: cl.arthroRegion || '', weight: cl.arthroWeight || '', mriTime: cl.arthroMriTime || '', contrast: cl.arthroContrast || '' } : null,
                 srcDate: m[1], srcVisit: null, line: c.note || ''
