@@ -4681,6 +4681,28 @@
         const minClinic = regDates.reduce((b, r) => (b == null || r.total < b.total) ? r : b, null);
         const totalVisitsAll = perDate.reduce((s, r) => s + r.total, 0);
         const totalDcAll = perDate.reduce((s, r) => s + r.noShow, 0);
+        // DC 分層：「幽靈掛號」= 第一次掛號就沒來、且全庫從此沒到診過。
+        // 為何要拆：實測佔全部 DC 的 24%（61/252），拿掉後 DC rate 19.4% → 15.5%。
+        // 它與既有病人爽約是兩種現象 —— 既有病人可以提醒/問原因，幽靈掛號只能從掛號端改善；
+        // 混在一個數字裡兩個問題都答不了。⚠ 判定要看全庫不能只看目前範圍（「之後有沒有來過」）。
+        // 分析見 DECISION_LOG 2026-08-20。
+        const _firstEver = {}, _everCame = {};
+        Object.keys(allByDate).sort().forEach(d => {
+            if (d > todayStr) return;   // 未來已排的診不列入判定（還沒到 ≠ 沒來）
+            Object.entries(allByDate[d] || {}).forEach(([rec, v]) => {
+                if (!v) return;
+                if (!_firstEver[rec]) _firstEver[rec] = d;
+                if (!v.noShow) _everCame[rec] = true;
+            });
+        });
+        let dcGhostAll = 0;
+        dateKeys.forEach(d => Object.entries(allByDate[d] || {}).forEach(([rec, v]) => {
+            if (v && v.noShow && _firstEver[rec] === d && !_everCame[rec]) dcGhostAll++;
+        }));
+        const dcGhostPct = totalDcAll > 0 ? Math.round((dcGhostAll / totalDcAll) * 100) : 0;
+        const dcRealAll = totalDcAll - dcGhostAll;
+        const dcRealPct = (totalVisitsAll + dcRealAll) > 0
+            ? ((dcRealAll / (totalVisitsAll + dcRealAll)) * 100).toFixed(1) : '0';
         const totalProcAll = perDate.reduce((s, r) => s + r.counts.Procedure, 0);
         const totalBoneAll = perDate.reduce((s, r) => s + r.counts['骨鬆'], 0);
         const dcPctAll = (totalVisitsAll + totalDcAll) > 0 ? ((totalDcAll / (totalVisitsAll + totalDcAll)) * 100).toFixed(1) : '0';
@@ -4711,10 +4733,11 @@
                 <div style="${cardValueC}; font-size:1.05rem;">${maxClinic ? maxClinic.total : '—'} / ${minClinic ? minClinic.total : '—'}</div>
                 <div style="${cardSubC}">${maxClinic ? fmtClinicLabel(maxClinic.date) : ''} / ${minClinic ? fmtClinicLabel(minClinic.date) : ''}</div>
             </div>
-            <div style="${cardStyleC}">
+            <div style="${cardStyleC}" title="DC = 掛號沒到。分母含全部掛號（那個診號確實被佔走），所以排診負荷看這個。&#10;想看「我的病人爽約率」要看下面那行扣掉幽靈掛號之後的數字。">
                 <div style="${cardLabelC}">DC 比例</div>
                 <div style="${cardValueC}; color:${parseFloat(dcPctAll) > 8 ? '#ef4444' : 'var(--text-primary)'};">${dcPctAll}%</div>
                 <div style="${cardSubC}">${totalDcAll} / ${totalVisitsAll + totalDcAll}</div>
+                ${dcGhostAll ? `<div style="${cardSubC}; color:var(--text-muted);" title="第一次掛號就沒來、之後從此沒出現過。這批是掛號端現象（掛了不來 / 掛錯醫師），不是你的病人流失。">└ 幽靈掛號 ${dcGhostAll} 筆（${dcGhostPct}%）→ 扣掉後 ${dcRealPct}%</div>` : ''}
             </div>
             <div style="${cardStyleC}">
                 <div style="${cardLabelC}">Procedure 占比</div>
@@ -4748,6 +4771,14 @@
             summaryParts.push(`Procedure 占 ${procPctAll}%；Procedure-heavy 門診 ${procHeavyClinics} 次（${procHeavyPct}%）。`);
             if (totalBoneAll > 0) summaryParts.push(`骨鬆 ${totalBoneAll} 位。`);
         }
+        // 🔴 資料品質旗標：2024/2025 的 visit 是事後從 Word 補建的（createdAt 中位 +584 / +283 天），
+        //    DC 有沒有被記下來取決於當年 Word 檔有沒有寫。2024 實測 DC 僅 7.7%，而 2025(17.5%) 與
+        //    2026(17.3%) 幾乎一致 —— 2024 那個低點是漏記，不是表現好。不要拿它當基準線。
+        const dcFlagHtml = startStr < '2025-01-01'
+            ? `<div style="background:rgba(245,158,11,0.10); border-left:3px solid var(--color-warning,#f59e0b); padding:8px 12px; border-radius:6px; margin-bottom:12px; font-size:0.76rem; color:var(--text-secondary);">
+                 ⚠ 範圍含 2024 年：當年 visit 全部是事後補建（建立時間中位為門診日 +584 天），DC 完整度存疑。
+                 實測 2024 DC 7.7% vs 2025 17.5% / 2026 17.3% —— <strong>2024 的低點應視為漏記，不要當基準線</strong>。
+               </div>` : '';
         const summaryHtml = summaryParts.length ? `<div style="background:rgba(99,102,241,0.08); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:0.88rem; line-height:1.6;">${summaryParts.map(escapeHtml).join(' ')}</div>` : '';
 
         // per-procedure 療效（txOutcome 記在「治療那筆」visit）：治療日在期間內者，依 tag 拆
@@ -4779,7 +4810,7 @@
             }
         }
 
-        let html = dashboardHtml + summaryHtml + txTagHtml;
+        let html = dashboardHtml + dcFlagHtml + summaryHtml + txTagHtml;
         html += '<table class="stats-table"><thead><tr>'
             + `<th>${colHeader}</th><th>Visits</th><th>Procedure</th><th>骨鬆</th><th>Image only</th><th>Med + f/u</th><th>療效</th><th>DC</th>`
             + '</tr></thead><tbody>';
