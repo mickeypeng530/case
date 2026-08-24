@@ -4703,6 +4703,43 @@
         const dcRealAll = totalDcAll - dcGhostAll;
         const dcRealPct = (totalVisitsAll + dcRealAll) > 0
             ? ((dcRealAll / (totalVisitsAll + dcRealAll)) * 100).toFixed(1) : '0';
+
+        // DC 紅字改吃「自身基線」而不是寫死門檻（2026-08-20）。
+        // 舊版是 `> 8% 就紅`，但實測 2025 起逐診 DC 中位就是 21.4% → 那張卡永遠紅，永遠紅 = 沒有訊號。
+        // 基線 = 2025 起所有規律門診的「逐診 DC rate」中位數，隨資料累積自動往前滾。
+        //   為何從 2025 起：2024 的 visit 是事後從 Word 補建的，DC 完整度存疑（見上方旗標），不能進基線
+        //   為何用中位不用合併值：單一大診會拉動合併值，中位對離群診穩健（實測 21.4% vs pooled 22.6%）
+        //   為何 2σ 不用 3σ：每診約 27 人，3σ 寬到 ±22pp → 歷史 26 次沒有一次會亮，等於沒門檻。
+        //     2σ 實測亮 2/26 次（8%），抓到的正是 44% 與 40% 那兩診
+        // ⚠ 單位有小落差：大數字是範圍「合併」rate，基線是「逐診中位」，實測差約 1pp，可接受。
+        //   要完全同單位得改成檢定「範圍內逐診中位」，但那樣被檢定的數字≠顯示的數字，反而更難懂。
+        const DC_BASE_FROM = '2025-01-01';
+        const dcBaseRates = [];
+        Object.keys(allByDate).forEach(d => {
+            if (d < DC_BASE_FROM || d > todayStr || !isRegularClinicDate(d)) return;
+            const vs = Object.values(allByDate[d] || {}).filter(Boolean);
+            if (!vs.length) return;
+            dcBaseRates.push(vs.filter(v => v.noShow).length / vs.length);
+        });
+        dcBaseRates.sort((a, b) => a - b);
+        const _m = dcBaseRates.length >> 1;
+        const dcBase = dcBaseRates.length
+            ? (dcBaseRates.length % 2 ? dcBaseRates[_m] : (dcBaseRates[_m - 1] + dcBaseRates[_m]) / 2)
+            : null;
+        const dcDenomAll = totalVisitsAll + totalDcAll;
+        const dcRateNow = dcDenomAll > 0 ? totalDcAll / dcDenomAll : 0;
+        // 小樣本保護：基線不足 8 次門診就不上色（寧可沒訊號，也不要拿 3 次門診當基線嚇自己）
+        const dcUpper = (dcBase != null && dcBaseRates.length >= 8 && dcDenomAll > 0)
+            ? dcBase + 2 * Math.sqrt(dcBase * (1 - dcBase) / dcDenomAll) : null;
+        const dcColor = dcUpper == null ? 'var(--text-primary)'
+            : (dcRateNow > dcUpper ? '#ef4444'
+                : (dcRateNow > dcBase ? 'var(--color-warning)' : 'var(--text-primary)'));
+        const dcBaseTip = dcBase == null || dcBaseRates.length < 8
+            ? 'DC = 掛號沒到。基線資料不足（2025 起規律門診少於 8 次），暫不上色。'
+            : `DC = 掛號沒到。分母含全部掛號（那個診號確實被佔走），排診負荷看這個。&#10;`
+              + `🟡 = 高於自身基線　🔴 = 高於基線 + 2σ（依本範圍樣本數算，${(dcUpper * 100).toFixed(1)}%）&#10;`
+              + `基線 = 2025 起 ${dcBaseRates.length} 次規律門診的逐診 DC rate 中位數（2024 資料是事後補建、完整度存疑，不列入）&#10;`
+              + `想看「我的病人爽約率」看下面那行扣掉幽靈掛號的數字。`;
         const totalProcAll = perDate.reduce((s, r) => s + r.counts.Procedure, 0);
         const totalBoneAll = perDate.reduce((s, r) => s + r.counts['骨鬆'], 0);
         const dcPctAll = (totalVisitsAll + totalDcAll) > 0 ? ((totalDcAll / (totalVisitsAll + totalDcAll)) * 100).toFixed(1) : '0';
@@ -4733,10 +4770,10 @@
                 <div style="${cardValueC}; font-size:1.05rem;">${maxClinic ? maxClinic.total : '—'} / ${minClinic ? minClinic.total : '—'}</div>
                 <div style="${cardSubC}">${maxClinic ? fmtClinicLabel(maxClinic.date) : ''} / ${minClinic ? fmtClinicLabel(minClinic.date) : ''}</div>
             </div>
-            <div style="${cardStyleC}" title="DC = 掛號沒到。分母含全部掛號（那個診號確實被佔走），所以排診負荷看這個。&#10;想看「我的病人爽約率」要看下面那行扣掉幽靈掛號之後的數字。">
+            <div style="${cardStyleC}" title="${dcBaseTip}">
                 <div style="${cardLabelC}">DC 比例</div>
-                <div style="${cardValueC}; color:${parseFloat(dcPctAll) > 8 ? '#ef4444' : 'var(--text-primary)'};">${dcPctAll}%</div>
-                <div style="${cardSubC}">${totalDcAll} / ${totalVisitsAll + totalDcAll}</div>
+                <div style="${cardValueC}; color:${dcColor};">${dcPctAll}%</div>
+                <div style="${cardSubC}">${totalDcAll} / ${dcDenomAll}${dcBase != null ? ` · 基線 ${(dcBase * 100).toFixed(1)}%` : ''}</div>
                 ${dcGhostAll ? `<div style="${cardSubC}; color:var(--text-muted);" title="第一次掛號就沒來、之後從此沒出現過。這批是掛號端現象（掛了不來 / 掛錯醫師），不是你的病人流失。">└ 幽靈掛號 ${dcGhostAll} 筆（${dcGhostPct}%）→ 扣掉後 ${dcRealPct}%</div>` : ''}
             </div>
             <div style="${cardStyleC}">
