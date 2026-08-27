@@ -80,6 +80,12 @@
                         <button id="backup-btn" class="header-btn" style="flex:1;" title="下載 opd + scheduler + readings 全部資料為 JSON（存到本地/雲端）">💾 下載備份 JSON</button>
                     </div>
                     <div id="backup-status" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;"></div>
+                    <!-- 只有「帳號 + 密碼」登入的使用者才看得到。用 Google 登入時隱藏 ——
+                         對 Google 帳號呼叫 updatePassword 等於「多加一組密碼」＝多開一道門，不是改密碼 -->
+                    <div id="pw-section" style="display:none; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px;">
+                        <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px;">帳號</div>
+                        <button id="change-pw-btn" class="header-btn" style="width:100%;">🔑 修改密碼</button>
+                    </div>
                     <div style="border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; font-size: 0.72rem; color: var(--text-muted);">
                         版本 <span id="version-info" title="頁面版 / 模組版；不一致 = 有檔卡快取">…</span>
                     </div>
@@ -505,6 +511,33 @@
 </div>
 
 <!-- 確認對話框 -->
+<!-- 修改密碼（只對 password provider 開放）。改的是「目前登入的帳號」，不是任意帳號 -->
+<div class="modal-overlay" id="password-modal">
+    <div class="modal" style="max-width: 380px;">
+        <h3>🔑 修改密碼</h3>
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px;">
+            帳號：<span id="pw-account" style="color: var(--text-primary);"></span>
+        </div>
+        <div class="field">
+            <label>目前密碼</label>
+            <input type="password" id="pw-current" autocomplete="current-password">
+        </div>
+        <div class="field">
+            <label>新密碼（至少 6 字元）</label>
+            <input type="password" id="pw-new" autocomplete="new-password">
+        </div>
+        <div class="field">
+            <label>再輸入一次新密碼</label>
+            <input type="password" id="pw-confirm" autocomplete="new-password">
+        </div>
+        <div id="pw-status" style="font-size: 0.82rem; min-height: 1.2em; margin: 6px 0;"></div>
+        <div class="modal-actions">
+            <button id="pw-cancel">取消</button>
+            <button id="pw-save" class="primary">✓ 更新密碼</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="confirm-modal">
     <div class="modal" style="max-width: 360px;">
         <h3 id="confirm-title">確認</h3>
@@ -525,7 +558,8 @@
         GoogleAuthProvider,
         signInWithPopup, signInWithEmailAndPassword,
         onAuthStateChanged, signOut,
-        setPersistence, inMemoryPersistence
+        setPersistence, inMemoryPersistence,
+        EmailAuthProvider, reauthenticateWithCredential, updatePassword
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import {
         ref, set, get, update, remove, onValue
@@ -778,6 +812,69 @@
         alert(`${what}失敗：${err.message}\n\n請檢查網路後重試。`);
     }
 
+    // ========== 修改密碼 ==========
+    // 只改「目前登入的那個帳號」（Firebase updatePassword 作用在 auth.currentUser）。
+    // 必須先 reauthenticate —— session 放久了 updatePassword 會丟 auth/requires-recent-login，
+    // 所以 UI 一定要收「目前密碼」，不能只填新密碼。
+    function openPasswordModal() {
+        const menu = document.getElementById('settings-menu');
+        if (menu) menu.style.display = 'none';
+        const acc = document.getElementById('pw-account');
+        if (acc) acc.textContent = currentUser?.email || '(未知)';
+        ['pw-current', 'pw-new', 'pw-confirm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        setPwStatus('');
+        document.getElementById('password-modal').classList.add('show');
+        setTimeout(() => document.getElementById('pw-current')?.focus(), 50);
+    }
+
+    function setPwStatus(msg, kind = '') {
+        const el = document.getElementById('pw-status');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.color = kind === 'error' ? 'var(--color-danger)'
+            : (kind === 'ok' ? 'var(--color-confirmed)' : 'var(--text-muted)');
+    }
+
+    async function submitPasswordChange() {
+        const cur = document.getElementById('pw-current').value;
+        const nw = document.getElementById('pw-new').value;
+        const cf = document.getElementById('pw-confirm').value;
+        if (!cur || !nw || !cf) return setPwStatus('三個欄位都要填', 'error');
+        if (nw.length < 6) return setPwStatus('新密碼至少 6 字元（Firebase 下限）', 'error');
+        if (nw !== cf) return setPwStatus('兩次輸入的新密碼不一致', 'error');
+        if (nw === cur) return setPwStatus('新密碼與目前密碼相同', 'error');
+        if (!currentUser?.email) return setPwStatus('讀不到目前帳號，請重新登入', 'error');
+
+        const btn = document.getElementById('pw-save');
+        btn.disabled = true;
+        setPwStatus('更新中…');
+        try {
+            // 先重新驗證（拿目前密碼換一次新鮮的登入狀態），再改密碼
+            await reauthenticateWithCredential(
+                currentUser, EmailAuthProvider.credential(currentUser.email, cur));
+            await updatePassword(currentUser, nw);
+            setPwStatus('✅ 密碼已更新。下次登入請用新密碼', 'ok');
+            ['pw-current', 'pw-new', 'pw-confirm'].forEach(id => { document.getElementById(id).value = ''; });
+            setTimeout(() => document.getElementById('password-modal').classList.remove('show'), 1500);
+        } catch (err) {
+            const code = err?.code || '';
+            const msg =
+                (code === 'auth/wrong-password' || code === 'auth/invalid-credential') ? '目前密碼錯誤'
+                : code === 'auth/weak-password' ? '新密碼太弱（至少 6 字元）'
+                : code === 'auth/too-many-requests' ? '嘗試次數過多，稍後再試'
+                : code === 'auth/requires-recent-login' ? '登入狀態過期，請登出後重新登入再改'
+                : code === 'auth/network-request-failed' ? '網路連線失敗'
+                : `失敗：${err?.message || err}`;
+            setPwStatus('❌ ' + msg, 'error');
+            console.error('改密碼失敗', err);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     // ========== Tab 切換 ==========
     function activateTab(panelId) {
         // .qtab = sticky toolbar 內的分頁快切複本（📅/🗂），active 狀態跟真 tab 一起切
@@ -837,6 +934,10 @@
                     userInfo.textContent = `${providerIcon}:${shortName}`;
                     userInfo.title = `${provider} | ${user.email || user.uid}`;
                 }
+                // 只有 password provider 才顯示「修改密碼」（見該區塊註解）
+                const pwSection = document.getElementById('pw-section');
+                if (pwSection) pwSection.style.display =
+                    user.providerData.some(p => p.providerId === 'password') ? 'block' : 'none';
                 console.log('已登入:', user.email, '| UID:', user.uid);
                 onUserReady();
                 // 登入後刷新「上次備份」日期顯示（被動，不跳橫幅）
@@ -911,6 +1012,14 @@
         document.querySelectorAll('.tab, .qtab').forEach(t => {
             t.addEventListener('click', () => activateTab(t.dataset.panel));
         });
+
+        // 修改密碼
+        document.getElementById('change-pw-btn')?.addEventListener('click', openPasswordModal);
+        document.getElementById('pw-cancel')?.addEventListener('click',
+            () => document.getElementById('password-modal').classList.remove('show'));
+        document.getElementById('pw-save')?.addEventListener('click', submitPasswordChange);
+        document.getElementById('pw-confirm')?.addEventListener('keydown',
+            (e) => { if (e.key === 'Enter') submitPasswordChange(); });
 
         // 舊 search-toggle-btn 已移除；門診日的 search 在 bindClinicDayUI 內綁
     });
