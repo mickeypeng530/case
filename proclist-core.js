@@ -386,12 +386,8 @@ export function deriveProcRows(allByDate) {
 }
 
 // 排程原生 rows（SONO INJ 等常只排在排程格，OPD plan 無對應行）。唯讀鏡射 scheduler 節點；
-// 舊 caselist 的 status/planScratch/Arthro 四欄位經 cellCaseId 連結當 fallback
+// 執行狀態 / planScratch / Arthro 四欄位一律住 opd/procTrackSched/{caseId} overlay（舊 caselist fallback 已移除）
 export function buildSchedRows(sched) {
-    const clByCaseId = {};
-    Object.values(sched.caseList || {}).forEach(tabRows => {
-        Object.values(tabRows || {}).forEach(r => { if (r && r.cellCaseId) clByCaseId[r.cellCaseId] = r; });
-    });
     const rows = [];
     Object.entries(sched.cells || {}).forEach(([cellKey, cell]) => {
         const m = cellKey.match(/^(\d{4}-\d{2}-\d{2})-(AM|PM)$/);
@@ -404,8 +400,7 @@ export function buildSchedRows(sched) {
                 if (c.type === 'other') tags = [c.otherSubtype || 'Other'];
                 else return;
             }
-            const cl = c.id ? clByCaseId[c.id] : null;
-            const tr = c.id ? ((sched.track || {})[c.id] || {}) : {};   // overlay 是 planScratch 退役後的新家
+            const tr = c.id ? ((sched.track || {})[c.id] || {}) : {};
             rows.push({
                 rec: String(c.chartNo || '').trim().toUpperCase(),
                 procDate: m[1],
@@ -413,10 +408,7 @@ export function buildSchedRows(sched) {
                 tags: [...tags], noTag: false,
                 tentative: c.status === 'tentative', // 排程暫定 → 「待排」視圖專屬，不進主清單
                 sched: true, schedCase: c, cellKey,
-                fallbackStatus: cl?.status === 'done' ? 'done' : (cl?.status === 'dc' ? 'dc' : null),
-                planScratch: (tr.planScratch || cl?.planScratch || '').trim(),   // overlay 優先；舊 caselist 退役後 || 右半永遠是 ''
-                // Arthro 四欄位住在舊 caselist row 上（不在排程 case）——當 fallback 顯示；編輯走 procTrackSched overlay
-                arthro: c.type === 'arthro' && cl ? { region: cl.arthroRegion || '', weight: cl.arthroWeight || '', mriTime: cl.arthroMriTime || '', contrast: cl.arthroContrast || '' } : null,
+                planScratch: (tr.planScratch || '').trim(),
                 srcDate: m[1], srcVisit: null, line: c.note || ''
             });
         });
@@ -696,12 +688,12 @@ export function createProcList(deps) {
     }
     async function getCachedSched(force = false) {
         if (!force && _schedCache && Date.now() - _schedCache.at < TTL) return _schedCache;
-        const [cellsSnap, clSnap, trackSnap] = await Promise.all([
+        // ⚠ 不再讀 scheduler/caseList：舊線上 caselist 2026-08-20 退役、節點已刪（2026-10-08 線上實查 exists=false）
+        const [cellsSnap, trackSnap] = await Promise.all([
             fb.get(fb.ref(fb.db, 'scheduler/cellData')),
-            fb.get(fb.ref(fb.db, 'scheduler/caseList')),
             fb.get(fb.ref(fb.db, 'opd/procTrackSched'))
         ]);
-        _schedCache = { at: Date.now(), cells: cellsSnap.val() || {}, caseList: clSnap.val() || {}, track: trackSnap.val() || {} };
+        _schedCache = { at: Date.now(), cells: cellsSnap.val() || {}, track: trackSnap.val() || {} };
         return _schedCache;
     }
 
@@ -801,7 +793,6 @@ export function createProcList(deps) {
             const hit = sr.rec ? opdByKey.get(normRec(sr.rec) + '|' + sr.procDate) : null;
             if (hit) {
                 if (!hit.time && sr.time) hit.time = sr.time;               // 執行時間住在排程 case 上
-                if (!hit.fallbackStatus && sr.fallbackStatus) hit.fallbackStatus = sr.fallbackStatus;
                 hit.schedCase = sr.schedCase;                               // 領藥顯示用
                 return;
             }
@@ -811,14 +802,13 @@ export function createProcList(deps) {
         });
         datedAll.sort((a, b) => a.procDate.localeCompare(b.procDate) || (a.time || '99:99').localeCompare(b.time || '99:99') || a.rec.localeCompare(b.rec));
 
-        // 有效狀態：手動 procTrack > 舊 caselist 狀態(fallback) > 檢查類過期自動已執行 > 過去逾一週自動完成 > 待做
+        // 有效狀態：手動 procTrack > 當日做 > 檢查類過期自動已執行 > 過去逾一週自動完成 > 待做
         //   ⚠ 不再用 plan 的 * / [已] 判完成——user 的 *=「這是 procedure」、[已]=「已安排」，都不是「做完」（見 DECISION_LOG 2026-07-11）
         //   完成 = 手動點；但過去逾一週沒點的不當待做累積（沒做的早該 DC/取消，留著的就是做了忘了點）
         const staleCutoff = fmtOff(-7);
         const stOf = (row) => {
             const t = procTrackOf(row).track;
             if (t?.status) return t.status;
-            if (row.fallbackStatus) return row.fallbackStatus;
             if (row.sameDay) return 'done';  // 當日做（tag 佐證）本來就完成
             if (row.sched && (row.schedCase?.type === 'mri' || row.schedCase?.type === 'ct') && row.procDate < todayStr) return 'done';
             if (row.procDate && row.procDate < staleCutoff) return 'done';  // 過去逾一週 → 假設已做，不累積待做
@@ -912,12 +902,10 @@ export function createProcList(deps) {
             if (row.srcVisit) {
                 planHtml = highlightPlanLine(row.line || '');
             } else if (schedType === 'arthro') {
-                // Arthro 四欄位：顯示/編輯以 procTrackSched overlay 優先，舊 caselist row 值當 fallback（退役後 overlay 是唯一家）
+                // Arthro 四欄位：procTrackSched overlay 是唯一家
                 const ov = track || {};
-                const a = row.arthro || {};
-                // overlay 只要寫過（含清空 ''）就以 overlay 為準；沒寫過才 fallback 舊 caselist 值
-                const fv = (k, ck) => (ov[k] !== undefined && ov[k] !== null) ? ov[k] : (a[ck] || '');
-                const vals = { arthroRegion: fv('arthroRegion', 'region'), arthroWeight: fv('arthroWeight', 'weight'), arthroMriTime: fv('arthroMriTime', 'mriTime'), arthroContrast: fv('arthroContrast', 'contrast') };
+                const fv = (k) => ov[k] ?? '';
+                const vals = { arthroRegion: fv('arthroRegion'), arthroWeight: fv('arthroWeight'), arthroMriTime: fv('arthroMriTime'), arthroContrast: fv('arthroContrast') };
                 if (mobile) {
                     planHtml = escapeHtml([`部位 ${vals.arthroRegion || '?'}`, `體重 ${vals.arthroWeight || '?'}kg`, `MRI ${vals.arthroMriTime || '?'}`, `藥量 ${vals.arthroContrast || '?'}`].join(' · '));
                 } else {
@@ -925,7 +913,7 @@ export function createProcList(deps) {
                     planHtml = `<div class="plc-arthro-row">部位${inp('arthroRegion', 76, '部位')} 體重${inp('arthroWeight', 44, 'kg')}kg MRI${inp('arthroMriTime', 56, '時間')} 藥量${inp('arthroContrast', 56, 'ml')}</div>`;
                 }
             } else {
-                // planScratch（舊 caselist 手寫）> 模糊配對的當日 plan 行（保留 🔗 標來源是排程）> 真的沒有才顯示 note
+                // planScratch（overlay 手寫）> 模糊配對的當日 plan 行（保留 🔗 標來源是排程）> 真的沒有才顯示 note
                 planHtml = row.planScratch ? escapeHtml(row.planScratch).replace(/\n/g, '<br>')
                     : (row.fuzzyLine ? `🔗 ${highlightPlanLine(row.fuzzyLine)}`
                         : `<span style="color:var(--text-muted,#64748b);">🔗 排程登記（OPD plan 無對應行）</span>`);
@@ -947,7 +935,7 @@ export function createProcList(deps) {
                 + `<span class="plc-vchip" data-pc-jump="${escapeAttr(row.srcDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到門診 ${escapeAttr(row.srcDate)}">📅 ${mdc(row.srcDate)} 門診</span>`
                 + (nextDate ? `<span class="plc-vchip" data-pc-jump="${escapeAttr(nextDate)}" data-pc-jumprec="${escapeAttr(row.rec)}" title="跳到下次門診 ${escapeAttr(nextDate)}">→ ${mdc(nextDate)} 下次</span>` : '')
                 + `</div>` : '';
-            const stTitle = track?.status ? '手動狀態' : (row.fallbackStatus ? '沿用舊 caselist 狀態，點擊改手動' : (row.procDate && row.procDate < staleCutoff ? '過去逾一週自動視為完成，點擊改手動' : ''));
+            const stTitle = track?.status ? '手動狀態' : (row.procDate && row.procDate < staleCutoff ? '過去逾一週自動視為完成，點擊改手動' : '');
             const stBtn = `<button type="button" class="pc-st pc-st-${st}" data-pc-cycle="st" ${dataAttrs} title="${stTitle}">${PROC_ST_META[st].label}</button>`;
             // 領藥：MRI/CT 檢查與藥物無關 → 空白；排程原生 row 顯示排程領藥條狀態（唯讀）；OPD row 可點
             const medBtn = (isSchedOnly && (schedType === 'mri' || schedType === 'ct'))
