@@ -1467,7 +1467,7 @@
             setPersistence, inMemoryPersistence
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import {
-            ref, set, get, update, remove, onValue
+            ref, set, get, update, remove, onValue, increment
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
         // Procedure 清單共用模組（與 opd.html 的 🗂 tab 同一份實作）
         import { createProcList, PLC_VERSION } from "./proclist-core.js?v=__SHA__";
@@ -2901,7 +2901,7 @@
             document.getElementById('proc-overlay').style.display = 'block';
             if (!procListInst) {
                 procListInst = createProcList({
-                    fb: { db: fbDb, ref, get, update, onValue },
+                    fb: { db: fbDb, ref, get, update, onValue, increment },
                     jumpToVisit: (date, rec) => window.open(`opd.html?date=${encodeURIComponent(date)}&rec=${encodeURIComponent(rec)}`, '_blank'),
                     reportError: (err, label) => alert(`${label} 寫入失敗：${err?.message || err}`)
                 });

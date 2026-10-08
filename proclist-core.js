@@ -189,6 +189,9 @@ const PROC_ST_META = {
     dc:      { label: '⊘ DC',   next: 'pending' }
 };
 const PROC_MED_META = { '': '－', pending: '🟠 未領', collected: '🟢 已領' };
+// 耗材庫存計數器：純手動 ±（存 opd/inventory/{key}，updatedAt = ISO）。刻意不從 procedure 自動扣——
+// 一位病人 pRF 可能打多節位用多支、HA 雙膝 2 支，「台數」推不出「支數」（2026-10-08）
+const INV_ITEMS = [{ key: 'pRF', label: 'pRF 針' }, { key: 'HA', label: 'HA' }];
 const PROC_FAMILIES = [['CT NB', 'pRF'], ['TAME', 'cTAME', 'sTAME'], ['SONO'], ['CT Bx']];
 const PROC_FAMILY_FLAT = new Set(PROC_FAMILIES.flat());  // 所有 procedure tag（判「當日做」用）
 const SCHED_TYPE_TAGS = { 'sono': ['SONO'], 'ct-nb': ['CT NB'], 'ct-nb-prf': ['CT NB', 'pRF'], 'stame': ['sTAME'], 'ctame': ['cTAME'], 'arthro': ['Arthro'], 'mri': ['MRI'], 'ct': ['CT'] };
@@ -448,6 +451,16 @@ const PLC_CSS = `
 .plc-hdr-cnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
 .plc-mcnt { padding: 6px 4px; font-size: 0.85rem; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; }
 .plc-mcnt .plc-cnt-lb { font-weight: 400; font-size: 0.85em; color: var(--text-muted,#64748b); margin-right: 5px; }
+/* 耗材庫存計數器（pRF 針 / HA）：表頭台數右邊；手機在清單頂端那條 */
+.plc-inv { margin-left: 14px; white-space: nowrap; font-weight: 400; font-size: 0.85em; color: var(--text-secondary,#94a3b8); }
+.plc-inv-item { display: inline-flex; align-items: center; gap: 3px; margin-left: 10px; }
+.plc-inv-item:first-child { margin-left: 0; }
+.plc-inv-btn { width: 20px; height: 20px; padding: 0; line-height: 1; font-family: inherit; font-size: 0.95rem; border: 1px solid var(--border,#475569); border-radius: 4px; background: var(--bg-secondary,#1e293b); color: var(--text-primary,#f1f5f9); cursor: pointer; }
+.plc-inv-btn:hover { border-color: var(--color-tag-default,#6366f1); }
+.plc-inv-n { min-width: 1.7em; text-align: center; font-weight: 700; color: var(--text-primary,#f1f5f9); font-variant-numeric: tabular-nums; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.plc-inv-item.empty .plc-inv-n { color: #f87171; } /* 歸零 = 該補貨了 */
+.plc-mcnt .plc-inv-btn { width: 30px; height: 30px; } /* 手機觸控目標 */
+.plc-inv-bar .plc-inv { margin-left: 0; }
 .proc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border,#475569); vertical-align: top; word-break: break-word; }
 .proc-table .pc-c-labs { white-space: pre-line; font-size: 0.78rem; color: var(--text-secondary,#94a3b8); }
 .pc-plan-body { line-height: 1.5; font-size: 0.82rem; }
@@ -620,6 +633,52 @@ export function createProcList(deps) {
     let procView = 'bydate';
     let uiBound = false;
     let _liveUnsub = null, _liveDebounce = null;  // ②即時同步 listener
+    let _inv = {};                                  // 耗材庫存（opd/inventory），每次 render 順手讀（< 100 bytes）
+
+    // ── 耗材庫存計數器 ──
+    async function loadInventory() {
+        try {
+            const snap = await fb.get(fb.ref(fb.db, 'opd/inventory'));
+            _inv = snap.val() || {};
+        } catch (e) { console.warn('讀取庫存失敗', e); }  // 讀不到就沿用上次值，不擋清單
+    }
+    const invLabel = (key) => (INV_ITEMS.find(it => it.key === key) || { label: key }).label;
+    function invHtml() {
+        return `<span class="plc-inv">` + INV_ITEMS.map(it => {
+            const n = Number(_inv[it.key]) || 0;
+            return `<span class="plc-inv-item${n <= 0 ? ' empty' : ''}">${it.label}`
+                + `<button type="button" class="plc-inv-btn" data-plc-inv="${it.key}" data-plc-invd="-1" title="用掉一支">−</button>`
+                + `<span class="plc-inv-n" data-plc-invset="${it.key}" title="點數字直接設定（補貨 / 盤點）">${n}</span>`
+                + `<button type="button" class="plc-inv-btn" data-plc-inv="${it.key}" data-plc-invd="1" title="加一支">+</button></span>`;
+        }).join('') + `</span>`;
+    }
+    // ± / 設定後只換計數器那一小段 DOM，不整張重畫（重畫要重新推導全部列）
+    function paintInventory() {
+        document.getElementById(ids.list)?.querySelectorAll('.plc-inv').forEach(el => { el.outerHTML = invHtml(); });
+    }
+    async function bumpInventory(key, d) {
+        if (d < 0 && (Number(_inv[key]) || 0) <= 0) { setStatus(`${invLabel(key)} 已經是 0`); return; }
+        try {
+            // increment() = 伺服器端原子加減：兩台裝置同時按也不會互蓋（讀改寫會少算一次）
+            await fb.update(fb.ref(fb.db, 'opd/inventory'), { [key]: fb.increment(d), updatedAt: new Date().toISOString() });
+            await loadInventory();
+            paintInventory();
+            setStatus(`${invLabel(key)} ${d > 0 ? '+1' : '−1'} → 剩 ${Number(_inv[key]) || 0}`);
+        } catch (err) { reportError(err, '庫存'); }
+    }
+    async function setInventory(key) {
+        await loadInventory();  // 以最新值當預設，免得另一台剛改過
+        const cur = Number(_inv[key]) || 0;
+        const v = prompt(`${invLabel(key)} 目前 ${cur} 支。輸入正確數量（補貨 / 盤點）：`, String(cur));
+        if (v === null) return;
+        if (!/^\d+$/.test(v.trim())) { alert('請輸入 0 以上的整數'); return; }
+        try {
+            await fb.update(fb.ref(fb.db, 'opd/inventory'), { [key]: parseInt(v.trim(), 10), updatedAt: new Date().toISOString() });
+            await loadInventory();
+            paintInventory();
+            setStatus(`${invLabel(key)} 設為 ${Number(_inv[key]) || 0}`);
+        } catch (err) { reportError(err, '庫存'); }
+    }
 
     const getAllVisits = deps.getAllVisits || (async () => {
         if (_visitsCache && Date.now() - _visitsCache.at < TTL) return _visitsCache.data;
@@ -677,6 +736,7 @@ export function createProcList(deps) {
         const wantScroll = !!opts.scroll;
         const wrap = document.getElementById(ids.list);
         if (!wrap) return;
+        const invPromise = loadInventory();  // 先發出去，跟下面的推導並行；組表頭前才 await
         const view = procView;
         const rangeEl = document.getElementById(ids.range);
         const range = rangeEl?.value || 'recent';
@@ -796,14 +856,17 @@ export function createProcList(deps) {
         });
         const cntTitle = `此範圍 procedure 台數\n針類 ${nNeedle}（SONO / TAME / CT NB / pRF / CT Bx）\nArthro ${nArthro}\n不含：MRI/CT 影像預約、DC、暫定、未定日期`;
         const cntHtml = `<span class="plc-hdr-cnt" title="${escapeAttr(cntTitle)}"><span class="plc-cnt-lb">本區間</span>${nNeedle}+${nArthro}</span>`;
-        const cntHtmlM = `<div class="plc-mcnt" title="${escapeAttr(cntTitle)}"><span class="plc-cnt-lb">本區間 procedure</span>${nNeedle}+${nArthro}</div>`;
+        await invPromise;
+        const invH = invHtml();
+        const cntHtmlM = `<div class="plc-mcnt"><span title="${escapeAttr(cntTitle)}"><span class="plc-cnt-lb">本區間 procedure</span>${nNeedle}+${nArthro}</span>${invH}</div>`;
         const statusEl = document.getElementById(ids.status);
         const windowLabel = range === 'cycle' ? `${startKey.slice(5).replace('-', '/')} 起 · `
             : (range === 'between' ? `${startKey.slice(5).replace('-', '/')}~${endKey.slice(5).replace('-', '/')} · ` : '');
         if (statusEl) statusEl.textContent = `${windowLabel}${dated.length} 筆：⏳${cnt.pending} ✅${cnt.done} ⊘${cnt.dc}${undated.length ? ` · 📌未定 ${undated.length}` : ''}${overdueCnt ? ` · ⏰逾期 ${overdueCnt}（見待做）` : ''}${tentCnt ? ` · 📝待排 ${tentCnt}` : ''}${schedNote}`;
 
         if (!list.length && !showUndated.length) {
-            wrap.innerHTML = '<div class="plc-scope"><div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div></div>';
+            // 清單空也要能扣庫存 → 計數器獨立一條
+            wrap.innerHTML = `<div class="plc-scope"><div class="plc-mcnt plc-inv-bar">${invH}</div><div class="empty-hint">此範圍內沒有 procedure（plan 需有「日期 + SONO/TAME/CT NB…」行）</div></div>`;
             return;
         }
 
@@ -929,7 +992,7 @@ export function createProcList(deps) {
 
         const tableWrap = (bodyHtml) => `<div class="proc-table-wrapper"><table class="proc-table">
             <colgroup><col class="pc-c-date"><col class="pc-c-rec"><col class="pc-c-labs"><col class="pc-c-tags"><col class="pc-c-plan"><col class="pc-c-st"><col class="pc-c-med"></colgroup>
-            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Procedure 行 / 註記${cntHtml}</th><th>狀態</th><th>藥</th></tr></thead>
+            <thead><tr><th>日期</th><th>病人</th><th>抽血</th><th>Procedure</th><th>Procedure 行 / 註記${cntHtml}${invH}</th><th>狀態</th><th>藥</th></tr></thead>
             <tbody>${bodyHtml}</tbody></table></div>`;
 
         let desktopHtml = '';
@@ -1098,6 +1161,10 @@ export function createProcList(deps) {
         document.getElementById(ids.range)?.addEventListener('change', () => render({ scroll: true }));
         const listEl = document.getElementById(ids.list);
         listEl?.addEventListener('click', (e) => {
+            const invBtn = e.target.closest('[data-plc-invd]');
+            if (invBtn) { bumpInventory(invBtn.dataset.plcInv, parseInt(invBtn.dataset.plcInvd, 10)); return; }
+            const invSet = e.target.closest('[data-plc-invset]');
+            if (invSet) { setInventory(invSet.dataset.plcInvset); return; }
             const pin = e.target.closest('.plc-pin');
             if (pin) { openProcActualPopover(pin); return; }
             const cyc = e.target.closest('[data-pc-cycle]');
