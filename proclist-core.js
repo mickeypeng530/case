@@ -449,9 +449,11 @@ const PLC_CSS = `
 .plc-inv-item:first-child { margin-left: 0; }
 .plc-inv-btn { width: 20px; height: 20px; padding: 0; line-height: 1; font-family: inherit; font-size: 0.95rem; border: 1px solid var(--border,#475569); border-radius: 4px; background: var(--bg-secondary,#1e293b); color: var(--text-primary,#f1f5f9); cursor: pointer; }
 .plc-inv-btn:hover { border-color: var(--color-tag-default,#6366f1); }
-.plc-inv-n { min-width: 1.7em; text-align: center; font-weight: 700; color: var(--text-primary,#f1f5f9); font-variant-numeric: tabular-nums; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-.plc-inv-item.empty .plc-inv-n { color: #f87171; } /* 歸零 = 該補貨了 */
+.plc-inv-in { width: 2.6em; height: 20px; padding: 0 2px; box-sizing: border-box; text-align: center; font-family: inherit; font-size: 0.95rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary,#f1f5f9); background: var(--bg-primary,#0f172a); border: 1px solid var(--border,#475569); border-radius: 4px; }
+.plc-inv-in:focus { outline: none; border-color: var(--color-tag-default,#6366f1); }
+.plc-inv-item.empty .plc-inv-in { color: #f87171; border-color: rgba(248,113,113,0.6); } /* 歸零 = 該補貨了 */
 .plc-mcnt .plc-inv-btn { width: 30px; height: 30px; } /* 手機觸控目標 */
+.plc-mcnt .plc-inv-in { height: 30px; width: 3em; font-size: 16px; } /* iOS：input < 16px 聚焦會自動放大頁面 */
 .plc-inv-bar .plc-inv { margin-left: 0; }
 .proc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border,#475569); vertical-align: top; word-break: break-word; }
 .proc-table .pc-c-labs { white-space: pre-line; font-size: 0.78rem; color: var(--text-secondary,#94a3b8); }
@@ -640,13 +642,23 @@ export function createProcList(deps) {
             const n = Number(_inv[it.key]) || 0;
             return `<span class="plc-inv-item${n <= 0 ? ' empty' : ''}">${it.label}`
                 + `<button type="button" class="plc-inv-btn" data-plc-inv="${it.key}" data-plc-invd="-1" title="用掉一支">−</button>`
-                + `<span class="plc-inv-n" data-plc-invset="${it.key}" title="點數字直接設定（補貨 / 盤點）">${n}</span>`
+                // 數字直接可改（補貨 / 盤點）：失焦或 Enter 存、Esc 還原。type=text+inputmode：手機出數字鍵盤、桌機沒有 spinner
+                + `<input type="text" inputmode="numeric" pattern="[0-9]*" class="plc-inv-in" data-plc-invin="${it.key}" value="${n}" aria-label="${it.label} 數量" autocomplete="off">`
                 + `<button type="button" class="plc-inv-btn" data-plc-inv="${it.key}" data-plc-invd="1" title="加一支">+</button></span>`;
         }).join('') + `</span>`;
     }
-    // ± / 設定後只換計數器那一小段 DOM，不整張重畫（重畫要重新推導全部列）
+    // ± / 設定後只就地更新數字，不整張重畫（重畫要重新推導全部列）；也不換掉 input 節點，
+    // 免得正在另一格打字的人被搶走焦點 —— 有焦點的那格不覆寫
     function paintInventory() {
-        document.getElementById(ids.list)?.querySelectorAll('.plc-inv').forEach(el => { el.outerHTML = invHtml(); });
+        const wrapEl = document.getElementById(ids.list);
+        if (!wrapEl) return;
+        INV_ITEMS.forEach(it => {
+            const n = Number(_inv[it.key]) || 0;
+            wrapEl.querySelectorAll(`[data-plc-invin="${it.key}"]`).forEach(inp => {
+                if (inp !== document.activeElement) inp.value = String(n);
+                inp.closest('.plc-inv-item')?.classList.toggle('empty', n <= 0);
+            });
+        });
     }
     async function bumpInventory(key, d) {
         if (d < 0 && (Number(_inv[key]) || 0) <= 0) { setStatus(`${invLabel(key)} 已經是 0`); return; }
@@ -658,18 +670,24 @@ export function createProcList(deps) {
             setStatus(`${invLabel(key)} ${d > 0 ? '+1' : '−1'} → 剩 ${Number(_inv[key]) || 0}`);
         } catch (err) { reportError(err, '庫存'); }
     }
-    async function setInventory(key) {
-        await loadInventory();  // 以最新值當預設，免得另一台剛改過
+    // 數字框失焦 / Enter：沒改不寫；不是 0 以上整數 → 還原成目前值（不 alert，打錯直接看得到被還原）
+    // 直接設定 = 絕對值寫入（盤點語義），不是 increment
+    async function commitInventoryInput(inp) {
+        const key = inp.dataset.plcInvin;
         const cur = Number(_inv[key]) || 0;
-        const v = prompt(`${invLabel(key)} 目前 ${cur} 支。輸入正確數量（補貨 / 盤點）：`, String(cur));
-        if (v === null) return;
-        if (!/^\d+$/.test(v.trim())) { alert('請輸入 0 以上的整數'); return; }
+        const v = inp.value.trim();
+        if (v === String(cur)) return;
+        if (!/^\d+$/.test(v)) {
+            inp.value = String(cur);
+            setStatus(`${invLabel(key)} 只能填 0 以上的整數，已還原成 ${cur}`);
+            return;
+        }
         try {
-            await fb.update(fb.ref(fb.db, 'opd/inventory'), { [key]: parseInt(v.trim(), 10), updatedAt: new Date().toISOString() });
+            await fb.update(fb.ref(fb.db, 'opd/inventory'), { [key]: parseInt(v, 10), updatedAt: new Date().toISOString() });
             await loadInventory();
             paintInventory();
             setStatus(`${invLabel(key)} 設為 ${Number(_inv[key]) || 0}`);
-        } catch (err) { reportError(err, '庫存'); }
+        } catch (err) { inp.value = String(cur); reportError(err, '庫存'); }
     }
 
     const getAllVisits = deps.getAllVisits || (async () => {
@@ -1151,8 +1169,6 @@ export function createProcList(deps) {
         listEl?.addEventListener('click', (e) => {
             const invBtn = e.target.closest('[data-plc-invd]');
             if (invBtn) { bumpInventory(invBtn.dataset.plcInv, parseInt(invBtn.dataset.plcInvd, 10)); return; }
-            const invSet = e.target.closest('[data-plc-invset]');
-            if (invSet) { setInventory(invSet.dataset.plcInvset); return; }
             const pin = e.target.closest('.plc-pin');
             if (pin) { openProcActualPopover(pin); return; }
             const cyc = e.target.closest('[data-pc-cycle]');
@@ -1163,8 +1179,17 @@ export function createProcList(deps) {
             const jmp = e.target.closest('[data-pc-jump]');
             if (jmp && jump) jump(jmp.dataset.pcJump, jmp.dataset.pcJumprec);
         });
-        // Arthro inline 編輯 + 註記：focusout 存單欄
+        // 庫存數字框：Enter = 存（交給 focusout）、Esc = 還原不存
+        listEl?.addEventListener('keydown', (e) => {
+            const inp = e.target.closest?.('[data-plc-invin]');
+            if (!inp) return;
+            if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+            else if (e.key === 'Escape') { inp.value = String(Number(_inv[inp.dataset.plcInvin]) || 0); inp.blur(); }
+        });
+        // 庫存數字框 / Arthro inline 編輯 / 註記：focusout 存單欄
         listEl?.addEventListener('focusout', (e) => {
+            const invIn = e.target.closest?.('[data-plc-invin]');
+            if (invIn) { commitInventoryInput(invIn); return; }
             const inp = e.target.closest?.('[data-plc-arthro]');
             if (inp) {
                 const prev = (_procTrackSched[inp.dataset.plcSchedkey] || {})[inp.dataset.plcArthro] || '';
