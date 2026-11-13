@@ -74,16 +74,23 @@
             align-items: center;
             gap: 4px;
             margin-bottom: 16px;
-            flex-wrap: wrap;
+            /* 永遠單行：塞不下就橫向捲動（2026-11-13 改 6 組時從 wrap 改來）。
+               舊分頁下拉是 appendChild 到 body 的 fixed 節點，不受這裡的 overflow 裁切 */
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            /* ⚠ 別加 scrollbar-width：Chrome 121+ 有它就無視下面 ::-webkit-scrollbar 的 4px，捲軸變粗、整列多 10px */
             background: var(--bg-secondary);
             padding: 8px;
             border-radius: 10px;
         }
+        .tabs-container > * { flex-shrink: 0; white-space: nowrap; }
+        .tabs-container::-webkit-scrollbar { height: 4px; }
+        .tabs-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-        /* ⚠ 緊湊尺寸是為了「最近 5 個分頁 + 舊分頁鈕 + ＋新增」在 1000px 容器內維持**單行**。
-           實測（Noto Sans TC 載入後）：單 tab 106px、舊分頁鈕 122px、＋新增 61px，5 組總寬 743px
-           → 單行 48px，一路到 viewport 780px 都不換行；用回 8px/14px + .85rem 則 900px 就會斷成兩行(95px)。
-           改 padding / font-size 前先確認 5 組還能單行。手機 ≤768px 另有 override（.78rem + 橫捲），不受影響 */
+        /* 緊湊尺寸：實測（Noto Sans TC 載入後）單 tab 106px、舊分頁鈕 122px、＋新增 61px，6 組總寬約 853px
+           < 容器 984px → 寬螢幕不用捲。窄於約 920px 時 tabs-container 橫向捲動（不換行）。
+           改回 8px/14px + .85rem 會讓更多寬度需要捲動。手機 ≤768px 另有 override（.78rem） */
         .tab {
             padding: 6px 10px;
             background: transparent;
@@ -1994,14 +2001,13 @@
                 return dateA - dateB;
             });
             
-            // 分成最新 5 個和舊分頁
-            // ⚠ 5 是「不讓 tab bar 換行」的上限（見 .tab 的緊湊尺寸註解）：5 組總寬 743px < 容器 984px。
-            //   要再加到 6 之前先量——6 組總寬 853px，viewport <920px 就會斷成兩行
-            const RECENT_TAB_COUNT = 5;
+            // 分成最新 6 個和舊分頁（2026-11-13 由 5 改 6：未來排程不夠放）
+            // 6 組總寬約 853px < 容器 984px；窄視窗靠 tabs-container 橫向捲動維持單行
+            const RECENT_TAB_COUNT = 6;
             const recentTabs = sortedTabs.slice(-RECENT_TAB_COUNT);
             const oldTabs = sortedTabs.slice(0, -RECENT_TAB_COUNT);
 
-            // 渲染最新 5 個分頁
+            // 渲染最新 N 個分頁
             recentTabs.forEach(tab => {
                 const tabEl = document.createElement('button');
                 tabEl.className = `tab ${tab.id === state.activeTabId ? 'active' : ''}`;
@@ -2071,6 +2077,14 @@
                 const oldDropdown = document.getElementById('old-tabs-dropdown');
                 if (oldDropdown) oldDropdown.remove();
                 document.body.appendChild(dropdown);
+            }
+
+            // 可捲動時把目前分頁捲進可視範圍（只動 container 的 scrollLeft，不用 scrollIntoView 以免整頁跟著跳）
+            const act = container.querySelector('.tab.active');
+            if (act && container.scrollWidth > container.clientWidth) {
+                const l = act.offsetLeft - container.offsetLeft, r = l + act.offsetWidth;
+                if (l < container.scrollLeft) container.scrollLeft = l - 8;
+                else if (r > container.scrollLeft + container.clientWidth) container.scrollLeft = r - container.clientWidth + 8;
             }
         }
 
@@ -3072,6 +3086,7 @@
             const hideOldTabsIfDesktop = () => { if (window.innerWidth > 768) hideOldTabsDropdown(); };
             window.addEventListener('resize', hideOldTabsDropdown);
             window.addEventListener('scroll', hideOldTabsIfDesktop, { passive: true });
+            document.getElementById('tabs-container')?.addEventListener('scroll', hideOldTabsIfDesktop, { passive: true });
 
             // 下拉選單已附到 body，事件需另外綁
             document.addEventListener('click', (e) => {
