@@ -4590,6 +4590,16 @@
                 if (lastMonth >= 8 && mo <= 5) curYear += 1;
             }
             lastMonth = mo;
+            // 防呆：沒寫年份、推出來卻是未來 → 往回減到不是未來為止，並標 ⚠ 給預覽確認。
+            // 原表格常按病人分組而非照時間排，「月份往回跳 +1 年」會一路累加（2026-11 實測 13/34 筆年份錯）。
+            // ⚠ 只擋得住「跑到未來」；落在過去的錯年份擋不住 —— 表格日期寫年份（26/01/16）才可靠
+            let yearAdj = false;
+            if (!yy) {
+                const todayKey = formatDate(new Date());
+                const mmdd = `${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+                while (`${curYear}-${mmdd}` > todayKey) { curYear -= 1; yearAdj = true; }
+                if (yearAdj) errors.push(`row ${idx + 1}: 「${dateText}」推算成未來日期，已改為 ${curYear} 年，請確認`);
+            }
             const date = `${curYear}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
 
             if (!anatomy) {
@@ -4602,7 +4612,9 @@
                 date,
                 side,
                 effect,
-                rawLine: line
+                rawLine: line,
+                yearAdj,              // 預覽標 ⚠（被減過年）
+                yearGuessed: !yy      // 預覽標「年份推算」；兩者 commit 時都剝掉不入庫
             });
         });
         return { rows: out, errors };
@@ -4630,7 +4642,9 @@
             preview.innerHTML = errors.map(e => `<div style="color:var(--color-danger);font-size:0.8rem;">${escapeHtml(e)}</div>`).join('');
             return;
         }
-        status.textContent = `✓ 解析 ${rows.length} 筆${errors.length ? `（${errors.length} 個警告）` : ''}`;
+        const nGuess = rows.filter(r => r.yearGuessed).length;
+        status.textContent = `✓ 解析 ${rows.length} 筆${errors.length ? `（${errors.length} 個警告）` : ''}`
+            + (nGuess ? `　⚠ ${nGuess} 筆日期沒寫年份、年份是推算的（表格不是照時間排時常會錯），請逐筆核對` : '');
         const groupCounts = {};
         rows.forEach(r => { groupCounts[`${r.type}::${r.anatomy}`] = (groupCounts[`${r.type}::${r.anatomy}`] || 0) + 1; });
         const summaryHtml = `<div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:8px;">${Object.entries(groupCounts).map(([k, n]) => `${escapeHtml(k)}: ${n}`).join(' · ')}</div>`;
@@ -4641,7 +4655,7 @@
                 <td>${escapeHtml(r.type)}</td>
                 <td style="color:var(--accent);font-family:monospace;">${escapeHtml(r.record || '—')}</td>
                 <td style="${r.anatomy === '?' ? 'color:var(--color-danger);' : ''}">${escapeHtml(r.anatomy)}</td>
-                <td>${escapeHtml(r.date)}</td>
+                <td style="${r.yearAdj ? 'color:var(--color-warning);font-weight:600;' : ''}">${r.yearAdj ? '⚠ ' : ''}${escapeHtml(r.date)}${r.yearGuessed ? '<span style="font-size:0.7rem;color:var(--text-muted);"> 年份推算</span>' : ''}</td>
                 <td>${escapeHtml(r.side)}</td>
                 <td style="font-size:0.74rem;color:var(--text-muted);">${escapeHtml(r.effect)}</td>
             </tr>`).join('') +
@@ -4658,7 +4672,8 @@
         const now = Date.now();
         tameImportParsed.forEach((r, i) => {
             const id = `${r.date}_${r.record || 'x'}_${i}`;
-            updates[`opd/tameStats/${id}`] = { ...r, importedAt: now };
+            const { yearAdj, yearGuessed, ...rest } = r;
+            updates[`opd/tameStats/${id}`] = { ...rest, importedAt: now };
         });
         await update(ref(fbDb), updates);
         alert(`✓ 寫入 ${tameImportParsed.length} 筆`);
