@@ -4550,10 +4550,16 @@
         const errors = [];
         let lastRecord = '';
         let lastAnatomy = null;
-        // 年份推斷：起始 2024（資料 since 2024-04）；明確年份覆寫；
-        // 純 MM/DD 在月份從大跳小（>= 6→<= 5）時自動 +1
-        let curYear = 2024;
-        let lastMonth = 0;
+        // 年份推斷（2026-11-21 改，見 DECISION_LOG 同日）——原表的結構是：
+        //   sTAME / cTAME 各一個區塊、區塊內從最早開始；同一病人的後續治療接在他下面（按病人分組），
+        //   病人之間依「第一次治療日」排序。所以只寫 MM/DD 的列：
+        //   · 新病人（病歷號欄有值）→ 取「不早於上一位病人第一次治療」的最小年份
+        //   · 同病人續行            → 取「不早於該病人上一列」的最小年份
+        //   · 區塊第一列沒年份      → TAME_START_YEAR（2024 開始做）
+        //   明確寫年份（26/01/16）照寫的用，並成為後續列的錨點。
+        //   舊規則「月份從 ≥8 跳到 ≤5 → +1 年」把整張表當一條時間線，實測 34 筆錯 13 筆；新規則 34/34
+        const TAME_START_YEAR = 2024;
+        let curType = null, prevPtFirst = null, prevRow = null;
         lines.forEach((line, idx) => {
             if (!line.trim()) return;
             const cols = line.includes('\t') ? line.split('\t') : line.split(/\s{2,}/);
@@ -4580,27 +4586,31 @@
                 errors.push(`row ${idx + 1}: 日期解析失敗 — "${dateText}"`);
                 return;
             }
-            let yy = m[1];
+            const yy = m[1];
             const mo = parseInt(m[2], 10);
             const dd = parseInt(m[3], 10);
+            const mmdd = `${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+            const typeNorm = type.toLowerCase();
+            if (typeNorm !== curType) { curType = typeNorm; prevPtFirst = null; prevRow = null; } // 換區塊重設錨點
+            const isNewPt = !!recRaw;
+            let year;
             if (yy) {
-                curYear = yy.length === 2 ? 2000 + parseInt(yy, 10) : parseInt(yy, 10);
+                year = yy.length === 2 ? 2000 + parseInt(yy, 10) : parseInt(yy, 10);
             } else {
-                // 推斷：月份從 >=8 跳到 <=5 → 年 +1
-                if (lastMonth >= 8 && mo <= 5) curYear += 1;
+                const anchor = isNewPt ? prevPtFirst : prevRow;
+                year = anchor ? parseInt(anchor.slice(0, 4), 10) : TAME_START_YEAR;
+                while (anchor && `${year}-${mmdd}` < anchor) year++;
             }
-            lastMonth = mo;
-            // 防呆：沒寫年份、推出來卻是未來 → 往回減到不是未來為止，並標 ⚠ 給預覽確認。
-            // 原表格常按病人分組而非照時間排，「月份往回跳 +1 年」會一路累加（2026-11 實測 13/34 筆年份錯）。
-            // ⚠ 只擋得住「跑到未來」；落在過去的錯年份擋不住 —— 表格日期寫年份（26/01/16）才可靠
+            // 安全網：推算結果落在未來 = 表格結構跟假設不符 → 往回減到非未來，標 ⚠ 給預覽確認
             let yearAdj = false;
             if (!yy) {
                 const todayKey = formatDate(new Date());
-                const mmdd = `${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
-                while (`${curYear}-${mmdd}` > todayKey) { curYear -= 1; yearAdj = true; }
-                if (yearAdj) errors.push(`row ${idx + 1}: 「${dateText}」推算成未來日期，已改為 ${curYear} 年，請確認`);
+                while (`${year}-${mmdd}` > todayKey) { year -= 1; yearAdj = true; }
+                if (yearAdj) errors.push(`row ${idx + 1}: 「${dateText}」推算成未來日期，已改為 ${year} 年，請確認`);
             }
-            const date = `${curYear}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+            const date = `${year}-${mmdd}`;
+            if (isNewPt) prevPtFirst = date;
+            prevRow = date;
 
             if (!anatomy) {
                 errors.push(`row ${idx + 1}: 部位無法判讀 — "${anatomyText}" / "${dateText}"`);
