@@ -1458,8 +1458,9 @@
             <div style="margin-bottom: 16px;">
                 <p style="margin-bottom: 8px;"><strong>類型：</strong><span id="detail-type"></span></p>
                 <p style="margin-bottom: 8px;"><strong>時間：</strong><span id="detail-time"></span></p>
-                <p style="margin-bottom: 8px;"><strong>病歷號：</strong><span id="detail-chart"></span></p>
-                <p style="margin-bottom: 8px;"><strong>狀態：</strong><span id="detail-status"></span></p>
+                <p style="margin-bottom: 8px; display: none;" id="detail-note-row"><strong>備註內容：</strong><span id="detail-note" style="white-space: pre-wrap; word-break: break-word;"></span></p>
+                <p style="margin-bottom: 8px;" id="detail-chart-row"><strong>病歷號：</strong><span id="detail-chart"></span></p>
+                <p style="margin-bottom: 8px;" id="detail-status-row"><strong>狀態：</strong><span id="detail-status"></span></p>
             </div>
             <div class="modal-buttons">
                 <button type="button" class="modal-btn confirm" id="detail-close">關閉</button>
@@ -3436,8 +3437,17 @@
             const caseData = realCases[index];
             if (!caseData) return;
             
-            const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
+            // Other 顯示子類型（PICC…），跟格子上的標籤一致
+            const typeLabel = (caseData.type === 'other' && caseData.otherSubtype)
+                ? caseData.otherSubtype : (caseTypeLabels[caseData.type] || caseData.type);
             const statusLabel = caseData.status === 'tentative' ? '暫定' : '確定';
+            // 備註類型：內容在 .note，沒有病歷號/狀態 → 顯示內容、藏那兩列
+            //（手機格子窄、備註常被截斷，這個視窗是唯一看得到全文的地方）
+            const isNote = caseData.type === 'note';
+            document.getElementById('detail-note-row').style.display = isNote ? '' : 'none';
+            document.getElementById('detail-chart-row').style.display = isNote ? 'none' : '';
+            document.getElementById('detail-status-row').style.display = isNote ? 'none' : '';
+            document.getElementById('detail-note').textContent = isNote ? (caseData.note || '（空白）') : '';
             
             // 解析日期
             const period = cellKey.endsWith('-AM') ? '上午' : '下午';
