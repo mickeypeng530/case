@@ -91,23 +91,27 @@ function highlightPlanLine(line) {
     }
     return `<span class="${cls}">${withBadges}</span>`;
 }
-// 規律門診日 = 該月第 2 / 第 4 個週三（user 的雙週三門診）——deterministic，不受資料污染
-function getNthWednesdayOfMonth(year, month, n) {
+// 規律門診日 = 第 2/4 週三（一直都有）＋ 2027-01 起第 1/3 週四——deterministic，不受資料污染
+// ⚠ opd.html 有同一份規則（regularClinicDatesOfMonth），改規則兩邊都要改
+const THU_CLINIC_FROM = '2027-01-01';
+function getNthWeekdayOfMonth(year, month, dow, n) {
     const d = new Date(year, month - 1, 1);
     let count = 0;
     while (d.getMonth() === month - 1) {
-        if (d.getDay() === 3) { count++; if (count === n) return new Date(d); }
+        if (d.getDay() === dow) { count++; if (count === n) return new Date(d); }
         d.setDate(d.getDate() + 1);
     }
     return null;
 }
+function regularClinicDatesOfMonth(year, month) {
+    const out = [2, 4].map(n => getNthWeekdayOfMonth(year, month, 3, n))
+        .concat([1, 3].map(n => getNthWeekdayOfMonth(year, month, 4, n)))
+        .filter(Boolean).map(formatDate);
+    return out.filter(ds => new Date(ds + 'T00:00').getDay() === 3 || ds >= THU_CLINIC_FROM).sort();
+}
 function isRegularClinicDate(dateStr) {
     const [y, m] = dateStr.split('-').map(Number);
-    const dt = new Date(dateStr + 'T00:00');
-    if (dt.getDay() !== 3) return false;
-    const w2 = getNthWednesdayOfMonth(y, m, 2);
-    const w4 = getNthWednesdayOfMonth(y, m, 4);
-    return (w2 && formatDate(w2) === dateStr) || (w4 && formatDate(w4) === dateStr);
+    return regularClinicDatesOfMonth(y, m).includes(dateStr);
 }
 function displayAgeSex(patient, refDate) {
     if (patient?.birthYear) {
@@ -207,7 +211,7 @@ export function findAnchorIdx(planLines, vDate) {
     const selfDateHead = new RegExp(`^[-*\\s]*(?:${String(vYr).slice(2)}\\/)?0?${vMo}\\/0?${vDd}\\b`);
     planLines.forEach((l, i) => {
         if (/\[本次\]/.test(l)) { anchorIdx = i; return; }
-        const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC/i);
+        const m = l.match(/(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*(?:[(（][^()（）\n]{0,20}[)）]\s*)?RTC/i);   // 日期與 RTC 間可夾括號註記「(W4 PM)」，同 opd.html RTC_PATTERN
         if (m && parseInt(m[2], 10) === vMo && parseInt(m[3], 10) === vDd && (!m[1] || 2000 + parseInt(m[1], 10) === vYr)) {
             anchorIdx = i;
             return;
@@ -241,7 +245,7 @@ export function findSameDayPlanLine(allByDate, rec, procDate, schedType) {
         // 行內日期閘：無日期（當次即做）或含 procDate 當天才算；帶其他日期的行屬於別列，別誤抓
         // 前導字元閘 (^|[^\d./A-Za-z])：脊椎節位「L3/4/5」的 4/5 前面是「/」→ 不算日期（見 DECISION_LOG 2026-07-09）；
         // 也擋 lab 值 9.5/0.8（前面是 .）——同 lineHasInvalidDate 的 context 閘思路 + 字母
-        const td = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
+        const td = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*(?:[(（][^()（）\n]{0,20}[)）]\s*)?RTC\??/gi, '');
         const dre = /(^|[^\d./A-Za-z])(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})\b/g;
         let m, any = false;
         while ((m = dre.exec(td)) !== null) {
@@ -295,7 +299,7 @@ export function deriveProcRows(allByDate) {
                 }
                 if (!tags.length) return;
                 // 先剝掉「X/Y RTC」的日期 —— 「07/09 RTC, 07/18 15:00 SONO」要取 07/18 不是回診日
-                const tForDate = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*RTC\??/gi, '');
+                const tForDate = t.replace(/(?:\d{2}\/)?\d{1,2}\/\d{1,2}\s*(?:[(（][^()（）\n]{0,20}[)）]\s*)?RTC\??/gi, '');
                 // 前導字元閘 (^|[^\d./A-Za-z])：與 findSameDayPlanLine 同一條規則（2026-08-01 補齊）。
                 // 只用 \b 的話「L3/4/5」的 4/5 會被當成 4 月 5 日（`/`→`4` 是 word boundary），
                 // 3~6 月的 visit 就會長出幽靈未來列；血壓「130/85/60」也會被 eraRe 讀成 2085 年代錨。
@@ -759,7 +763,7 @@ export function createProcList(deps) {
         const fmtOff = (d) => formatDate(new Date(today.getTime() + d * 86400000));
         let startKey = '0000-00-00', endKey = '9999-99-99';
         const todayKey = formatDate(today);
-        // 門診日判定 = 規律雙週三 OR 當日 visit≥5（排除孤 confirmed / RTC 加診單筆污染，不綁架邊界）
+        // 門診日判定 = 規律門診日（週三 2/4；2027 起加週四 1/3）OR 當日 visit≥5（排除孤 confirmed / RTC 加診單筆污染，不綁架邊界）
         const CLINIC_MIN_VISITS = 5;
         const isClinicDay = (k) => isRegularClinicDate(k) || Object.keys(allByDate[k] || {}).length >= CLINIC_MIN_VISITS;
         const clinicAtOrBefore = () => Object.keys(allByDate).sort().filter(k => k <= todayKey && isClinicDay(k));
